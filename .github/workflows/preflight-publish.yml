@@ -1,0 +1,54 @@
+name: Preflight Publish
+
+# PR-time guard: catches publish-breaking changes (workspace classification
+# drift, version-surface mismatches, default-feature graph pulling unpublished
+# crates, stale release-please-config jsonpath entries) BEFORE a tag is cut.
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/*/Cargo.toml"
+      - "release-please-config.json"
+      - ".release-please-manifest.json"
+      - "scripts/release/release_manifest.toml"
+      - "scripts/release/preflight.py"
+      - "scripts/release/audit_release_please_config.py"
+      - "npm/**/package.json"
+      - "python/pyproject.toml"
+      - "server.json"
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v3
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run preflight (workspace + version surfaces)
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/release/preflight.py
+
+      - name: Audit release-please-config extra-files
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/release/audit_release_please_config.py
+
+      - name: Shellcheck release scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          shellcheck -x scripts/release/*.sh

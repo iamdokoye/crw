@@ -18,8 +18,6 @@ pub mod dom_features;
 pub mod dom_util;
 pub mod filter;
 pub mod markdown;
-#[cfg(feature = "pdf")]
-pub mod pdf;
 pub mod plaintext;
 pub mod quality;
 pub mod readability;

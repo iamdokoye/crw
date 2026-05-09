@@ -8,6 +8,7 @@ homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 description = "MCP server for interactive browser automation over CDP"
+publish = false
 
 [dependencies]
 crw-core = { path = "../crw-core", version = "0.6.0" }

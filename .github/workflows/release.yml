@@ -4,17 +4,63 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v0.6.1). Required for manual recovery runs."
+        required: true
 
 permissions:
   contents: write
   packages: write
   id-token: write
 
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
-  check:
+  release-context:
     runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.ctx.outputs.release_tag }}
+      version: ${{ steps.ctx.outputs.version }}
+      source_ref: ${{ steps.ctx.outputs.source_ref }}
+      correlation_id: ${{ steps.ctx.outputs.correlation_id }}
+    steps:
+      - id: ctx
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${{ inputs.tag }}"
+            [ -n "$tag" ] || { echo "::error::workflow_dispatch requires tag input"; exit 1; }
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            tag="${{ github.ref_name }}"
+          else
+            echo "::error::release.yml only runs on tag push or workflow_dispatch with tag"
+            exit 1
+          fi
+          echo "$tag" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$' \
+            || { echo "::error::tag '$tag' is not semver"; exit 1; }
+          version="${tag#v}"
+          corr="${GITHUB_RUN_ID}-${version}"
+          {
+            echo "release_tag=$tag"
+            echo "version=$version"
+            echo "source_ref=$tag"
+            echo "correlation_id=$corr"
+          } >> "$GITHUB_OUTPUT"
+          echo "::notice::release context: tag=$tag version=$version corr=$corr"
+
+  check:
+    needs: release-context
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release-context.outputs.source_ref }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -31,6 +77,16 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
+      - name: Install uv (for preflight scripts)
+        uses: astral-sh/setup-uv@v3
+
+      - name: Preflight — workspace publishability
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/release/preflight.py
+          uv run python scripts/release/audit_release_please_config.py
+
       - name: Check formatting
         run: cargo fmt --all -- --check
 
@@ -44,62 +100,29 @@ jobs:
         run: cargo test --workspace
 
   publish-crates:
-    needs: check
+    needs: [release-context, check]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release-context.outputs.source_ref }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: "Tier 0: Publish crw-core, crw-pdf"
+      - name: Publish all tiers
+        shell: bash
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
-          for crate in crw-core crw-pdf; do
-            cargo publish -p "$crate" 2>&1 | tee /tmp/out.txt || grep -q "already uploaded" /tmp/out.txt
-          done
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-      - name: Wait for crates.io index
-        run: sleep 30
-
-      - name: "Tier 1: Publish crw-renderer, crw-extract"
-        run: |
-          for crate in crw-renderer crw-extract; do
-            cargo publish -p "$crate" 2>&1 | tee /tmp/out.txt || grep -q "already uploaded" /tmp/out.txt
-          done
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-      - name: Wait for crates.io index
-        run: sleep 30
-
-      - name: "Tier 2: Publish crw-crawl"
-        run: cargo publish -p crw-crawl 2>&1 | tee /tmp/out.txt || grep -q "already uploaded" /tmp/out.txt
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-      - name: Wait for crates.io index
-        run: sleep 30
-
-      - name: "Tier 3: Publish crw-server, crw-cli"
-        run: |
-          for crate in crw-server crw-cli; do
-            cargo publish -p "$crate" 2>&1 | tee /tmp/out.txt || grep -q "already uploaded" /tmp/out.txt
-          done
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-      - name: Wait for crates.io index
-        run: sleep 30
-
-      - name: "Tier 4: Publish crw-mcp (depends on crw-server)"
-        run: cargo publish -p crw-mcp 2>&1 | tee /tmp/out.txt || grep -q "already uploaded" /tmp/out.txt
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          set -euo pipefail
+          bash scripts/release/publish_all.sh \
+            --version "${{ needs.release-context.outputs.version }}"
 
   publish-binaries:
-    needs: check
+    needs: [release-context, check]
     permissions:
       contents: write
     strategy:
@@ -134,6 +157,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release-context.outputs.source_ref }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -145,17 +170,20 @@ jobs:
         run: cargo install cross --git https://github.com/cross-rs/cross
 
       - name: Build
+        shell: bash
         run: |
+          set -euo pipefail
           if [ "${{ matrix.cross }}" = "true" ]; then
             cross build --release -p crw-mcp -p crw-cli -p crw-server --target ${{ matrix.target }}
           else
             cargo build --release -p crw-mcp -p crw-cli -p crw-server --target ${{ matrix.target }}
           fi
-        shell: bash
 
       - name: Package (unix)
         if: runner.os != 'Windows'
+        shell: bash
         run: |
+          set -euo pipefail
           for bin in crw crw-server crw-mcp; do
             tar czf "${bin}-${{ matrix.platform }}-${{ matrix.arch_label }}.tar.gz" \
               -C target/${{ matrix.target }}/release "$bin"
@@ -170,67 +198,106 @@ jobs:
           }
 
       - name: Upload to release
-        run: |
-          for bin in crw crw-server crw-mcp; do
-            if [ "${{ runner.os }}" = "Windows" ]; then
-              ext="zip"
-            else
-              ext="tar.gz"
-            fi
-            gh release upload ${{ github.ref_name }} "${bin}-${{ matrix.platform }}-${{ matrix.arch_label }}.${ext}" --clobber
-          done
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.release-context.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if [ "${{ runner.os }}" = "Windows" ]; then ext="zip"; else ext="tar.gz"; fi
+          for bin in crw crw-server crw-mcp; do
+            gh release upload "$RELEASE_TAG" \
+              "${bin}-${{ matrix.platform }}-${{ matrix.arch_label }}.${ext}" --clobber
+          done
 
-  publish-pypi:
-    needs: publish-binaries
+  asset-gate:
+    needs: [release-context, publish-binaries]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release-context.outputs.source_ref }}
+
+      - name: Verify all 18 binary assets attached
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          bash scripts/release/asset_gate.sh "${{ needs.release-context.outputs.release_tag }}"
+
+  publish-pypi:
+    needs: [release-context, asset-gate]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release-context.outputs.source_ref }}
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Build and publish
-        run: |
-          pip install build twine
-          cd python && python -m build
-          twine upload dist/*
+      - name: Build and publish (idempotent)
+        shell: bash
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          set -euo pipefail
+          pip install build twine
+          (cd python && python -m build)
+          twine upload --skip-existing python/dist/*
+
+      - name: Verify
+        shell: bash
+        run: bash scripts/release/verify_pypi.sh "${{ needs.release-context.outputs.version }}"
 
   publish-npm:
-    needs: publish-binaries
+    needs: [release-context, asset-gate]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release-context.outputs.source_ref }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
 
-      - name: Download all release assets
-        run: |
-          mkdir -p /tmp/assets
-          gh release download ${{ github.ref_name }} -D /tmp/assets -p "crw-mcp-*"
+      - name: Download platform release assets
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Prepare and publish platform packages
+          RELEASE_TAG: ${{ needs.release-context.outputs.release_tag }}
         run: |
+          set -euo pipefail
+          mkdir -p /tmp/assets
+          gh release download "$RELEASE_TAG" -D /tmp/assets -p "crw-mcp-*"
+
+      - name: Idempotent publish (platform packages)
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ needs.release-context.outputs.version }}
+        run: |
+          set -euo pipefail
           for dir in npm/crw-mcp-*/; do
             pkg=$(basename "$dir")
             case "$pkg" in
               crw-mcp-darwin-x64)   asset="crw-mcp-darwin-x64.tar.gz" ;;
               crw-mcp-darwin-arm64) asset="crw-mcp-darwin-arm64.tar.gz" ;;
-              crw-mcp-linux-x64)   asset="crw-mcp-linux-x64.tar.gz" ;;
-              crw-mcp-linux-arm64) asset="crw-mcp-linux-arm64.tar.gz" ;;
-              crw-mcp-win32-x64)   asset="crw-mcp-win32-x64.zip" ;;
-              crw-mcp-win32-arm64) asset="crw-mcp-win32-arm64.zip" ;;
+              crw-mcp-linux-x64)    asset="crw-mcp-linux-x64.tar.gz" ;;
+              crw-mcp-linux-arm64)  asset="crw-mcp-linux-arm64.tar.gz" ;;
+              crw-mcp-win32-x64)    asset="crw-mcp-win32-x64.zip" ;;
+              crw-mcp-win32-arm64)  asset="crw-mcp-win32-arm64.zip" ;;
               *) continue ;;
             esac
             if [[ "$asset" == *.zip ]]; then
@@ -238,21 +305,42 @@ jobs:
             else
               tar xzf "/tmp/assets/$asset" -C "$dir"
             fi
-            cd "$dir" && npm publish --access public || true && cd -
+            current=$(npm view "${pkg}@${VERSION}" version 2>/dev/null || true)
+            if [ "$current" = "$VERSION" ]; then
+              echo "::notice::${pkg}@${VERSION} already on npm"
+            else
+              ( cd "$dir" && npm publish --access public )
+            fi
           done
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Publish main package
-        run: cd npm/crw-mcp && npm publish --access public
+      - name: Idempotent publish (main package)
+        shell: bash
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ needs.release-context.outputs.version }}
+        run: |
+          set -euo pipefail
+          current=$(npm view "crw-mcp@${VERSION}" version 2>/dev/null || true)
+          if [ "$current" = "$VERSION" ]; then
+            echo "::notice::crw-mcp@${VERSION} already on npm"
+          else
+            ( cd npm/crw-mcp && npm publish --access public )
+          fi
+
+      - name: Verify (existence + optionalDeps pin + install smoke)
+        shell: bash
+        run: bash scripts/release/verify_npm.sh "${{ needs.release-context.outputs.version }}"
 
   publish-docker:
-    needs: check
+    needs: [release-context, check]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release-context.outputs.source_ref }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -273,8 +361,8 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{version}},value=${{ needs.release-context.outputs.release_tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-context.outputs.release_tag }}
             type=raw,value=latest
 
       - name: Build and push
@@ -289,17 +377,22 @@ jobs:
           cache-to: type=gha,mode=max
 
   publish-mcp-registry:
-    needs: publish-docker
+    needs: [release-context, publish-docker]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release-context.outputs.source_ref }}
 
       - name: Install mcp-publisher
+        shell: bash
         run: |
-          curl -fsSL -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+          set -euo pipefail
+          curl -fsSL -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" \
+            | tar xz mcp-publisher
           sudo mv mcp-publisher /usr/local/bin/
 
       - name: Authenticate with MCP Registry
@@ -308,34 +401,85 @@ jobs:
       - name: Publish to MCP Registry
         run: mcp-publisher publish
 
-  update-apt:
-    needs: publish-binaries
-    runs-on: ubuntu-latest
-    steps:
-      - name: Extract version
-        id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - name: Verify
+        shell: bash
+        run: bash scripts/release/verify_mcp_registry.sh "${{ needs.release-context.outputs.version }}"
 
+  update-apt:
+    needs: [release-context, asset-gate]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
       - name: Trigger APT repo update
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GH_DISPATCH_PAT }}
         run: |
+          set -euo pipefail
           gh api repos/us/apt-crw/dispatches \
             -f event_type=crw-release \
-            -f "client_payload[version]=${{ steps.version.outputs.version }}"
-        env:
-          GH_TOKEN: ${{ secrets.GH_DISPATCH_PAT }}
+            -f "client_payload[version]=${{ needs.release-context.outputs.version }}" \
+            -f "client_payload[correlation_id]=${{ needs.release-context.outputs.correlation_id }}"
 
   update-homebrew:
-    needs: publish-binaries
+    needs: [release-context, asset-gate]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - name: Extract version
-        id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
       - name: Trigger homebrew tap update
-        run: |
-          gh api repos/us/homebrew-crw/dispatches \
-            -f event_type=crw-release \
-            -f "client_payload[version]=${{ steps.version.outputs.version }}"
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GH_DISPATCH_PAT }}
+        run: |
+          set -euo pipefail
+          gh api repos/us/homebrew-crw/dispatches \
+            -f event_type=crw-release \
+            -f "client_payload[version]=${{ needs.release-context.outputs.version }}" \
+            -f "client_payload[correlation_id]=${{ needs.release-context.outputs.correlation_id }}"
+
+  verify-publish:
+    needs:
+      - release-context
+      - publish-crates
+      - publish-pypi
+      - publish-npm
+      - publish-docker
+      - publish-mcp-registry
+      - update-apt
+      - update-homebrew
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release-context.outputs.source_ref }}
+
+      - name: Run verification across every registry
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          bash scripts/release/verify_publish.sh \
+            "${{ needs.release-context.outputs.version }}" \
+            --correlation-id "${{ needs.release-context.outputs.correlation_id }}" \
+            --out "release-audit-${{ needs.release-context.outputs.version }}.md"
+
+      - name: Upload audit artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-audit-${{ needs.release-context.outputs.version }}
+          path: release-audit-${{ needs.release-context.outputs.version }}.md
+
+      - name: Attach audit to GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.release-context.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          gh release upload "$RELEASE_TAG" \
+            "release-audit-${{ needs.release-context.outputs.version }}.md" --clobber

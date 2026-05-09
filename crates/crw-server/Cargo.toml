@@ -12,7 +12,6 @@ description = "Firecrawl-compatible API server for the CRW web scraper"
 [features]
 default = []
 cdp = ["crw-renderer/cdp"]
-pdf = ["crw-crawl/pdf"]
 test-utils = []
 
 [dependencies]

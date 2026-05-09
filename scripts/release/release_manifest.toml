@@ -1,0 +1,56 @@
+# Single source of truth for the publish pipeline.
+# Tier order = topological dependency order. Within a tier, crates are
+# independent and may be published in parallel (the driver script publishes
+# them sequentially today, but tier boundaries enforce ordering).
+#
+# Edits here must stay in sync with each crate's Cargo.toml `publish` field
+# (preflight enforces this).
+
+[release]
+version_source = "Cargo.toml"  # workspace.package.version
+
+[[tiers]]
+order = 0
+crates = ["crw-mcp-proto"]
+
+[[tiers]]
+order = 1
+crates = ["crw-core"]
+
+[[tiers]]
+order = 2
+crates = ["crw-renderer", "crw-extract"]
+
+[[tiers]]
+order = 3
+crates = ["crw-crawl"]
+
+[[tiers]]
+order = 4
+crates = ["crw-server", "crw-cli"]
+
+[[tiers]]
+order = 5
+crates = ["crw-mcp"]
+
+[unpublished]
+# Internal binaries that don't need crates.io distribution.
+# Each must have `publish = false` in its Cargo.toml.
+crates = ["crw-browse"]
+
+[npm]
+main_package = "crw-mcp"
+platform_packages = [
+  "crw-mcp-darwin-x64",
+  "crw-mcp-darwin-arm64",
+  "crw-mcp-linux-x64",
+  "crw-mcp-linux-arm64",
+  "crw-mcp-win32-x64",
+  "crw-mcp-win32-arm64",
+]
+
+[pypi]
+package = "crw"
+
+[docker]
+image = "ghcr.io/us/crw"

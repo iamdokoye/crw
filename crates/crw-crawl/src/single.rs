@@ -126,65 +126,6 @@ pub async fn scrape_url(
             .await?
     };
 
-    // PDF routing: skip HTML extraction pipeline
-    #[cfg(feature = "pdf")]
-    if fetch_result.content_type.as_deref() == Some("application/pdf")
-        && let Some(bytes) = &fetch_result.raw_bytes
-    {
-        let mut data = crw_extract::pdf::extract_pdf(
-            bytes,
-            &fetch_result.url,
-            fetch_result.status_code,
-            fetch_result.elapsed_ms,
-            &req.formats,
-        )?;
-
-        // LLM structured extraction for PDF content
-        let effective_schema = req
-            .json_schema
-            .as_ref()
-            .or_else(|| req.extract.as_ref().and_then(|e| e.schema.as_ref()));
-
-        if formats_include_json(&req.formats) {
-            let byok_config = req.llm_api_key.as_ref().map(|key| LlmConfig {
-                api_key: key.clone(),
-                provider: req
-                    .llm_provider
-                    .clone()
-                    .unwrap_or_else(|| "anthropic".into()),
-                model: req
-                    .llm_model
-                    .clone()
-                    .unwrap_or_else(|| "claude-sonnet-4-20250514".into()),
-                base_url: None,
-                max_tokens: 4096,
-                azure_api_version: None,
-            });
-            let effective_llm = byok_config.as_ref().or(llm_config);
-
-            if let (Some(schema), Some(llm)) = (effective_schema, effective_llm) {
-                let md = data.markdown.as_deref().unwrap_or("");
-                match crw_extract::structured::extract_structured(md, schema, llm).await {
-                    Ok(json) => data.json = Some(json),
-                    Err(e) => {
-                        tracing::error!("PDF structured extraction failed: {e}");
-                        return Err(e);
-                    }
-                }
-            } else if effective_schema.is_some() && effective_llm.is_none() {
-                return Err(crw_core::error::CrwError::ExtractionError(
-                    "JSON extraction requested but no LLM configured. Either set [extraction.llm] in server config, or pass 'llmApiKey' in the request body.".into()
-                ));
-            } else if effective_schema.is_none() {
-                return Err(crw_core::error::CrwError::InvalidRequest(
-                    "Structured extraction (formats: json/extract) requires a 'jsonSchema' field. Provide a JSON Schema object.".into()
-                ));
-            }
-        }
-
-        return Ok(data);
-    }
-
     let warning = derive_target_warning(&fetch_result);
     // Per-request debug collector — shared across the multi-attempt JS
     // escalation so all candidate ladders land in one trace.

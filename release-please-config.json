@@ -24,11 +24,6 @@
         },
         {
           "type": "toml",
-          "path": "crates/crw-core/Cargo.toml",
-          "jsonpath": "$.dependencies.crw-core.version"
-        },
-        {
-          "type": "toml",
           "path": "crates/crw-renderer/Cargo.toml",
           "jsonpath": "$.dependencies.crw-core.version"
         },
@@ -123,11 +118,6 @@
           "jsonpath": "$.dependencies.crw-renderer.version"
         },
         {
-          "type": "toml",
-          "path": "Cargo.toml",
-          "jsonpath": "$.workspace.dependencies.crw-pdf.version"
-        },
-        {
           "type": "json",
           "path": "server.json",
           "jsonpath": "$.version"
@@ -166,6 +156,36 @@
           "type": "json",
           "path": "npm/crw-mcp-win32-arm64/package.json",
           "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "npm/crw-mcp/package.json",
+          "jsonpath": "$.optionalDependencies['crw-mcp-darwin-x64']"
+        },
+        {
+          "type": "json",
+          "path": "npm/crw-mcp/package.json",
+          "jsonpath": "$.optionalDependencies['crw-mcp-darwin-arm64']"
+        },
+        {
+          "type": "json",
+          "path": "npm/crw-mcp/package.json",
+          "jsonpath": "$.optionalDependencies['crw-mcp-linux-x64']"
+        },
+        {
+          "type": "json",
+          "path": "npm/crw-mcp/package.json",
+          "jsonpath": "$.optionalDependencies['crw-mcp-linux-arm64']"
+        },
+        {
+          "type": "json",
+          "path": "npm/crw-mcp/package.json",
+          "jsonpath": "$.optionalDependencies['crw-mcp-win32-x64']"
+        },
+        {
+          "type": "json",
+          "path": "npm/crw-mcp/package.json",
+          "jsonpath": "$.optionalDependencies['crw-mcp-win32-arm64']"
         },
         {
           "type": "toml",

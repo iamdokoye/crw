@@ -9,13 +9,8 @@ keywords.workspace = true
 categories.workspace = true
 description = "HTML extraction and markdown conversion engine for the CRW web scraper"
 
-[features]
-default = ["pdf"]
-pdf = ["dep:crw-pdf"]
-
 [dependencies]
 crw-core = { path = "../crw-core", version = "0.6.0" }
-crw-pdf = { workspace = true, optional = true }
 lol_html = { workspace = true }
 scraper = { workspace = true }
 htmd = { workspace = true }
