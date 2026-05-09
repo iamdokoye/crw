@@ -4,7 +4,7 @@ use axum::response::IntoResponse;
 use crw_core::mcp::{
     JsonRpcRequest, JsonRpcResponse, ProtocolResult, handle_protocol_method, tool_result_response,
 };
-use crw_core::types::{CrawlRequest, MapRequest, ScrapeRequest};
+use crw_core::types::{CrawlRequest, MapRequest, ScrapeRequest, SearchRequest};
 use crw_crawl::crawl::{DiscoverOptions, discover_urls};
 use crw_crawl::single::scrape_url;
 use serde_json::{Value, json};
@@ -92,6 +92,14 @@ pub async fn call_tool(state: &AppState, tool_name: &str, args: Value) -> Result
             .await
             .map_err(|e| format!("{e}"))?;
             Ok(json!({"success": true, "links": urls}))
+        }
+        "crw_search" => {
+            let req: SearchRequest =
+                serde_json::from_value(args).map_err(|e| format!("invalid arguments: {e}"))?;
+            let resp = crate::routes::search::search_inner(state, req)
+                .await
+                .map_err(|e| format!("{e}"))?;
+            serde_json::to_value(&resp).map_err(|e| format!("serialize error: {e}"))
         }
         _ => Err(format!("unknown tool: {tool_name}")),
     }

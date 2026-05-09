@@ -6,6 +6,7 @@ use crw_core::types::{
 };
 use crw_crawl::crawl::{CrawlOptions, run_crawl};
 use crw_renderer::FallbackRenderer;
+use crw_search::SearxngClient;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -85,6 +86,9 @@ pub struct AppState {
     pub renderer: Arc<FallbackRenderer>,
     pub crawl_jobs: Arc<RwLock<HashMap<Uuid, CrawlJob>>>,
     pub crawl_semaphore: Arc<tokio::sync::Semaphore>,
+    /// SearXNG client. `None` when `[search].searxng_url` is unset, in which
+    /// case `/v1/search` returns a clear `search_disabled` error.
+    pub searxng: Option<Arc<SearxngClient>>,
 }
 
 impl AppState {
@@ -101,11 +105,31 @@ impl AppState {
             config.crawler.per_host_max_concurrent,
         );
 
+        let searxng = if config.search.enabled
+            && let Some(url) = config.search.searxng_url.as_ref()
+        {
+            // Dedicated reqwest client for SearXNG so its connection pool is
+            // hot and isolated from the renderer / scrape paths. SearXNG runs
+            // on the same docker network in the bundled compose so a 5s
+            // connect_timeout is generous.
+            let http = reqwest::Client::builder()
+                .connect_timeout(Duration::from_secs(5))
+                .build()
+                .map_err(|e| {
+                    CrwError::Internal(format!("failed to build SearXNG http client: {e}"))
+                })?;
+            let timeout = Duration::from_millis(config.search.timeout_ms);
+            Some(Arc::new(SearxngClient::new(Arc::new(http), url, timeout)))
+        } else {
+            None
+        };
+
         let state = Self {
             config: Arc::new(config),
             renderer: Arc::new(renderer),
             crawl_jobs: Arc::new(RwLock::new(HashMap::new())),
             crawl_semaphore: Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_CRAWLS)),
+            searxng,
         };
 
         // Wrap the not-yet-returned state in a block to keep the Ok() shape at the end.

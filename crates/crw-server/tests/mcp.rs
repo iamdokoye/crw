@@ -44,7 +44,7 @@ async fn mcp_initialize_returns_capabilities() {
 }
 
 #[tokio::test]
-async fn mcp_tools_list_returns_4_tools() {
+async fn mcp_tools_list_returns_all_tools() {
     let server = test_app();
     let resp = server
         .post("/mcp")
@@ -56,8 +56,8 @@ async fn mcp_tools_list_returns_4_tools() {
     let tools = json["result"]["tools"].as_array().unwrap();
     assert_eq!(
         tools.len(),
-        4,
-        "Should have 4 tools: scrape, crawl, check, map"
+        5,
+        "Should have 5 tools: scrape, crawl, check, map, search"
     );
 
     let tool_names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
@@ -65,6 +65,7 @@ async fn mcp_tools_list_returns_4_tools() {
     assert!(tool_names.contains(&"crw_crawl"));
     assert!(tool_names.contains(&"crw_check_crawl_status"));
     assert!(tool_names.contains(&"crw_map"));
+    assert!(tool_names.contains(&"crw_search"));
 }
 
 #[tokio::test]

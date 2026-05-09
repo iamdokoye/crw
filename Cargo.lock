@@ -819,6 +819,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "crw-search"
+version = "0.6.0"
+dependencies = [
+ "crw-core",
+ "reqwest 0.13.2",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "url",
+ "wiremock",
+]
+
+[[package]]
 name = "crw-server"
 version = "0.6.0"
 dependencies = [
@@ -829,6 +844,7 @@ dependencies = [
  "crw-crawl",
  "crw-extract",
  "crw-renderer",
+ "crw-search",
  "crw-server",
  "hex",
  "reqwest 0.13.2",

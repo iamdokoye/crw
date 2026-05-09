@@ -110,3 +110,18 @@ always_run = false
 #   base_url = "https://<resource>.openai.azure.com"    # endpoint, no trailing path
 #   azure_api_version = "2024-05-01-preview"
 #   max_tokens = 4096
+
+# /v1/search endpoint — proxies to a SearXNG instance.
+# When `searxng_url` is unset the endpoint returns a clear 400 error
+# (`search_disabled`); the bundled docker-compose flips it to the
+# `searxng` sidecar.
+[search]
+enabled = true
+# searxng_url = "http://localhost:8080"
+timeout_ms = 15000
+default_limit = 5
+max_limit = 20
+# Engines invoked when the request includes `categories: ["research"]`.
+research_engines = ["arxiv", "crossref", "google scholar", "semantic scholar"]
+# Engines invoked when the request includes `categories: ["github"]`.
+github_engines = ["github"]

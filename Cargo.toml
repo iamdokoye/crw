@@ -4,6 +4,7 @@ members = [
     "crates/crw-renderer",
     "crates/crw-extract",
     "crates/crw-crawl",
+    "crates/crw-search",
     "crates/crw-server",
     "crates/crw-mcp",
     "crates/crw-mcp-proto",

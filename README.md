@@ -270,27 +270,46 @@ curl -X POST http://localhost:3000/v1/map \
 
 ### Search
 
-Search the web and get full page content from results.
+Search the web and get full page content from results. Self-hosted CRW
+ships with a SearXNG sidecar (started automatically by `docker compose up`),
+so search works out of the box — no third-party API key needed.
 
 ```python
 from crw import CrwClient
 
-# Cloud only — requires fastcrw.com API key
-client = CrwClient(api_url="https://fastcrw.com/api", api_key="YOUR_KEY")
+# Self-hosted (default Docker compose stack)
+client = CrwClient(api_url="http://localhost:3000")
 results = client.search("open source web scraper 2026", limit=10)
-```
 
-> **Cloud only:** `search()` requires a [fastcrw.com](https://fastcrw.com) API key (**500 free credits, no credit card**). Local/embedded mode provides `scrape`, `crawl`, and `map`.
+# Or cloud
+# client = CrwClient(api_url="https://fastcrw.com/api", api_key="YOUR_KEY")
+```
 
 <details>
 <summary><b>cURL</b></summary>
 
 ```bash
-curl -X POST https://fastcrw.com/api/v1/search \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+# Self-hosted
+curl -X POST http://localhost:3000/v1/search \
   -H "Content-Type: application/json" \
   -d '{"query": "open source web scraper 2026", "limit": 10}'
+
+# With grouped sources + scrape enrichment
+curl -X POST http://localhost:3000/v1/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "rust async runtime",
+    "sources": ["web", "news"],
+    "scrapeOptions": {"formats": ["markdown"]}
+  }'
 ```
+
+The sidecar uses the upstream `searxng/searxng` image with config mounted
+read-only from `config/searxng/settings.yml`. To point at an existing
+SearXNG instance instead, set `CRW_SEARCH__SEARXNG_URL=http://your-host:8080`
+and remove the `searxng` service from the compose file. To disable search
+entirely, set `[search].enabled = false` in your config — the route will
+return a clear `search_disabled` error.
 </details>
 
 ### API Endpoints
@@ -302,7 +321,7 @@ curl -X POST https://fastcrw.com/api/v1/search \
 | `GET` | `/v1/crawl/:id` | Check crawl status and retrieve results |
 | `DELETE` | `/v1/crawl/:id` | Cancel a running crawl job |
 | `POST` | `/v1/map` | Discover all URLs on a site |
-| `POST` | `/v1/search` | Web search with optional content scraping (cloud only) |
+| `POST` | `/v1/search` | Web search via SearXNG sidecar, with optional content scraping |
 | `GET` | `/health` | Health check (no auth required) |
 | `POST` | `/mcp` | Streamable HTTP MCP transport |
 

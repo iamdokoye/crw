@@ -181,44 +181,63 @@ pub fn tool_definitions(proxy_mode: bool) -> Value {
         }),
     ];
 
-    if proxy_mode {
-        tools.push(json!({
-            "name": "crw_search",
-            "description": "Search the web and return relevant results with titles, URLs, and descriptions. Powered by fastCRW cloud — only available in proxy mode.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "The search query"
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Maximum number of results to return (default: 5)"
-                    },
-                    "lang": {
-                        "type": "string",
-                        "description": "Language code for results (e.g. \"en\", \"tr\")"
-                    },
-                    "country": {
-                        "type": "string",
-                        "description": "Country code for results (e.g. \"us\", \"tr\")"
-                    },
-                    "scrapeOptions": {
-                        "type": "object",
-                        "description": "Options for scraping each result page (e.g. {\"formats\": [\"markdown\"]})",
-                        "properties": {
-                            "formats": {
-                                "type": "array",
-                                "items": { "type": "string", "enum": ["markdown", "html", "links"] }
-                            }
+    // `crw_search` is always advertised. In embedded mode it dispatches to a
+    // local SearXNG sidecar via crw-server's `/v1/search` pipeline; in proxy
+    // mode it forwards to the configured remote API. Whether the underlying
+    // SearXNG instance is configured is a runtime concern — the server returns
+    // a clear `search_disabled` error when [search].searxng_url is unset.
+    let _ = proxy_mode;
+    tools.push(json!({
+        "name": "crw_search",
+        "description": "Search the web and return relevant results with titles, URLs, and descriptions. Backed by a SearXNG sidecar in embedded mode, or by the configured remote API in proxy mode.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The search query"
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of results to return (default: 5, max: 20)"
+                },
+                "lang": {
+                    "type": "string",
+                    "description": "Language code for results (e.g. \"en\", \"tr\")"
+                },
+                "tbs": {
+                    "type": "string",
+                    "enum": ["qdr:h", "qdr:d", "qdr:w", "qdr:m", "qdr:y"],
+                    "description": "Time filter — restrict to results from the past hour/day/week/month/year"
+                },
+                "sources": {
+                    "type": "array",
+                    "items": { "type": "string", "enum": ["web", "news", "images"] },
+                    "description": "If set, returns results grouped by source instead of a flat list"
+                },
+                "categories": {
+                    "type": "array",
+                    "items": { "type": "string", "enum": ["github", "research", "pdf"] },
+                    "description": "Bias the search towards a category. `pdf` appends `filetype:pdf` to the query; `github`/`research` switch to topical engines."
+                },
+                "scrapeOptions": {
+                    "type": "object",
+                    "description": "If set, each `web` result is scraped in-process and the requested formats are inlined into the response.",
+                    "properties": {
+                        "formats": {
+                            "type": "array",
+                            "items": { "type": "string", "enum": ["markdown", "html", "rawHtml", "links"] }
+                        },
+                        "onlyMainContent": {
+                            "type": "boolean",
+                            "description": "Strip nav/footer/ads before serializing (default: true)"
                         }
                     }
-                },
-                "required": ["query"]
-            }
-        }));
-    }
+                }
+            },
+            "required": ["query"]
+        }
+    }));
 
     json!({ "tools": tools })
 }

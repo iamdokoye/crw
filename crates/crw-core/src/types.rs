@@ -609,6 +609,182 @@ pub struct MapData {
 /// Standard envelope: { success: true, data: { links: [...] } }
 pub type MapResponse = ApiResponse<MapData>;
 
+// ── Search types ──
+
+/// Top-level "source" buckets exposed in the `/v1/search` API. Maps to
+/// SearXNG's `categories` query parameter (web → general, news → news,
+/// images → images).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SearchSource {
+    Web,
+    News,
+    Images,
+}
+
+impl SearchSource {
+    /// SearXNG category name for this source.
+    pub fn searxng_category(self) -> &'static str {
+        match self {
+            SearchSource::Web => "general",
+            SearchSource::News => "news",
+            SearchSource::Images => "images",
+        }
+    }
+}
+
+/// User-facing category modifiers. `Github` and `Research` map to engine
+/// filtering; `Pdf` modifies the query with `filetype:pdf` (matches SaaS).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SearchCategory {
+    Github,
+    Research,
+    Pdf,
+}
+
+/// Time-window filter, mirrors Google's `tbs=qdr:*` syntax used by Firecrawl.
+/// SearXNG's `time_range` only supports day/week/month/year; `Hour` is mapped
+/// to `Day` for parity with the SaaS implementation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SearchTimeFilter {
+    #[serde(rename = "qdr:h")]
+    Hour,
+    #[serde(rename = "qdr:d")]
+    Day,
+    #[serde(rename = "qdr:w")]
+    Week,
+    #[serde(rename = "qdr:m")]
+    Month,
+    #[serde(rename = "qdr:y")]
+    Year,
+}
+
+impl SearchTimeFilter {
+    /// SearXNG `time_range` string. SearXNG has no hour granularity, so
+    /// `Hour` is reported as `day` (lossy; matches SaaS behavior).
+    pub fn searxng_time_range(self) -> &'static str {
+        match self {
+            SearchTimeFilter::Hour | SearchTimeFilter::Day => "day",
+            SearchTimeFilter::Week => "week",
+            SearchTimeFilter::Month => "month",
+            SearchTimeFilter::Year => "year",
+        }
+    }
+}
+
+/// `scrapeOptions` sub-object — a narrow projection of `ScrapeRequest` that
+/// we accept on every result from a search. Only the fields the SaaS exposes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchScrapeOptions {
+    pub formats: Vec<OutputFormat>,
+    #[serde(default = "default_true")]
+    pub only_main_content: bool,
+}
+
+/// POST /v1/search request body. Mirrors the zod schema in
+/// `crw-saas/src/lib/search-schema.ts`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchRequest {
+    pub query: String,
+    /// Number of results per source (or total when `sources` is unset).
+    /// Defaults to `[search].default_limit` when omitted; clamped to
+    /// `[search].max_limit` server-side.
+    #[serde(default)]
+    pub limit: Option<u32>,
+    /// SearXNG `language` parameter (e.g. `"en"`, `"de"`, `"auto"`).
+    #[serde(default)]
+    pub lang: Option<String>,
+    /// Google-style time filter (`qdr:h|d|w|m|y`).
+    #[serde(default)]
+    pub tbs: Option<SearchTimeFilter>,
+    /// When set, results are grouped under `web`/`news`/`images` keys.
+    /// When unset, a flat array is returned.
+    #[serde(default)]
+    pub sources: Option<Vec<SearchSource>>,
+    /// User-facing category modifiers. Max 5 entries (matches SaaS).
+    #[serde(default)]
+    pub categories: Option<Vec<SearchCategory>>,
+    /// When set, every `web` result is enriched in-process via the scrape
+    /// pipeline (parallel, bounded by `[crawler].max_concurrency`).
+    #[serde(default)]
+    pub scrape_options: Option<SearchScrapeOptions>,
+}
+
+/// A single search result (web or news). Mirrors `SearchResult` in
+/// `crw-saas/src/lib/search-transform.ts`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchResult {
+    pub url: String,
+    pub title: String,
+    pub description: String,
+    pub position: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub score: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub published_date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    // Populated when scrapeOptions is used.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub markdown: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub html: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub raw_html: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub links: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<PageMetadata>,
+}
+
+/// A single image result. Mirrors `ImageResult` in
+/// `crw-saas/src/lib/search-transform.ts`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageResult {
+    pub url: String,
+    pub title: String,
+    pub description: String,
+    pub image_url: String,
+    pub position: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thumbnail_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_format: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolution: Option<String>,
+}
+
+/// Grouped result envelope when `sources` is set on the request.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupedSearchData {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub web: Option<Vec<SearchResult>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub news: Option<Vec<SearchResult>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub images: Option<Vec<ImageResult>>,
+}
+
+/// `data` payload of the `/v1/search` response. Either a flat list of
+/// results or a grouped object — chosen by whether the request specified
+/// `sources`. Untagged: serializes as either an array or an object with
+/// `web`/`news`/`images` keys.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum SearchData {
+    Flat(Vec<SearchResult>),
+    Grouped(GroupedSearchData),
+}
+
+/// POST /v1/search response body.
+pub type SearchResponse = ApiResponse<SearchData>;
+
 // ── Render result ──
 
 /// Closed enum of renderer kinds used in routing decisions and metrics.

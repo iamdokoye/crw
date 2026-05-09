@@ -54,3 +54,8 @@ ws_url = "ws://lightpanda:9222/"
 
 [renderer.chrome]
 ws_url = "ws://chrome:9222/"
+
+# /v1/search points at the bundled SearXNG sidecar. The container resolves
+# `searxng` via docker-compose's network DNS.
+[search]
+searxng_url = "http://searxng:8080"

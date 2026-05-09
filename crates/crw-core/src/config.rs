@@ -14,6 +14,79 @@ pub struct AppConfig {
     pub auth: AuthConfig,
     #[serde(default)]
     pub request: RequestConfig,
+    #[serde(default)]
+    pub search: SearchConfig,
+}
+
+/// Configuration for the `/v1/search` endpoint and its SearXNG backend.
+///
+/// When `searxng_url` is unset the endpoint returns a 400 error with code
+/// `search_disabled` — the route remains mounted so that startup doesn't
+/// have to know whether search will ever be configured.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SearchConfig {
+    /// Master switch. Defaults to `true`; set to `false` to refuse all
+    /// `/v1/search` requests even if `searxng_url` is configured.
+    #[serde(default = "default_true_search")]
+    pub enabled: bool,
+    /// Base URL of the SearXNG instance (e.g. `http://searxng:8080`).
+    /// `None` (the default) disables the endpoint with a clear error.
+    #[serde(default)]
+    pub searxng_url: Option<String>,
+    /// End-to-end timeout for the SearXNG call in milliseconds.
+    #[serde(default = "default_search_timeout_ms")]
+    pub timeout_ms: u64,
+    /// Default `limit` when the request omits it.
+    #[serde(default = "default_search_limit")]
+    pub default_limit: u32,
+    /// Hard cap on `limit` per request. SaaS uses 20.
+    #[serde(default = "default_search_max_limit")]
+    pub max_limit: u32,
+    /// SearXNG engines invoked when the request includes `categories: ["research"]`.
+    /// Defaults match the SaaS implementation.
+    #[serde(default = "default_research_engines")]
+    pub research_engines: Vec<String>,
+    /// SearXNG engines invoked when the request includes `categories: ["github"]`.
+    #[serde(default = "default_github_engines")]
+    pub github_engines: Vec<String>,
+}
+
+impl Default for SearchConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            searxng_url: None,
+            timeout_ms: default_search_timeout_ms(),
+            default_limit: default_search_limit(),
+            max_limit: default_search_max_limit(),
+            research_engines: default_research_engines(),
+            github_engines: default_github_engines(),
+        }
+    }
+}
+
+fn default_true_search() -> bool {
+    true
+}
+fn default_search_timeout_ms() -> u64 {
+    15_000
+}
+fn default_search_limit() -> u32 {
+    5
+}
+fn default_search_max_limit() -> u32 {
+    20
+}
+fn default_research_engines() -> Vec<String> {
+    vec![
+        "arxiv".into(),
+        "crossref".into(),
+        "google scholar".into(),
+        "semantic scholar".into(),
+    ]
+}
+fn default_github_engines() -> Vec<String> {
+    vec!["github".into()]
 }
 
 /// Per-request defaults that apply to every scrape, crawl, or map call when

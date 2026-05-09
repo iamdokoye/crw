@@ -5,3 +5,4 @@ pub mod map;
 pub mod mcp;
 pub mod metrics;
 pub mod scrape;
+pub mod search;

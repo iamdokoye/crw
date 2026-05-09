@@ -14,7 +14,7 @@
 //! - `crw_crawl` — start an async BFS crawl
 //! - `crw_check_crawl_status` — poll crawl job status
 //! - `crw_map` — discover URLs on a website
-//! - `crw_search` — web search (proxy/cloud mode only)
+//! - `crw_search` — web search (embedded uses local SearXNG sidecar; proxy forwards to remote API)
 //!
 //! # Usage
 //!
@@ -298,6 +298,7 @@ async fn main() {
                     extraction: Default::default(),
                     auth: Default::default(),
                     request: Default::default(),
+                    search: Default::default(),
                 }
             });
 

@@ -1,0 +1,29 @@
+use_default_settings: true
+
+general:
+  instance_name: "crw-search"
+  privacypolicy_url: false
+  contact_url: false
+  donation_url: false
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "auto"
+  # JSON format must be explicitly enabled — SearXNG returns 403 on
+  # `?format=json` otherwise. The `html` entry is kept so the upstream
+  # /search UI remains usable for debugging.
+  formats:
+    - html
+    - json
+
+server:
+  bind_address: "0.0.0.0"
+  port: 8080
+  # Rate limiting is handled by crw-server's own middleware, so SearXNG's
+  # built-in limiter (which would require Valkey/Redis) stays off. This
+  # also lets us drop the Valkey container — one less moving part.
+  limiter: false
+  public_instance: false
+  image_proxy: false
+  method: "GET"

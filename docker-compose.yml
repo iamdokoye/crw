@@ -20,11 +20,46 @@ services:
       chrome-stealth:
         condition: service_started
         required: false
+      # SearXNG sidecar — backs `/v1/search`. Wait for healthy so the first
+      # search request after `compose up` doesn't race the cold start.
+      searxng:
+        condition: service_healthy
     environment:
       - RUST_LOG=info
       - CRW_CONFIG=config.docker
     volumes:
       - ./config.docker.toml:/app/config.docker.toml:ro
+
+  # Meta-search backend for `/v1/search`. Pinned to a dated tag (never `:latest`)
+  # so upgrades are deliberate. `settings.yml` is mounted read-only from the
+  # repo — we do NOT bake config into a derived image (that would trigger AGPL
+  # §6/§13 redistribution clauses; mounting upstream config = mere aggregation).
+  #
+  # No Valkey/Redis: `server.limiter` and engine cache are off in settings.yml,
+  # so the in-memory fallback is sufficient. Rate limiting is handled by
+  # crw-server's own middleware.
+  #
+  # The container is reachable to other services as `searxng:8080`. We do NOT
+  # publish the port to the host by default — search should only flow through
+  # /v1/search. To debug directly, add `ports: ["127.0.0.1:8888:8080"]` in
+  # docker-compose.override.yml.
+  searxng:
+    image: searxng/searxng:2025.10.14-13a5051
+    restart: unless-stopped
+    environment:
+      - SEARXNG_BASE_URL=http://searxng:8080/
+      # Generate with `openssl rand -hex 32` and put in `.env` for production.
+      # The default below is acceptable for local/internal-only deployments
+      # because the limiter is off and the port isn't published.
+      - SEARXNG_SECRET_KEY=${SEARXNG_SECRET_KEY:-change-me-with-openssl-rand-hex-32-please}
+    volumes:
+      - ./config/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   # Primary JS renderer — lightweight (~64 MB), fast startup.
   # Handles most static-JS sites. Falls back to Chrome for complex SPAs.
