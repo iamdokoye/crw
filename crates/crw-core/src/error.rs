@@ -36,6 +36,9 @@ pub enum CrwError {
     RateLimited,
 
     #[error("{0}")]
+    SearchDisabled(String),
+
+    #[error("{0}")]
     Internal(String),
 }
 
@@ -54,6 +57,7 @@ impl CrwError {
             CrwError::ConfigError(_) => "config_error",
             CrwError::NotFound(_) => "not_found",
             CrwError::RateLimited => "rate_limited",
+            CrwError::SearchDisabled(_) => "search_disabled",
             CrwError::Internal(_) => "internal_error",
         }
     }

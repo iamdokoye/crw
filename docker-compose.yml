@@ -31,9 +31,17 @@ services:
       - ./config.docker.toml:/app/config.docker.toml:ro
 
   # Meta-search backend for `/v1/search`. Pinned to a dated tag (never `:latest`)
-  # so upgrades are deliberate. `settings.yml` is mounted read-only from the
-  # repo — we do NOT bake config into a derived image (that would trigger AGPL
-  # §6/§13 redistribution clauses; mounting upstream config = mere aggregation).
+  # so upgrades are deliberate.
+  #
+  # AGPL / SearXNG attribution: SearXNG is a separate AGPL-3.0 work
+  # (https://github.com/searxng/searxng). We ship the upstream image unmodified
+  # and mount our own config read-only — we do NOT build a derived image.
+  # This is the lowest-risk packaging for §6/§13 obligations: each container
+  # runs its own program from its own publisher, with no rebundling. Operators
+  # who deploy this stack to third parties are still responsible for SearXNG's
+  # corresponding-source obligations on their own (the upstream image satisfies
+  # this for unmodified deployments). If you fork SearXNG or `settings.yml`,
+  # publish your changes alongside the deployment per AGPL §13.
   #
   # No Valkey/Redis: `server.limiter` and engine cache are off in settings.yml,
   # so the in-memory fallback is sufficient. Rate limiting is handled by
@@ -46,6 +54,18 @@ services:
   searxng:
     image: searxng/searxng:2026.5.9-0cba32c15
     restart: unless-stopped
+    # Hardening: SearXNG handles arbitrary user queries and proxies third-party
+    # engines, so it has the largest abuse surface in this stack. We strip
+    # everything it doesn't need and bound resource use so a runaway worker
+    # can't take the host with it.
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    memswap_limit: 512m
+    pids_limit: 256
     environment:
       - SEARXNG_BASE_URL=http://searxng:8080/
       # Generate with `openssl rand -hex 32` and put in `.env` for production.
@@ -54,6 +74,13 @@ services:
       - SEARXNG_SECRET_KEY=${SEARXNG_SECRET_KEY:-change-me-with-openssl-rand-hex-32-please}
     volumes:
       - ./config/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    # SearXNG writes runtime cache + uwsgi state under /var/cache + /tmp; with
+    # `read_only: true` we route those to tmpfs so the container itself stays
+    # immutable while the writable scratch space stays in RAM (and gets freed
+    # on restart).
+    tmpfs:
+      - /tmp:size=64m
+      - /var/cache/searxng:size=128m
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/healthz"]
       interval: 10s

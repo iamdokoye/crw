@@ -5,12 +5,18 @@
 //! every per-result field except `url`, `title`, and `engine` is treated as
 //! optional because real-world engines are uneven.
 
+use futures::StreamExt;
 use serde::Deserialize;
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 
 use crate::params::SearxngParams;
+
+/// Hard cap on a SearXNG JSON response body (10 MiB). Real responses are
+/// well under 1 MiB; anything bigger is a sign of upstream misbehavior or a
+/// memory-amplification attack, so we abort the read instead of allocating it.
+const MAX_RESPONSE_BYTES: usize = 10 * 1024 * 1024;
 
 #[derive(Debug, Error)]
 pub enum SearchError {
@@ -24,13 +30,19 @@ pub enum SearchError {
     Transport(String),
 }
 
-/// A single result row from SearXNG. All fields except `url`, `title`, and
-/// `engine` are nullable — engines vary widely in what they populate.
+/// A single result row from SearXNG. Every field is `Option` because real
+/// engines occasionally return malformed rows (missing url/title/engine in
+/// flaky upstream responses). The transform layer drops any row missing the
+/// load-bearing fields rather than failing the entire search response — see
+/// `transform.rs`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct SearxngResult {
-    pub url: String,
-    pub title: String,
-    pub engine: String,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub engine: Option<String>,
     /// Snippet / description. SearXNG calls this `content`; the public API
     /// renames it to `description`.
     #[serde(default)]
@@ -155,11 +167,29 @@ impl SearxngClient {
             });
         }
 
-        let text = response
-            .text()
-            .await
-            .map_err(|e: reqwest::Error| SearchError::Transport(e.to_string()))?;
-        serde_json::from_str::<SearxngResponse>(&text)
+        // Stream the body with a hard byte cap so a misbehaving upstream
+        // can't push us into unbounded allocation. We refuse to parse past
+        // `MAX_RESPONSE_BYTES`. `Content-Length` is not trusted (chunked
+        // encoding sets none) — we enforce on the running sum instead.
+        if let Some(declared) = response.content_length()
+            && declared as usize > MAX_RESPONSE_BYTES
+        {
+            return Err(SearchError::InvalidResponse(format!(
+                "response too large: declared {declared} bytes exceeds {MAX_RESPONSE_BYTES} cap"
+            )));
+        }
+        let mut buf: Vec<u8> = Vec::with_capacity(64 * 1024);
+        let mut stream = response.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e: reqwest::Error| SearchError::Transport(e.to_string()))?;
+            if buf.len() + chunk.len() > MAX_RESPONSE_BYTES {
+                return Err(SearchError::InvalidResponse(format!(
+                    "response too large: exceeded {MAX_RESPONSE_BYTES}-byte cap"
+                )));
+            }
+            buf.extend_from_slice(&chunk);
+        }
+        serde_json::from_slice::<SearxngResponse>(&buf)
             .map_err(|e| SearchError::InvalidResponse(e.to_string()))
     }
 }

@@ -7,8 +7,39 @@ use crw_core::types::{GroupedSearchData, ImageResult, SearchResult, SearchSource
 
 use crate::client::{SearxngResponse, SearxngResult};
 
+/// Hard cap on per-source upstream rows we even consider before sort/dedupe.
+/// SearXNG with all default engines tops out a couple of hundred rows; setting
+/// 500 leaves comfortable headroom while preventing a misbehaving engine from
+/// turning a single search into a CPU/memory amplifier.
+const MAX_UPSTREAM_ROWS: usize = 500;
+
 fn score_or_zero(r: &SearxngResult) -> f64 {
     r.score.unwrap_or(0.0)
+}
+
+/// Drop rows that are missing the load-bearing identity fields (`url`,
+/// `title`, `engine`). Real upstreams sometimes emit partial rows — e.g.
+/// when an engine times out mid-page — and one bad row used to fail the
+/// whole search. Now we silently skip them and continue.
+fn keep_well_formed(items: &[SearxngResult]) -> Vec<SearxngResult> {
+    items
+        .iter()
+        .filter(|r| {
+            r.url.as_deref().is_some_and(|s| !s.is_empty())
+                && r.title.as_deref().is_some_and(|s| !s.is_empty())
+                && r.engine.as_deref().is_some_and(|s| !s.is_empty())
+        })
+        .take(MAX_UPSTREAM_ROWS)
+        .cloned()
+        .collect()
+}
+
+fn url_of(r: &SearxngResult) -> &str {
+    r.url.as_deref().unwrap_or("")
+}
+
+fn title_of(r: &SearxngResult) -> String {
+    r.title.clone().unwrap_or_default()
 }
 
 /// Stable-sorted by descending `score` (missing scores treated as 0).
@@ -24,7 +55,8 @@ fn dedupe_by_url(items: Vec<SearxngResult>) -> Vec<SearxngResult> {
     let mut seen: HashSet<String> = HashSet::new();
     let mut out = Vec::with_capacity(items.len());
     for item in items {
-        if seen.insert(item.url.clone()) {
+        let key = url_of(&item).to_string();
+        if seen.insert(key) {
             out.push(item);
         }
     }
@@ -33,8 +65,8 @@ fn dedupe_by_url(items: Vec<SearxngResult>) -> Vec<SearxngResult> {
 
 fn to_search_result(r: &SearxngResult, position: u32) -> SearchResult {
     SearchResult {
-        url: r.url.clone(),
-        title: r.title.clone(),
+        url: url_of(r).to_string(),
+        title: title_of(r),
         description: r.content.clone().unwrap_or_default(),
         position,
         score: r.score,
@@ -50,10 +82,10 @@ fn to_search_result(r: &SearxngResult, position: u32) -> SearchResult {
 
 fn to_image_result(r: &SearxngResult, position: u32) -> ImageResult {
     ImageResult {
-        url: r.url.clone(),
-        title: r.title.clone(),
+        url: url_of(r).to_string(),
+        title: title_of(r),
         description: r.content.clone().unwrap_or_default(),
-        image_url: r.img_src.clone().unwrap_or_else(|| r.url.clone()),
+        image_url: r.img_src.clone().unwrap_or_else(|| url_of(r).to_string()),
         position,
         thumbnail_url: r.thumbnail_src.clone(),
         image_format: r.img_format.clone(),
@@ -66,7 +98,11 @@ fn to_image_result(r: &SearxngResult, position: u32) -> ImageResult {
 /// Note: SaaS sorts then dedupes, so a higher-scored duplicate wins. We
 /// preserve that order — see `crw-saas/src/lib/search-transform.ts:73`.
 pub fn transform_flat(response: &SearxngResponse, limit: u32) -> Vec<SearchResult> {
-    let mut results = response.results.clone();
+    // Bound the working set up-front: drop malformed rows AND cap at
+    // `MAX_UPSTREAM_ROWS` before clone+sort. A misbehaving SearXNG instance
+    // (or a query that scoops thousands of rows) would otherwise amplify
+    // CPU/memory on every request.
+    let mut results = keep_well_formed(&response.results);
     sort_by_score(&mut results);
     let deduped = dedupe_by_url(results);
     deduped
@@ -86,10 +122,11 @@ pub fn transform_grouped(
 ) -> GroupedSearchData {
     let mut data = GroupedSearchData::default();
     let cap = limit as usize;
+    // Same upfront bound as `transform_flat` — see `keep_well_formed` doc.
+    let well_formed = keep_well_formed(&response.results);
 
     if sources.contains(&SearchSource::Web) {
-        let filtered: Vec<SearxngResult> = response
-            .results
+        let filtered: Vec<SearxngResult> = well_formed
             .iter()
             .filter(|r| {
                 let cat = r.category.as_deref();
@@ -111,8 +148,7 @@ pub fn transform_grouped(
     }
 
     if sources.contains(&SearchSource::News) {
-        let filtered: Vec<SearxngResult> = response
-            .results
+        let filtered: Vec<SearxngResult> = well_formed
             .iter()
             .filter(|r| r.category.as_deref() == Some("news"))
             .cloned()
@@ -131,8 +167,7 @@ pub fn transform_grouped(
     }
 
     if sources.contains(&SearchSource::Images) {
-        let filtered: Vec<SearxngResult> = response
-            .results
+        let filtered: Vec<SearxngResult> = well_formed
             .iter()
             .filter(|r| r.category.as_deref() == Some("images") || r.img_src.is_some())
             .cloned()
@@ -159,9 +194,9 @@ mod tests {
 
     fn r(url: &str, score: f64, content: &str) -> SearxngResult {
         SearxngResult {
-            url: url.into(),
-            title: format!("title-{url}"),
-            engine: "test".into(),
+            url: Some(url.into()),
+            title: Some(format!("title-{url}")),
+            engine: Some("test".into()),
             content: Some(content.into()),
             score: Some(score),
             category: Some("general".into()),
@@ -176,9 +211,9 @@ mod tests {
 
     fn news(url: &str, score: f64) -> SearxngResult {
         SearxngResult {
-            url: url.into(),
-            title: format!("news-{url}"),
-            engine: "test".into(),
+            url: Some(url.into()),
+            title: Some(format!("news-{url}")),
+            engine: Some("test".into()),
             content: Some("snippet".into()),
             score: Some(score),
             category: Some("news".into()),
@@ -193,9 +228,9 @@ mod tests {
 
     fn image(url: &str, score: f64, img: &str) -> SearxngResult {
         SearxngResult {
-            url: url.into(),
-            title: format!("img-{url}"),
-            engine: "test".into(),
+            url: Some(url.into()),
+            title: Some(format!("img-{url}")),
+            engine: Some("test".into()),
             content: Some(String::new()),
             score: Some(score),
             category: Some("images".into()),
@@ -320,6 +355,22 @@ mod tests {
         let res = transform_grouped(&resp(items), &[SearchSource::Web, SearchSource::News], 2);
         assert_eq!(res.web.unwrap().len(), 2);
         assert_eq!(res.news.unwrap().len(), 2);
+    }
+
+    #[test]
+    fn malformed_rows_are_dropped_silently() {
+        // Mix of well-formed and malformed rows: missing url, missing title,
+        // empty engine. Only the well-formed row should survive.
+        let mut bad_url = r("ok", 0.9, "ok-snippet");
+        bad_url.url = None;
+        let mut empty_title = r("x", 0.5, "x");
+        empty_title.title = Some(String::new());
+        let mut no_engine = r("y", 0.4, "y");
+        no_engine.engine = None;
+        let good = r("z", 0.3, "z");
+        let res = transform_flat(&resp(vec![bad_url, empty_title, no_engine, good]), 10);
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].url, "z");
     }
 
     #[test]

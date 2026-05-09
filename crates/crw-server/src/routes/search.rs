@@ -45,7 +45,7 @@ pub async fn search_inner(
         .searxng
         .as_ref()
         .ok_or_else(|| {
-            CrwError::InvalidRequest(
+            CrwError::SearchDisabled(
                 "Search is disabled. Set [search].searxng_url in config or define \
                  CRW_SEARCH__SEARXNG_URL to point at a SearXNG instance."
                     .into(),
@@ -60,7 +60,10 @@ pub async fn search_inner(
         .max(1);
 
     let params = map_to_searxng_params(&req, &state.config.search);
-    let response = client.fetch(&params).await.map_err(map_search_error)?;
+    let response = client
+        .fetch(&params)
+        .await
+        .map_err(|e| map_search_error(e, state.config.search.timeout_ms))?;
 
     let has_sources = req.sources.as_ref().is_some_and(|s| !s.is_empty());
     let mut data = if has_sources {
@@ -110,12 +113,27 @@ fn validate_request(req: &SearchRequest, max_limit: u32) -> Result<(), CrwError>
             "categories accepts at most 5 entries".into(),
         ));
     }
+    if let Some(opts) = req.scrape_options.as_ref() {
+        // Search enrichment can only carry formats that fit the
+        // `SearchResult` shape. `plainText` and `json` (LLM extract) require
+        // fields the search-result envelope doesn't expose; rejecting up-front
+        // is clearer than silently dropping them post-scrape.
+        for f in &opts.formats {
+            if matches!(f, OutputFormat::PlainText | OutputFormat::Json) {
+                return Err(CrwError::InvalidRequest(format!(
+                    "scrapeOptions.formats does not support {f:?} on /v1/search; use \
+                     /v1/scrape for plainText/json (extract). Allowed: markdown, html, \
+                     rawHtml, links."
+                )));
+            }
+        }
+    }
     Ok(())
 }
 
-fn map_search_error(err: SearchError) -> CrwError {
+fn map_search_error(err: SearchError, timeout_ms: u64) -> CrwError {
     match err {
-        SearchError::Timeout => CrwError::Timeout(0),
+        SearchError::Timeout => CrwError::Timeout(timeout_ms),
         SearchError::Upstream { status, body } => CrwError::HttpError(format!(
             "SearXNG returned HTTP {status}: {}",
             body.chars().take(200).collect::<String>()
@@ -330,8 +348,8 @@ mod tests {
     #[test]
     fn map_search_error_timeout_to_timeout() {
         assert!(matches!(
-            map_search_error(SearchError::Timeout),
-            CrwError::Timeout(_)
+            map_search_error(SearchError::Timeout, 7500),
+            CrwError::Timeout(7500)
         ));
     }
 
@@ -341,7 +359,10 @@ mod tests {
             status: 503,
             body: "down".into(),
         };
-        assert!(matches!(map_search_error(err), CrwError::HttpError(_)));
+        assert!(matches!(
+            map_search_error(err, 5000),
+            CrwError::HttpError(_)
+        ));
     }
 
     #[test]

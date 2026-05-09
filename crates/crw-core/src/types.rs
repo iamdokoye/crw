@@ -675,9 +675,14 @@ impl SearchTimeFilter {
 
 /// `scrapeOptions` sub-object — a narrow projection of `ScrapeRequest` that
 /// we accept on every result from a search. Only the fields the SaaS exposes.
+///
+/// `formats` defaults to `["markdown"]` so Firecrawl-compatible callers that
+/// pass `scrapeOptions: {}` (toggle enrichment without specifying formats)
+/// get a sensible default instead of a deserialization error.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchScrapeOptions {
+    #[serde(default = "default_formats")]
     pub formats: Vec<OutputFormat>,
     #[serde(default = "default_true")]
     pub only_main_content: bool,

@@ -153,15 +153,20 @@ async fn search_returns_grouped_when_sources_set() {
 }
 
 #[tokio::test]
-async fn search_disabled_returns_400() {
+async fn search_disabled_returns_503_with_search_disabled_code() {
+    // When `[search].searxng_url` is unset, the route returns 503 Service
+    // Unavailable + `error_code: "search_disabled"` so callers can distinguish
+    // "operator turned this off" from a generic 400 (which would suggest a
+    // bad request body).
     let server = test_app_search_disabled();
     let resp = server
         .post("/v1/search")
         .json(&json!({"query": "anything"}))
         .await;
-    resp.assert_status(axum::http::StatusCode::BAD_REQUEST);
+    resp.assert_status(axum::http::StatusCode::SERVICE_UNAVAILABLE);
     let body: Value = resp.json();
     assert_eq!(body["success"], false);
+    assert_eq!(body["error_code"], "search_disabled");
     let err = body["error"].as_str().unwrap();
     assert!(
         err.contains("Search is disabled"),
