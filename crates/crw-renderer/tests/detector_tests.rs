@@ -1,4 +1,6 @@
-use crw_renderer::detector::{is_thin_markdown, looks_like_thin_html, needs_js_rendering};
+use crw_renderer::detector::{
+    is_thin_markdown, looks_like_generic_bot_wall, looks_like_thin_html, needs_js_rendering,
+};
 
 #[test]
 fn detector_empty_body_with_root_div() {
@@ -165,6 +167,51 @@ fn thin_html_substantive_page_not_thin() {
     let body_text = "Real article content. ".repeat(80);
     let html = format!("<html><body><article>{body_text}</article></body></html>");
     assert!(!looks_like_thin_html(&html));
+}
+
+#[test]
+fn bot_wall_scanpy_style() {
+    let html = r#"<html><body><h1>Performing security verification</h1><p>This page checks your browser.</p></body></html>"#;
+    assert!(looks_like_generic_bot_wall(html));
+}
+
+#[test]
+fn bot_wall_dnb_style() {
+    let html = r#"<html><body><div><span class="icon"></span><p>Performing security verification</p></div></body></html>"#;
+    assert!(looks_like_generic_bot_wall(html));
+}
+
+#[test]
+fn bot_wall_verify_human() {
+    let html = r#"<html><body><h1>Please verify you are human</h1></body></html>"#;
+    assert!(looks_like_generic_bot_wall(html));
+}
+
+#[test]
+fn bot_wall_false_positive_long_article() {
+    let filler = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(30);
+    let html = format!(
+        r#"<html><body><article><h1>On Authorization</h1><p>{filler}</p><p>The system returned access denied for unauthorized requests, which we discuss below.</p><p>{filler}</p></article></body></html>"#
+    );
+    assert!(html.len() > 2000);
+    assert!(!looks_like_generic_bot_wall(&html));
+}
+
+#[test]
+fn storybook_shell_triggers_js_render() {
+    let html = r#"<html><body><div id="storybook-root"></div></body></html>"#;
+    assert!(needs_js_rendering(html));
+}
+
+#[test]
+fn storybook_in_script_string_no_false_positive() {
+    let para =
+        "Real journalism content with substantial text that fills out the page well. ".repeat(30);
+    let html = format!(
+        r#"<html><body><article><h1>A Real Article</h1><h2>Subhead</h2><p>{para}</p><p>{para}</p><script>const x = "__STORYBOOK";</script></article></body></html>"#
+    );
+    assert!(html.len() > 2000);
+    assert!(!needs_js_rendering(&html));
 }
 
 #[test]

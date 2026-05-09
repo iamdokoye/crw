@@ -64,9 +64,46 @@ pub fn needs_js_rendering(html: &str) -> bool {
         if script_count >= 5 {
             return true;
         }
+        let storybook_indicators = [
+            "id=\"storybook-root\"",
+            "id=\"storybook-docs\"",
+            "__storybook",
+            "?path=/docs/",
+            "/iframe.html",
+        ];
+        if storybook_indicators.iter().any(|ind| lower.contains(ind)) {
+            return true;
+        }
     }
 
     false
+}
+
+/// Detect generic anti-bot interstitials (non-Cloudflare): tiny pages whose
+/// visible body text consists of a "verifying you're human" / "security check"
+/// message. Matched only on visible body text so a JS bundle containing one
+/// of these strings cannot false-positive.
+pub fn looks_like_generic_bot_wall(html: &str) -> bool {
+    if html.len() > 80_000 {
+        return false;
+    }
+    let lower = html.to_lowercase();
+    let body_stripped = body_html_without_scripts_lower(&lower);
+    let body_text = visible_text_from_stripped_html(&body_stripped);
+    if body_text.chars().filter(|c| !c.is_whitespace()).count() > 600 {
+        return false;
+    }
+
+    let phrases = [
+        "performing security verification",
+        "verify you are human",
+        "checking your browser",
+        "enable javascript and cookies",
+        "security check",
+        "access denied",
+        "request blocked",
+    ];
+    phrases.iter().any(|p| body_text.contains(p))
 }
 
 /// Returns true when an HTTP response yielded effectively no visible text in

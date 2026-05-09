@@ -514,8 +514,10 @@ impl FallbackRenderer {
 
                 let needs_js = detector::needs_js_rendering(&result.html);
                 let cf_header_signal = result.warning.as_deref() == Some("cloudflare_mitigated");
-                let is_blocked =
-                    cf_header_signal || detector::looks_like_cloudflare_challenge(&result.html);
+                let is_generic_bot_wall = detector::looks_like_generic_bot_wall(&result.html);
+                let is_blocked = cf_header_signal
+                    || detector::looks_like_cloudflare_challenge(&result.html)
+                    || is_generic_bot_wall;
                 // Soft-block / soft-error status codes where the body often
                 // contains real content despite the status header. Sources:
                 //   - UA/header-based bot filters: 401, 403, 405, 406, 412
@@ -556,6 +558,12 @@ impl FallbackRenderer {
                             url,
                             "Anti-bot challenge detected in HTTP response, escalating to JS renderer"
                         );
+                        if is_generic_bot_wall {
+                            tracing::info!(
+                                url,
+                                "Generic anti-bot interstitial detected, escalating to JS renderer"
+                            );
+                        }
                     } else if needs_js {
                         tracing::info!(url, "SPA shell detected, retrying with JS renderer");
                     } else {
@@ -730,9 +738,11 @@ impl FallbackRenderer {
                     let text_len = html_body_text_len(&result.html);
                     let is_placeholder = detector::looks_like_loading_placeholder(&result.html);
                     let failed_render = detector::looks_like_failed_render(&result.html);
+                    let is_bot_wall = detector::looks_like_generic_bot_wall(&result.html);
                     if text_len >= Self::MIN_RENDERED_TEXT_LEN
                         && !is_placeholder
                         && failed_render.is_none()
+                        && !is_bot_wall
                     {
                         // Capture the promotion state BEFORE record_success
                         // clears the latch — otherwise AutoPromoted decisions
@@ -804,6 +814,7 @@ impl FallbackRenderer {
                             FailoverErrorKind::EmptyNextRoot
                         }
                         None if is_placeholder => FailoverErrorKind::PlaceholderContent,
+                        None if is_bot_wall => FailoverErrorKind::PlaceholderContent,
                         None => FailoverErrorKind::PlaceholderContent,
                     };
                     last_failover_reason = Some(err_kind.clone());
@@ -836,6 +847,7 @@ impl FallbackRenderer {
                         renderer = renderer.name(),
                         text_len,
                         is_placeholder,
+                        is_bot_wall,
                         failed_render = ?failed_render,
                         "JS renderer returned thin/placeholder/failed content, trying next renderer"
                     );
@@ -854,12 +866,31 @@ impl FallbackRenderer {
                         )
                     } else if is_placeholder {
                         format!("{} returned a loading placeholder", renderer.name())
+                    } else if is_bot_wall {
+                        format!(
+                            "{} returned a generic anti-bot interstitial",
+                            renderer.name()
+                        )
                     } else {
                         format!(
                             "{} returned thin content (text_len={text_len})",
                             renderer.name()
                         )
                     };
+                    if is_bot_wall {
+                        // Surface bot-wall as a RendererError so, if every
+                        // renderer in the chain hits a wall, the final error
+                        // (line ~1052) carries an actionable message.
+                        // RendererError maps to FailoverErrorKind::LightpandaCrash
+                        // via classify_renderer_error — that's intentional:
+                        // bot-wall hosts SHOULD be promoted to Chrome by the
+                        // host preference learner, since LightPanda lacks the
+                        // TLS/header fingerprint to clear them.
+                        last_error = Some(CrwError::RendererError(format!(
+                            "{} returned a generic anti-bot interstitial",
+                            renderer.name()
+                        )));
+                    }
                     annotated.warnings.push(attempt_warning.clone());
                     annotated.warning = Some(match annotated.warning {
                         Some(prev) => format!("{prev}; {attempt_warning}"),
@@ -1230,6 +1261,7 @@ mod tests {
             match &self.behavior {
                 MockBehavior::Ok(html) => Ok(FetchResult {
                     url: url.to_string(),
+                    final_url: None,
                     status_code: 200,
                     html: html.clone(),
                     content_type: Some("text/html".to_string()),
@@ -1242,6 +1274,7 @@ mod tests {
                     warnings: Vec::new(),
                     truncated: false,
                     deadline_exceeded: false,
+                    captured_responses: Vec::new(),
                 }),
                 MockBehavior::Err(msg) => Err(CrwError::RendererError(msg.clone())),
             }

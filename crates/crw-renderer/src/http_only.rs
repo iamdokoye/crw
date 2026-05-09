@@ -222,6 +222,8 @@ impl PageFetcher for HttpFetcher {
 
         let is_pdf = content_type.as_deref() == Some("application/pdf");
 
+        let final_url_str = resp.url().as_str().to_string();
+
         let bytes = resp
             .bytes()
             .await
@@ -240,8 +242,15 @@ impl PageFetcher for HttpFetcher {
             (String::from_utf8_lossy(&bytes).into_owned(), None)
         };
 
+        let final_url = if final_url_str != url {
+            Some(final_url_str)
+        } else {
+            None
+        };
+
         Ok(FetchResult {
             url: url.to_string(),
+            final_url,
             status_code: status,
             html,
             content_type,
@@ -266,6 +275,7 @@ impl PageFetcher for HttpFetcher {
             },
             truncated: false,
             deadline_exceeded: false,
+            captured_responses: Vec::new(),
         })
     }
 

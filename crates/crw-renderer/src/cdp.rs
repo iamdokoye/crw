@@ -1,10 +1,11 @@
 use async_trait::async_trait;
 use crw_core::error::{CrwError, CrwResult};
-use crw_core::types::FetchResult;
+use crw_core::types::{CapturedNetworkResponse, FetchResult};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::{Duration, Instant};
-use tokio::sync::{OnceCell, Semaphore, broadcast};
+use tokio::sync::{Mutex, OnceCell, Semaphore, broadcast};
 use tokio_tungstenite::connect_async;
 
 use crate::blocklist::{BlockReason, Blocklist};
@@ -33,9 +34,52 @@ const CONTENT_STABILITY_TICK_MS: u64 = 500;
 const SPA_SELECTOR_MAX_MS: u64 = 8000;
 /// Interval between SPA selector polls.
 const SPA_SELECTOR_TICK_MS: u64 = 200;
+/// Body innerText length required before the SPA poll exits. Selectors mount
+/// before content hydrates on apps like ticktick / happyhotel / qyxmbt /
+/// smzdm — by waiting for body text to also pass this threshold, we avoid
+/// snapshotting an empty shell that satisfies the selector check alone.
+/// Pages with mostly-static content (nav, header, footer chrome) clear this
+/// in the first poll tick; SPAs keep polling until hydration fills the body
+/// or the budget elapses.
+const SPA_BODY_TEXT_MIN_CHARS: u64 = 800;
+/// Quiet-period for network-idle: number of ms with zero in-flight requests
+/// before we consider the page "settled enough to snapshot". Mirrors
+/// Playwright's `networkidle` (no requests for 500ms). XHR-driven SPAs that
+/// finish their data fetch before innerText hits the threshold get an early
+/// exit via this signal — recall lift on lazy-fetch pages.
+const NETWORK_IDLE_QUIET_MS: i64 = 500;
+/// Max iterations for the auto-scroll lazy-load pass. 12 viewports usually
+/// covers infinite-scroll feeds without making it a crawl.
+const AUTO_SCROLL_MAX_STEPS: u32 = 12;
+/// Wait between each scroll step (ms). 250 balances giving lazy images
+/// time to fire against total cost.
+const AUTO_SCROLL_STEP_DELAY_MS: u64 = 250;
+/// Hard ceiling on the entire auto-scroll phase. If we hit this, we
+/// snapshot whatever's there and move on.
+const AUTO_SCROLL_BUDGET_MS: u64 = 2500;
+/// HTML size threshold above which auto-scroll is skipped. Pages this
+/// big almost always have all their content already; the scroll pass
+/// just adds latency and risks pushing us over the deadline.
+const AUTO_SCROLL_HTML_SIZE_LIMIT: usize = 200_000;
+/// Hard cap on the click-to-reveal pass. After this many clicks, stop —
+/// any further reveals are diminishing returns and risk navigating away.
+const AUTO_CLICK_MAX_CLICKS: u32 = 5;
+/// Wait between clicks so each reveal can layout / hydrate.
+const AUTO_CLICK_DELAY_MS: u64 = 250;
+/// Hard ceiling on the entire click-to-reveal phase.
+const AUTO_CLICK_BUDGET_MS: u64 = 1500;
 /// Selector list checked when the caller didn't pass `wait_for_ms` — typical
 /// SPA root containers. The first match wins.
 const SPA_CONTENT_SELECTORS: &str = "main, article, [role=main], #content, #root > *, #app > *";
+
+/// Maximum number of XHR/fetch responses captured for fallback extraction.
+const NET_CAPTURE_MAX_BODIES: usize = 30;
+/// Hard cap on cumulative body bytes captured per page.
+const NET_CAPTURE_MAX_TOTAL_BYTES: usize = 2_000_000;
+/// Minimum body size (Content-Length when known) to bother fetching.
+const NET_CAPTURE_MIN_BODY_SIZE: usize = 512;
+/// Per-getResponseBody command timeout.
+const NET_CAPTURE_GETBODY_TIMEOUT: Duration = Duration::from_millis(800);
 
 /// JavaScript injected via `Page.addScriptToEvaluateOnNewDocument` before every
 /// navigation to prevent headless browser detection by anti-bot systems.
@@ -116,6 +160,205 @@ try {
         };
     }
 } catch (_) {}
+"#;
+
+/// One-shot consent banner / CMP dismissal. Runs once after page load,
+/// before the SPA readiness poll, so the body innerText threshold doesn't
+/// trip on banner text and the actual page content has a chance to hydrate
+/// without an overlay swallowing focus. Ported subset of crawl4ai's
+/// `js_snippet/remove_consent_popups.js`, restricted to the CMPs with
+/// meaningful traffic share (OneTrust/CookiePro, Cookiebot, Usercentrics,
+/// Sourcepoint, Quantcast, TrustArc, ConsentManager, TermsFeed) plus a
+/// generic text-pattern fallback. Pierces open shadow roots and same-origin
+/// iframes. Best-effort: every step is wrapped in try/catch and the snippet
+/// returns the count of clicks made for telemetry only.
+const CMP_DISMISS_JS: &str = r#"
+(() => {
+    let clicks = 0;
+    const isVisible = (el) => {
+        if (!el || !el.getBoundingClientRect) return false;
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) return false;
+        const s = window.getComputedStyle(el);
+        return s.display !== 'none' && s.visibility !== 'hidden' && s.opacity !== '0';
+    };
+    const click = (el) => {
+        try {
+            if (!isVisible(el)) return false;
+            el.click();
+            clicks++;
+            return true;
+        } catch (_) { return false; }
+    };
+
+    // CMP-specific accept selectors, ordered by deployment share. Only the
+    // first match in each (hopefully exclusive) set is clicked.
+    const SELECTORS = [
+        '#onetrust-accept-btn-handler',
+        '.ot-accept-all',
+        '#CybotCookiebotDialogBodyButtonAccept',
+        '#CybotCookiebotDialogBodyLevelButtonAccept',
+        '[data-testid="uc-accept-all-button"]',
+        '[data-cy="uc-accept-all-button"]',
+        '.sp_choice_type_11',
+        'button.message-component[title*="Accept" i]',
+        '.qc-cmp2-summary-buttons button[mode="primary"]',
+        '#qc-cmp2-ui button[mode="primary"]',
+        '#truste-consent-button',
+        '.cc-btn.cc-allow',
+        '.cc-btn.cc-dismiss',
+        'button[data-cmp-action="accept"]',
+        'button[data-accept-action="all"]',
+        'button[aria-label*="Accept all" i]',
+        'button[aria-label*="Allow all" i]',
+        '[id*="accept-cookies" i]',
+        '[class*="accept-cookies" i]:not(input):not(textarea)',
+    ];
+
+    const tryRoot = (root) => {
+        for (const sel of SELECTORS) {
+            try {
+                const el = root.querySelector(sel);
+                if (el && click(el)) return;
+            } catch (_) {}
+        }
+        // Generic text-match fallback: scan visible buttons for accept-ish copy.
+        try {
+            const buttons = root.querySelectorAll('button, [role="button"], input[type="button"], input[type="submit"]');
+            const PATTERNS = /^(accept all|allow all|accept cookies|i accept|agree|got it|ok|tümünü kabul et|tout accepter|alle akzeptieren|aceptar todo)$/i;
+            for (const b of buttons) {
+                const t = (b.innerText || b.value || b.textContent || '').trim();
+                if (PATTERNS.test(t) && click(b)) return;
+            }
+        } catch (_) {}
+    };
+
+    // Pass 1: light DOM
+    tryRoot(document);
+
+    // Pass 2: pierce open shadow roots one level deep (most CMPs flat).
+    try {
+        const all = document.querySelectorAll('*');
+        for (const host of all) {
+            if (host.shadowRoot) tryRoot(host.shadowRoot);
+        }
+    } catch (_) {}
+
+    // Pass 3: same-origin iframes (Sourcepoint mounts inside iframe).
+    try {
+        for (const f of document.querySelectorAll('iframe')) {
+            try {
+                const doc = f.contentDocument || (f.contentWindow && f.contentWindow.document);
+                if (doc) tryRoot(doc);
+            } catch (_) {}
+        }
+    } catch (_) {}
+
+    // Pass 4: IAB TCF v2 — programmatic opt-in if API present.
+    try {
+        if (typeof window.__tcfapi === 'function') {
+            window.__tcfapi('ping', 2, (data, ok) => {
+                if (ok && data && data.cmpStatus !== 'error') {
+                    try { window.__tcfapi('addEventListener', 2, () => {}); } catch (_) {}
+                }
+            });
+        }
+    } catch (_) {}
+
+    return clicks;
+})()
+"#;
+
+/// HTML snapshot expression. Fast path returns `document.documentElement
+/// .outerHTML` directly. When any element exposes an open shadow root, we
+/// switch to a recursive serializer that resolves `<slot>` projections into
+/// the light DOM and skips shadow-scoped `<style>` (those are only
+/// meaningful inside the shadow tree). Ported from crawl4ai's
+/// `js_snippet/flatten_shadow_dom.js` so web-component-driven sites
+/// (Shoelace, Material Web, custom-element CMSes) surface their content in
+/// the markdown extractor instead of producing an empty shell.
+const HTML_SNAPSHOT_JS: &str = r#"
+(() => {
+    const VOID = new Set([
+        'area','base','br','col','embed','hr','img','input',
+        'link','meta','param','source','track','wbr'
+    ]);
+    let hasShadow = false;
+    try {
+        const all = document.querySelectorAll('*');
+        for (let i = 0; i < all.length; i++) {
+            if (all[i].shadowRoot) { hasShadow = true; break; }
+        }
+    } catch (_) {}
+    if (!hasShadow) return document.documentElement.outerHTML;
+
+    const escAttr = (v) => String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+    const serializeAttrs = (node) => {
+        let s = '';
+        for (const a of node.attributes || []) {
+            s += ` ${a.name}="${escAttr(a.value)}"`;
+        }
+        return s;
+    };
+
+    const serialize = (node) => {
+        if (node.nodeType === Node.TEXT_NODE) return node.textContent;
+        if (node.nodeType === Node.COMMENT_NODE) return '';
+        if (node.nodeType !== Node.ELEMENT_NODE) return '';
+        const tag = node.tagName.toLowerCase();
+        const attrs = serializeAttrs(node);
+        let inner = '';
+        if (node.shadowRoot) {
+            inner = serializeShadowRoot(node);
+        } else {
+            for (const child of node.childNodes) inner += serialize(child);
+        }
+        if (VOID.has(tag)) return `<${tag}${attrs}>`;
+        return `<${tag}${attrs}>${inner}</${tag}>`;
+    };
+
+    const serializeShadowRoot = (host) => {
+        let result = '';
+        for (const child of host.shadowRoot.childNodes) {
+            result += serializeShadowChild(child, host);
+        }
+        return result;
+    };
+
+    const serializeShadowChild = (node, host) => {
+        if (node.nodeType === Node.TEXT_NODE) return node.textContent;
+        if (node.nodeType === Node.COMMENT_NODE) return '';
+        if (node.nodeType !== Node.ELEMENT_NODE) return '';
+        const tag = node.tagName.toLowerCase();
+        if (tag === 'style') return '';
+        if (tag === 'slot') {
+            const assigned = node.assignedNodes({ flatten: true });
+            if (assigned.length > 0) {
+                let out = '';
+                for (const a of assigned) out += serialize(a);
+                return out;
+            }
+            let fallback = '';
+            for (const child of node.childNodes) {
+                fallback += serializeShadowChild(child, host);
+            }
+            return fallback;
+        }
+        const attrs = serializeAttrs(node);
+        let inner = '';
+        if (node.shadowRoot) {
+            inner = serializeShadowRoot(node);
+        } else {
+            for (const child of node.childNodes) {
+                inner += serializeShadowChild(child, host);
+            }
+        }
+        if (VOID.has(tag)) return `<${tag}${attrs}>`;
+        return `<${tag}${attrs}>${inner}</${tag}>`;
+    };
+
+    return serialize(document.documentElement);
+})()
 "#;
 
 /// Lightweight CDP client that talks directly to any CDP-compatible browser
@@ -217,6 +460,16 @@ impl CdpRenderer {
                     return Ok(configured.clone());
                 }
 
+                // Browserless v2 / commercial CDP endpoints expose a
+                // direct WS at paths like `/chromium`, `/firefox`, or
+                // pass auth via `?token=...`. They do NOT serve
+                // `/json/version` (it 401s), so skip discovery and use
+                // the URL as-is. Real connection failures will surface
+                // when the scrape opens the WS.
+                if is_browserless_direct_ws(configured) {
+                    return Ok(configured.clone());
+                }
+
                 // Try connecting directly first (works for LightPanda).
                 if let Ok(Ok((ws, _))) =
                     tokio::time::timeout(Duration::from_secs(3), connect_async(configured)).await
@@ -274,6 +527,17 @@ impl CdpRenderer {
             .await
             .cloned()
     }
+}
+
+/// Recognise commercial / browserless-style CDP endpoints that serve a
+/// WebSocket directly and don't expose `/json/version`. Such URLs
+/// either carry a `token=` query parameter or use a browser-named path
+/// (`/chromium`, `/firefox`, `/webkit`).
+fn is_browserless_direct_ws(url: &str) -> bool {
+    if url.contains("token=") {
+        return true;
+    }
+    url.contains("/chromium") || url.contains("/firefox") || url.contains("/webkit")
 }
 
 /// Rewrite the host:port of a WS URL to match the configured endpoint.
@@ -381,6 +645,219 @@ async fn run_intercept_pump(
                 .await;
         }
     }
+}
+
+/// Capture XHR/fetch JSON responses for fallback extraction.
+///
+/// Subscribes to CDP events and, for every `Network.responseReceived` whose
+/// MIME and status look like API content, calls `Network.getResponseBody` and
+/// appends the result. Bounded by `NET_CAPTURE_MAX_BODIES` and
+/// `NET_CAPTURE_MAX_TOTAL_BYTES` so a chatty page can't blow memory.
+///
+/// Never returns under normal operation; the broadcast `Closed` arm exits.
+/// Designed to run in `tokio::select!` alongside the main work future.
+async fn run_network_capture_pump(
+    conn: &CdpConnection,
+    mut rx: broadcast::Receiver<CdpEvent>,
+    sink: Arc<Mutex<Vec<CapturedNetworkResponse>>>,
+    session_id: &str,
+) {
+    let mut total_bytes = 0usize;
+    loop {
+        let ev = match rx.recv().await {
+            Ok(ev) => ev,
+            Err(broadcast::error::RecvError::Lagged(_)) => continue,
+            Err(broadcast::error::RecvError::Closed) => return,
+        };
+        if ev.method != "Network.responseReceived" {
+            continue;
+        }
+        if ev.session_id.as_deref() != Some(session_id) {
+            continue;
+        }
+        // Skip the main document — already in `html` field.
+        let resource_type = ev.params.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        if !matches!(resource_type, "XHR" | "Fetch") {
+            continue;
+        }
+        let response = match ev.params.get("response") {
+            Some(v) => v,
+            None => continue,
+        };
+        let status = response
+            .get("status")
+            .and_then(|s| s.as_f64())
+            .map(|s| s as u16)
+            .unwrap_or(0);
+        if !(200..300).contains(&status) {
+            continue;
+        }
+        let mime = response
+            .get("mimeType")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if !is_capturable_mime(mime) {
+            continue;
+        }
+        // Drop tiny payloads early using Content-Length when available.
+        let advertised_len = response
+            .get("headers")
+            .and_then(|h| h.get("Content-Length").or_else(|| h.get("content-length")))
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse::<usize>().ok());
+        if let Some(len) = advertised_len
+            && len < NET_CAPTURE_MIN_BODY_SIZE
+        {
+            continue;
+        }
+        // Caps before issuing the round-trip.
+        {
+            let cur = sink.lock().await;
+            if cur.len() >= NET_CAPTURE_MAX_BODIES {
+                continue;
+            }
+        }
+        if total_bytes >= NET_CAPTURE_MAX_TOTAL_BYTES {
+            continue;
+        }
+        let request_id = ev
+            .params
+            .get("requestId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if request_id.is_empty() {
+            continue;
+        }
+        let url = response
+            .get("url")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let body_resp = match conn
+            .send_recv(
+                "Network.getResponseBody",
+                serde_json::json!({ "requestId": request_id }),
+                Some(session_id),
+                NET_CAPTURE_GETBODY_TIMEOUT,
+            )
+            .await
+        {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let body = body_resp.get("body").and_then(|v| v.as_str()).unwrap_or("");
+        let base64 = body_resp
+            .get("base64Encoded")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        if base64 || body.len() < NET_CAPTURE_MIN_BODY_SIZE {
+            continue;
+        }
+        let captured = CapturedNetworkResponse {
+            url,
+            request_id,
+            status,
+            mime_type: Some(mime.to_string()),
+            body_size_bytes: body.len(),
+            body: Some(body.to_string()),
+        };
+        total_bytes += captured.body_size_bytes;
+        sink.lock().await.push(captured);
+    }
+}
+
+/// Cheap tracker for in-flight network requests. Updated from CDP
+/// `Network.requestWillBeSent` / `loadingFinished` / `loadingFailed` events.
+/// Used by the SPA poll as an alternate "page settled" signal.
+#[derive(Debug)]
+struct NetworkActivityTracker {
+    /// Net in-flight count. Saturated at 0 in `is_idle` because event ordering
+    /// can briefly drive the counter negative (a `loadingFinished` for a
+    /// request whose `requestWillBeSent` was missed during pump startup).
+    in_flight: AtomicI64,
+    /// Wall-clock ms of the last request start/end. Used to gate idle on a
+    /// quiet-period — `in_flight == 0` alone fires too early on SPAs that
+    /// haven't kicked off their first XHR yet.
+    last_change_ms: AtomicI64,
+}
+
+impl NetworkActivityTracker {
+    fn new() -> Self {
+        Self {
+            in_flight: AtomicI64::new(0),
+            last_change_ms: AtomicI64::new(now_unix_ms()),
+        }
+    }
+
+    fn record_request_start(&self) {
+        self.in_flight.fetch_add(1, Ordering::Relaxed);
+        self.last_change_ms.store(now_unix_ms(), Ordering::Relaxed);
+    }
+
+    fn record_request_end(&self) {
+        self.in_flight.fetch_sub(1, Ordering::Relaxed);
+        self.last_change_ms.store(now_unix_ms(), Ordering::Relaxed);
+    }
+
+    /// Page is "network-idle" once the in-flight count hit zero and stayed
+    /// there for at least `quiet_ms`.
+    fn is_idle(&self, quiet_ms: i64) -> bool {
+        if self.in_flight.load(Ordering::Relaxed) > 0 {
+            return false;
+        }
+        let elapsed = now_unix_ms() - self.last_change_ms.load(Ordering::Relaxed);
+        elapsed >= quiet_ms
+    }
+}
+
+fn now_unix_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+/// Drains CDP events to maintain `tracker`'s in-flight counter. Long-lived
+/// like the other pumps; exits when the broadcast closes.
+async fn run_network_idle_pump(
+    mut rx: broadcast::Receiver<CdpEvent>,
+    tracker: Arc<NetworkActivityTracker>,
+    session_id: &str,
+) {
+    loop {
+        let ev = match rx.recv().await {
+            Ok(ev) => ev,
+            Err(broadcast::error::RecvError::Lagged(_)) => continue,
+            Err(broadcast::error::RecvError::Closed) => return,
+        };
+        if ev.session_id.as_deref() != Some(session_id) {
+            continue;
+        }
+        match ev.method.as_str() {
+            "Network.requestWillBeSent" => tracker.record_request_start(),
+            "Network.loadingFinished" | "Network.loadingFailed" => tracker.record_request_end(),
+            _ => {}
+        }
+    }
+}
+
+/// Whether a MIME type is interesting for content-extraction fallback.
+fn is_capturable_mime(mime: &str) -> bool {
+    let m = mime
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    matches!(
+        m.as_str(),
+        "application/json"
+            | "application/ld+json"
+            | "application/vnd.api+json"
+            | "text/json"
+            | "text/plain"
+    )
 }
 
 async fn close_target(conn: &CdpConnection, target_id: &str) {
@@ -583,7 +1060,7 @@ impl CdpRenderer {
 
         conn.close().await;
 
-        let (html, status_code, truncated) = result?;
+        let (html, status_code, truncated, final_href, captured_responses) = result?;
 
         if html.is_empty() {
             return Err(CrwError::RendererError(
@@ -597,8 +1074,11 @@ impl CdpRenderer {
             )));
         }
 
+        let final_url = final_href.and_then(|h| if h != url { Some(h) } else { None });
+
         Ok(FetchResult {
             url: url.to_string(),
+            final_url,
             status_code,
             html,
             content_type: None,
@@ -619,7 +1099,172 @@ impl CdpRenderer {
             },
             truncated,
             deadline_exceeded: deadline.remaining().is_zero(),
+            captured_responses,
         })
+    }
+
+    /// Evaluate `window.location.href` to capture the URL after redirects.
+    /// Returns `None` on any failure (caller treats this as "no redirect known").
+    async fn eval_href(
+        conn: &CdpConnection,
+        session_id: &str,
+        timeout: Duration,
+    ) -> Option<String> {
+        let eval_result = conn
+            .send_recv(
+                "Runtime.evaluate",
+                serde_json::json!({
+                    "expression": "window.location.href",
+                    "returnByValue": true
+                }),
+                Some(session_id),
+                timeout,
+            )
+            .await
+            .ok()?;
+        eval_result
+            .get("result")
+            .and_then(|r| r.get("value"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+    }
+
+    /// Scroll the page viewport-by-viewport until `document.body.scrollHeight`
+    /// stops growing or `AUTO_SCROLL_MAX_STEPS` is reached. Triggers lazy-loaded
+    /// images, infinite-scroll feeds, and below-the-fold hydration.
+    ///
+    /// Best-effort: failures swallowed (debug log) so a flaky evaluate doesn't
+    /// abort the whole render.
+    async fn auto_scroll(conn: &CdpConnection, session_id: &str, timeout: Duration) {
+        let script = format!(
+            r#"
+            (async () => {{
+                const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+                const max_steps = {max_steps};
+                const step_delay = {delay};
+                let last_h = 0;
+                let stable = 0;
+                let steps = 0;
+                for (let i = 0; i < max_steps; i++) {{
+                    steps++;
+                    window.scrollBy(0, window.innerHeight || 800);
+                    await sleep(step_delay);
+                    const h = document.body ? document.body.scrollHeight : 0;
+                    if (h <= last_h) {{ stable++; if (stable >= 2) break; }} else {{ stable = 0; }}
+                    last_h = h;
+                }}
+                window.scrollTo(0, 0);
+                return {{ steps, final_height: last_h }};
+            }})()
+            "#,
+            max_steps = AUTO_SCROLL_MAX_STEPS,
+            delay = AUTO_SCROLL_STEP_DELAY_MS,
+        );
+        let result = conn
+            .send_recv(
+                "Runtime.evaluate",
+                serde_json::json!({
+                    "expression": script,
+                    "awaitPromise": true,
+                    "returnByValue": true,
+                }),
+                Some(session_id),
+                timeout,
+            )
+            .await;
+        match result {
+            Ok(v) => tracing::debug!(?v, "auto_scroll completed"),
+            Err(e) => tracing::debug!(error = %e, "auto_scroll failed (non-fatal)"),
+        }
+    }
+
+    /// Click `[aria-expanded=false]` toggles and "load more" / "show full"
+    /// buttons that hide content behind a click. Bounded by
+    /// `AUTO_CLICK_MAX_CLICKS` and `AUTO_CLICK_BUDGET_MS`. Skips submit /
+    /// link / external-nav buttons by checking element types and `<a>` tags.
+    /// Best-effort — failures swallowed so a flaky evaluate doesn't abort
+    /// the whole render.
+    async fn auto_click_reveal(conn: &CdpConnection, session_id: &str, timeout: Duration) {
+        let script = format!(
+            r#"
+            (async () => {{
+                const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+                const max_clicks = {max_clicks};
+                const delay = {delay};
+                const REVEAL_RE = /^(load|show|read|view|see|expand)\s*(more|full|all|details?)?\b|^more\b|^expand\b/i;
+                const candidates = new Set();
+                // aria-expanded toggles
+                document.querySelectorAll('[aria-expanded="false"]').forEach(el => {{
+                    if (el.tagName !== 'A') candidates.add(el);
+                }});
+                // text-matching buttons / clickable divs
+                document.querySelectorAll('button, [role="button"], summary').forEach(el => {{
+                    const text = (el.innerText || el.textContent || '').trim();
+                    if (text && text.length < 40 && REVEAL_RE.test(text)) candidates.add(el);
+                }});
+                let clicks = 0;
+                for (const el of candidates) {{
+                    if (clicks >= max_clicks) break;
+                    if (!el.isConnected) continue;
+                    // Skip elements outside the viewport range — we don't
+                    // want to scroll-to-element on nav drawers.
+                    const rect = el.getBoundingClientRect();
+                    if (rect.bottom < -2000 || rect.top > 20000) continue;
+                    try {{ el.click(); clicks++; await sleep(delay); }} catch (e) {{ /* ignore */ }}
+                }}
+                return {{ clicks }};
+            }})()
+            "#,
+            max_clicks = AUTO_CLICK_MAX_CLICKS,
+            delay = AUTO_CLICK_DELAY_MS,
+        );
+        let result = conn
+            .send_recv(
+                "Runtime.evaluate",
+                serde_json::json!({
+                    "expression": script,
+                    "awaitPromise": true,
+                    "returnByValue": true,
+                }),
+                Some(session_id),
+                timeout,
+            )
+            .await;
+        match result {
+            Ok(v) => tracing::debug!(?v, "auto_click_reveal completed"),
+            Err(e) => tracing::debug!(error = %e, "auto_click_reveal failed (non-fatal)"),
+        }
+    }
+
+    /// Best-effort consent banner dismissal. Errors are swallowed — a missing
+    /// banner, sandboxed iframe, or unsupported `__tcfapi` shouldn't fail the
+    /// fetch. The script returns the click count for telemetry but we don't
+    /// surface it on the FetchResult yet (would need a new field).
+    async fn dismiss_consent(conn: &CdpConnection, session_id: &str) {
+        let res = conn
+            .send_recv(
+                "Runtime.evaluate",
+                serde_json::json!({
+                    "expression": CMP_DISMISS_JS,
+                    "returnByValue": true,
+                }),
+                Some(session_id),
+                Duration::from_secs(2),
+            )
+            .await;
+        match res {
+            Ok(v) => {
+                let clicks = v
+                    .get("result")
+                    .and_then(|r| r.get("value"))
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+                if clicks > 0 {
+                    tracing::debug!(clicks, "consent banner dismissed");
+                }
+            }
+            Err(e) => tracing::debug!("CMP dismiss eval failed: {e}"),
+        }
     }
 
     async fn eval_html(
@@ -631,7 +1276,7 @@ impl CdpRenderer {
             .send_recv(
                 "Runtime.evaluate",
                 serde_json::json!({
-                    "expression": "document.documentElement.outerHTML",
+                    "expression": HTML_SNAPSHOT_JS,
                     "returnByValue": true
                 }),
                 Some(session_id),
@@ -647,19 +1292,34 @@ impl CdpRenderer {
             .to_string())
     }
 
-    /// Poll for the presence of any selector in [`SPA_CONTENT_SELECTORS`] up to
-    /// [`SPA_SELECTOR_MAX_MS`]. Returns `true` as soon as one is found, `false`
-    /// if the budget elapses without a hit. Used when the caller didn't supply
-    /// `wait_for_ms` so we don't snapshot SPAs mid-hydration.
+    /// Poll for SPA readiness up to [`SPA_SELECTOR_MAX_MS`]. Three exit
+    /// conditions, any of which counts as "ready":
+    ///   * selector mounted AND body innerText ≥ [`SPA_BODY_TEXT_MIN_CHARS`]
+    ///     — covers static + already-hydrated pages (one tick, fast path)
+    ///   * selector mounted AND network has been idle for ≥
+    ///     [`NETWORK_IDLE_QUIET_MS`] — covers SPAs whose XHR fetches finished
+    ///     but body text is still under the threshold (the page is done; the
+    ///     content just isn't bulky)
+    ///   * budget elapses — caller proceeds with whatever's there
+    ///
+    /// Single eval per tick returns the body text length (or -1 when the
+    /// selector is missing). Healthy pages with text already present clear
+    /// on the first poll. The network-idle gate requires the selector to be
+    /// mounted first so we don't exit on the pre-navigate-fetch idle window.
     async fn wait_for_spa_selector(
         conn: &CdpConnection,
         session_id: &str,
         timeout: Duration,
+        net: &NetworkActivityTracker,
     ) -> bool {
         let deadline = Instant::now() + Duration::from_millis(SPA_SELECTOR_MAX_MS);
         let expr = format!(
-            "document.querySelector({:?}) !== null",
-            SPA_CONTENT_SELECTORS
+            r#"(() => {{
+                if (!document.querySelector({sel:?})) return -1;
+                const t = (document.body && document.body.innerText) || "";
+                return t.trim().length;
+            }})()"#,
+            sel = SPA_CONTENT_SELECTORS
         );
         while Instant::now() < deadline {
             match conn
@@ -672,11 +1332,20 @@ impl CdpRenderer {
                 .await
             {
                 Ok(v) => {
-                    if v.get("result")
+                    let len = v
+                        .get("result")
                         .and_then(|r| r.get("value"))
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false)
-                    {
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(-1);
+                    let selector_mounted = len >= 0;
+                    if is_spa_text_ready(len) {
+                        return true;
+                    }
+                    if selector_mounted && net.is_idle(NETWORK_IDLE_QUIET_MS) {
+                        tracing::debug!(
+                            text_len = len,
+                            "SPA poll exiting on network-idle (selector mounted, text below threshold)"
+                        );
                         return true;
                     }
                 }
@@ -728,7 +1397,13 @@ impl CdpRenderer {
         url: &str,
         wait_for_ms: Option<u64>,
         deadline: crw_core::Deadline,
-    ) -> CrwResult<(String, u16, bool)> {
+    ) -> CrwResult<(
+        String,
+        u16,
+        bool,
+        Option<String>,
+        Vec<CapturedNetworkResponse>,
+    )> {
         // 1. Create a blank target so navigation events can be observed reliably.
         let create_result = conn
             .send_recv(
@@ -825,6 +1500,11 @@ impl CdpRenderer {
             return Err(err);
         }
 
+        // Network-idle tracker fed by a sibling pump (spawned below in the
+        // select!). Created before the `work` future because `work` borrows
+        // it for the SPA poll's idle-exit gate.
+        let net_tracker = Arc::new(NetworkActivityTracker::new());
+
         // The work future drives navigate → wait_for_load → post-navigate work.
         // It races against the interception pump via `tokio::select!`. The
         // pump never returns; when work completes, the pump future is dropped.
@@ -851,7 +1531,7 @@ impl CdpRenderer {
             // Post-navigate phase runs inside a budget race. On budget hit
             // we attempt a partial-DOM snapshot and return `truncated = true`;
             // `single.rs` decides success on md length.
-            let phase = self.post_navigate_phase(conn, &session_id, url, wait_for_ms);
+            let phase = self.post_navigate_phase(conn, &session_id, url, wait_for_ms, &net_tracker);
             let (html, truncated) = match tokio::time::timeout(nav_budget, phase).await {
                 Ok(Ok(html)) => (html, false),
                 Ok(Err(err)) => return Err(err),
@@ -882,6 +1562,18 @@ impl CdpRenderer {
             Ok::<_, CrwError>((html, status_code, truncated))
         };
 
+        // Always-on XHR/fetch capture. Cheap when no JSON XHRs fire (events
+        // skipped by mime/type filter). Bounded by NET_CAPTURE_MAX_BODIES and
+        // NET_CAPTURE_MAX_TOTAL_BYTES so a chatty page can't OOM us.
+        let captured: Arc<Mutex<Vec<CapturedNetworkResponse>>> = Arc::new(Mutex::new(Vec::new()));
+        let cap_pump =
+            run_network_capture_pump(conn, conn.subscribe(), captured.clone(), &session_id);
+
+        // Network-idle pump (tracker constructed earlier). Fed by `Network.*`
+        // events; SPA poll consults the tracker for an early exit when XHR
+        // traffic settles before body innerText hits the threshold.
+        let idle_pump = run_network_idle_pump(conn.subscribe(), net_tracker.clone(), &session_id);
+
         let outcome = if intercept_active {
             let pump_rx = conn.subscribe();
             let pump = run_intercept_pump(conn, pump_rx, &self.blocklist, &session_id);
@@ -891,9 +1583,24 @@ impl CdpRenderer {
                 _ = pump => Err(CrwError::RendererError(
                     "interception pump exited unexpectedly".into(),
                 )),
+                _ = cap_pump => Err(CrwError::RendererError(
+                    "network capture pump exited unexpectedly".into(),
+                )),
+                _ = idle_pump => Err(CrwError::RendererError(
+                    "network idle pump exited unexpectedly".into(),
+                )),
             }
         } else {
-            work.await
+            tokio::select! {
+                biased;
+                res = work => res,
+                _ = cap_pump => Err(CrwError::RendererError(
+                    "network capture pump exited unexpectedly".into(),
+                )),
+                _ = idle_pump => Err(CrwError::RendererError(
+                    "network idle pump exited unexpectedly".into(),
+                )),
+            }
         };
 
         // Cleanup: `Fetch.disable` auto-continues any still-paused requests
@@ -908,6 +1615,13 @@ impl CdpRenderer {
                 )
                 .await;
         }
+        // Capture final URL after any redirects, before tearing down the target.
+        // Best-effort: failures map to None and never propagate.
+        let final_href = match outcome.as_ref() {
+            Ok(_) => Self::eval_href(conn, &session_id, Duration::from_secs(2)).await,
+            Err(_) => None,
+        };
+
         close_target(conn, &target_id).await;
 
         let (html, status_code, truncated) = outcome?;
@@ -923,7 +1637,8 @@ impl CdpRenderer {
             tracing::debug!(url, "Placeholder still present after stability poll");
         }
 
-        Ok((html, status_code, truncated))
+        let captured_drained = std::mem::take(&mut *captured.lock().await);
+        Ok((html, status_code, truncated, final_href, captured_drained))
     }
 
     /// Post-navigate work: SPA selector wait, eval HTML, placeholder
@@ -935,7 +1650,17 @@ impl CdpRenderer {
         session_id: &str,
         url: &str,
         wait_for_ms: Option<u64>,
+        net: &NetworkActivityTracker,
     ) -> CrwResult<String> {
+        // 2.5. Best-effort consent / CMP dismissal. Cookie banners can both
+        // hide content behind an overlay and inflate `body.innerText` past
+        // the SPA-readiness threshold prematurely (the banner copy alone
+        // can clear 800 chars). Auto-mode only: if the caller pinned a
+        // wait, they own the timing.
+        if wait_for_ms.is_none() {
+            Self::dismiss_consent(conn, session_id).await;
+        }
+
         // 3. Wait for initial JS work. Caller-supplied `wait_for_ms` wins —
         // sleep that long. Otherwise jump straight to the SPA selector poll;
         // the poll exits in ~200ms on static pages where `main`/`article`/etc.
@@ -943,7 +1668,7 @@ impl CdpRenderer {
         // that hydrate after `loadEventFired`.
         if let Some(wait) = wait_for_ms {
             tokio::time::sleep(Duration::from_millis(wait)).await;
-        } else if !Self::wait_for_spa_selector(conn, session_id, self.page_timeout).await {
+        } else if !Self::wait_for_spa_selector(conn, session_id, self.page_timeout, net).await {
             tracing::debug!(url, "SPA selector poll exhausted budget");
         }
 
@@ -960,6 +1685,69 @@ impl CdpRenderer {
                 Ok(stable) => html = stable,
                 Err(e) => tracing::warn!("Content stability polling failed: {e}"),
             }
+        }
+
+        // 4c. Auto-mode lazy-load pass: scroll viewport-by-viewport so
+        // infinite-scroll feeds, lazy images, and below-the-fold hydration
+        // appear in the snapshot. Gated:
+        // - skip when caller pinned wait_for_ms (explicit budget)
+        // - skip on challenge / placeholder shells (nothing to scroll)
+        // - skip when HTML is already large (almost certainly fully-rendered)
+        //   unless we see explicit lazy-load markers
+        // Stricter gate: only scroll when explicit lazy-load markers exist.
+        // Empirically, scrolling healthy pages adds latency without lift, and
+        // pushes some heavy renders past the deadline.
+        let has_lazy_markers = html.contains("loading=\"lazy\"")
+            || html.contains("data-src=")
+            || html.contains("infinite-scroll")
+            || html.contains("lazy-load");
+        if wait_for_ms.is_none()
+            && has_lazy_markers
+            && html.len() < AUTO_SCROLL_HTML_SIZE_LIMIT
+            && !is_challenge_page(&html)
+            && !crate::detector::looks_like_loading_placeholder(&html)
+        {
+            let scroll_timeout = Duration::from_millis(AUTO_SCROLL_BUDGET_MS);
+            let scroll_timeout = scroll_timeout.min(self.page_timeout);
+            tokio::time::timeout(
+                scroll_timeout,
+                Self::auto_scroll(conn, session_id, scroll_timeout),
+            )
+            .await
+            .ok();
+            // Re-snapshot after scrolling so any lazy-loaded content is captured.
+            html = Self::eval_html(conn, session_id, self.page_timeout).await?;
+        }
+
+        // 4d. Click-to-reveal pass: expand collapsed accordions / "load more"
+        // CTAs that hide article body behind a click. Gated to pages that
+        // actually have markers — pure content pages are skipped.
+        let has_reveal_markers = html.contains(r#"aria-expanded="false""#)
+            || html.contains("load-more")
+            || html.contains("show-more")
+            || {
+                let lower = html.to_ascii_lowercase();
+                lower.contains(">load more<")
+                    || lower.contains(">show more<")
+                    || lower.contains(">read more<")
+                    || lower.contains(">show full<")
+                    || lower.contains(">view all<")
+            };
+        if wait_for_ms.is_none()
+            && has_reveal_markers
+            && html.len() < AUTO_SCROLL_HTML_SIZE_LIMIT
+            && !is_challenge_page(&html)
+            && !crate::detector::looks_like_loading_placeholder(&html)
+        {
+            let click_timeout = Duration::from_millis(AUTO_CLICK_BUDGET_MS);
+            let click_timeout = click_timeout.min(self.page_timeout);
+            tokio::time::timeout(
+                click_timeout,
+                Self::auto_click_reveal(conn, session_id, click_timeout),
+            )
+            .await
+            .ok();
+            html = Self::eval_html(conn, session_id, self.page_timeout).await?;
         }
 
         // 5. Challenge retry loop for Cloudflare/anti-bot interstitials.
@@ -993,6 +1781,14 @@ fn is_content_stable(prev_len: u64, curr_len: u64, placeholder_gone: bool) -> bo
     }
     let tolerance = (prev_len / 20).max(500);
     curr_len.abs_diff(prev_len) <= tolerance
+}
+
+/// Pure decision: does the SPA poll tick indicate the page is ready to
+/// snapshot? `text_len` is the body innerText length returned from the JS
+/// eval, with `-1` signaling "selector not yet mounted". Threshold matches
+/// [`SPA_BODY_TEXT_MIN_CHARS`].
+fn is_spa_text_ready(text_len: i64) -> bool {
+    text_len >= SPA_BODY_TEXT_MIN_CHARS as i64
 }
 
 #[cfg(test)]
@@ -1033,5 +1829,105 @@ mod tests {
     #[test]
     fn shrink_past_tolerance_is_unstable() {
         assert!(!is_content_stable(10_000, 5_000, true));
+    }
+
+    use super::{SPA_BODY_TEXT_MIN_CHARS, is_spa_text_ready};
+
+    #[test]
+    fn spa_not_ready_when_selector_missing() {
+        assert!(!is_spa_text_ready(-1));
+    }
+
+    #[test]
+    fn spa_not_ready_when_text_below_threshold() {
+        assert!(!is_spa_text_ready(0));
+        assert!(!is_spa_text_ready(SPA_BODY_TEXT_MIN_CHARS as i64 - 1));
+    }
+
+    #[test]
+    fn spa_ready_at_or_above_threshold() {
+        assert!(is_spa_text_ready(SPA_BODY_TEXT_MIN_CHARS as i64));
+        assert!(is_spa_text_ready(50_000));
+    }
+
+    use super::NetworkActivityTracker;
+
+    #[test]
+    fn tracker_starts_idle_after_quiet_period() {
+        let t = NetworkActivityTracker::new();
+        assert!(t.is_idle(0));
+    }
+
+    #[test]
+    fn tracker_not_idle_with_inflight_request() {
+        let t = NetworkActivityTracker::new();
+        t.record_request_start();
+        assert!(!t.is_idle(0));
+        t.record_request_end();
+        assert!(t.is_idle(0));
+    }
+
+    #[test]
+    fn tracker_not_idle_during_quiet_period() {
+        let t = NetworkActivityTracker::new();
+        t.record_request_start();
+        t.record_request_end();
+        // Just-ended; quiet_ms=10_000 won't have elapsed yet.
+        assert!(!t.is_idle(10_000));
+    }
+
+    #[test]
+    fn tracker_treats_negative_inflight_as_idle() {
+        let t = NetworkActivityTracker::new();
+        // Simulate a `loadingFinished` whose `requestWillBeSent` was missed
+        // during pump startup. Counter goes -1, but no real work is in
+        // flight — quiet-period idle should still hold.
+        t.record_request_end();
+        assert!(t.is_idle(0));
+    }
+
+    use super::is_browserless_direct_ws;
+
+    #[test]
+    fn browserless_token_url_is_direct_ws() {
+        assert!(is_browserless_direct_ws(
+            "wss://chrome.browserless.io/chromium?token=abc"
+        ));
+        assert!(is_browserless_direct_ws("wss://example.com/cdp?token=xyz"));
+    }
+
+    #[test]
+    fn browserless_named_path_is_direct_ws() {
+        assert!(is_browserless_direct_ws("wss://x.example/chromium"));
+        assert!(is_browserless_direct_ws("wss://x.example/firefox"));
+        assert!(is_browserless_direct_ws("wss://x.example/webkit"));
+    }
+
+    #[test]
+    fn plain_lightpanda_url_is_not_direct_ws() {
+        assert!(!is_browserless_direct_ws("ws://lightpanda:9222"));
+        assert!(!is_browserless_direct_ws("ws://chrome:9222"));
+    }
+
+    use super::is_capturable_mime;
+
+    #[test]
+    fn capturable_mime_recognises_json_variants() {
+        assert!(is_capturable_mime("application/json"));
+        assert!(is_capturable_mime("application/json; charset=utf-8"));
+        assert!(is_capturable_mime("application/ld+json"));
+        assert!(is_capturable_mime("application/vnd.api+json"));
+        assert!(is_capturable_mime("text/json"));
+        assert!(is_capturable_mime("text/plain"));
+    }
+
+    #[test]
+    fn capturable_mime_rejects_uninteresting_types() {
+        assert!(!is_capturable_mime("text/html"));
+        assert!(!is_capturable_mime("image/png"));
+        assert!(!is_capturable_mime("application/octet-stream"));
+        assert!(!is_capturable_mime("text/css"));
+        assert!(!is_capturable_mime("application/javascript"));
+        assert!(!is_capturable_mime(""));
     }
 }
