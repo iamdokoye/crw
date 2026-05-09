@@ -6,9 +6,44 @@
 //! on the receiver. Events that arrive without a matching id are broadcast on a
 //! `tokio::sync::broadcast` channel for `wait_for_event` subscribers.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, LazyLock, Mutex as StdMutex, Weak};
 use std::time::Duration;
+
+/// Process-wide registry of live CDP connections. Each `CdpConnection` is
+/// per-fetch (opened in `fetch_with_ws`, closed in the same call), so any
+/// telemetry sampler needs a way to find currently-live connections without
+/// holding strong references that would extend their lifetime.
+///
+/// The registry stores a `Weak` to the per-connection `pending` map (which is
+/// the natural liveness sentinel — it's dropped when both the `CdpConnection`
+/// and its event loop are gone) plus a clone of the broadcast `Sender` so we
+/// can read `receiver_count()` without touching the connection.
+pub(crate) struct LiveConnEntry {
+    pub pending: Weak<DashMap<u64, oneshot::Sender<CdpResult>>>,
+    pub events: broadcast::Sender<CdpEvent>,
+}
+
+pub(crate) static LIVE_CONNS: LazyLock<StdMutex<Vec<LiveConnEntry>>> =
+    LazyLock::new(|| StdMutex::new(Vec::new()));
+
+/// Snapshot live connections, GCing dead entries inline.
+/// Returns (live_count, pending_total, subscribers_total).
+pub fn snapshot_live_conns() -> (usize, usize, usize) {
+    let mut g = LIVE_CONNS.lock().unwrap();
+    // Drop entries whose `pending` Arc is gone — i.e. CdpConnection + its
+    // event loop have both been dropped.
+    g.retain(|e| e.pending.strong_count() > 0);
+    let mut pending_total = 0usize;
+    let mut subs_total = 0usize;
+    for e in g.iter() {
+        if let Some(p) = e.pending.upgrade() {
+            pending_total += p.len();
+        }
+        subs_total += e.events.receiver_count();
+    }
+    (g.len(), pending_total, subs_total)
+}
 
 use crw_core::error::{CrwError, CrwResult};
 use dashmap::DashMap;
@@ -95,6 +130,15 @@ impl CdpConnection {
             events_tx.clone(),
             is_closed.clone(),
         ));
+
+        // Register with the process-wide live-connection registry. The Weak
+        // is held until the connection's pending Arc has refcount 0 (i.e.
+        // both this struct and its event loop are gone), at which point
+        // snapshot_live_conns() GCs the entry.
+        LIVE_CONNS.lock().unwrap().push(LiveConnEntry {
+            pending: Arc::downgrade(&pending),
+            events: events_tx.clone(),
+        });
 
         Ok(Self {
             write,

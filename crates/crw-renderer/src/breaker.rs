@@ -575,6 +575,22 @@ impl BreakerRegistry {
         }
     }
 
+    /// Emit a single source-of-truth event when a tier transitions to Open:
+    /// bumps the Prometheus counter and logs a structured tracing line.
+    /// Centralizes the two emissions so they never drift out of sync.
+    fn emit_breaker_opened(&self, renderer: RendererKind, scope: &'static str, host: &str) {
+        metrics()
+            .circuit_breaker_open_total
+            .with_label_values(&[renderer.as_str(), scope])
+            .inc();
+        tracing::info!(
+            renderer = renderer.as_str(),
+            scope,
+            host = host,
+            "breaker_opened"
+        );
+    }
+
     /// Record outcome to both tiers. Increments
     /// `circuit_breaker_open_total` on transitions to Open and emits
     /// `crw_breaker_ignored_total{reason}` for non-window-advancing outcomes.
@@ -593,16 +609,10 @@ impl BreakerRegistry {
         let g_tripped = self.global_for(renderer).record_outcome(outcome);
         let h_tripped = self.host_for(host, renderer).await.record_outcome(outcome);
         if g_tripped {
-            metrics()
-                .circuit_breaker_open_total
-                .with_label_values(&[renderer.as_str(), "global"])
-                .inc();
+            self.emit_breaker_opened(renderer, "global", host);
         }
         if h_tripped {
-            metrics()
-                .circuit_breaker_open_total
-                .with_label_values(&[renderer.as_str(), "host"])
-                .inc();
+            self.emit_breaker_opened(renderer, "host", host);
         }
     }
 
@@ -632,19 +642,13 @@ impl BreakerRegistry {
             }
             let g_tripped = self.global_for(renderer).record_outcome(outcome);
             if g_tripped {
-                metrics()
-                    .circuit_breaker_open_total
-                    .with_label_values(&[renderer.as_str(), "global"])
-                    .inc();
+                self.emit_breaker_opened(renderer, "global", host);
             }
         }
         if let Some(outcome) = host_outcome {
             let h_tripped = self.host_for(host, renderer).await.record_outcome(outcome);
             if h_tripped {
-                metrics()
-                    .circuit_breaker_open_total
-                    .with_label_values(&[renderer.as_str(), "host"])
-                    .inc();
+                self.emit_breaker_opened(renderer, "host", host);
             }
         }
     }

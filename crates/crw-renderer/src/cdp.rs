@@ -3,9 +3,10 @@ use crw_core::error::{CrwError, CrwResult};
 use crw_core::types::{CapturedNetworkResponse, FetchResult};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::Mutex as StdMutex;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::{Duration, Instant};
-use tokio::sync::{Mutex, OnceCell, Semaphore, broadcast};
+use tokio::sync::{Mutex, Semaphore, broadcast};
 use tokio_tungstenite::connect_async;
 
 use crate::blocklist::{BlockReason, Blocklist};
@@ -374,7 +375,11 @@ pub struct CdpRenderer {
     /// at runtime via the /json/version HTTP endpoint.
     configured_ws_url: String,
     /// Lazily resolved browser-level WS URL (discovered from /json/version).
-    resolved_ws_url: OnceCell<String>,
+    /// Wrapped in `Mutex<Option<...>>` rather than `OnceCell` so we can
+    /// invalidate on CDP connect failure: chrome restarts mint a new
+    /// `/devtools/browser/<uuid>` path, and a stale cached value would dial
+    /// a dead URL forever until process restart. See `invalidate_resolved_ws_url`.
+    resolved_ws_url: StdMutex<Option<String>>,
     page_timeout: Duration,
     /// Hard ceiling on the post-navigate wait+snapshot+stability+challenge
     /// phase. Wraps the work in a budget race; on hit the renderer snapshots
@@ -398,7 +403,7 @@ impl CdpRenderer {
         Self {
             name: name.to_string(),
             configured_ws_url: ws_url.to_string(),
-            resolved_ws_url: OnceCell::new(),
+            resolved_ws_url: StdMutex::new(None),
             page_timeout,
             nav_budget: page_timeout,
             intercept_enabled: false,
@@ -451,81 +456,100 @@ impl CdpRenderer {
     /// a per-session UUID (e.g. `ws://host:9222/devtools/browser/<uuid>`).
     /// LightPanda accepts connections directly on the base WS URL.
     async fn resolve_ws_url(&self) -> CrwResult<String> {
-        self.resolved_ws_url
-            .get_or_try_init(|| async {
-                let configured = &self.configured_ws_url;
+        if let Some(cached) = self.resolved_ws_url.lock().unwrap().clone() {
+            return Ok(cached);
+        }
 
-                // If URL already has a devtools path, use it directly.
-                if configured.contains("/devtools/") {
-                    return Ok(configured.clone());
-                }
+        let configured = &self.configured_ws_url;
 
-                // Browserless v2 / commercial CDP endpoints expose a
-                // direct WS at paths like `/chromium`, `/firefox`, or
-                // pass auth via `?token=...`. They do NOT serve
-                // `/json/version` (it 401s), so skip discovery and use
-                // the URL as-is. Real connection failures will surface
-                // when the scrape opens the WS.
-                if is_browserless_direct_ws(configured) {
-                    return Ok(configured.clone());
-                }
+        let resolved = if configured.contains("/devtools/") {
+            configured.clone()
+        } else if is_browserless_direct_ws(configured) {
+            // Browserless v2 / commercial CDP endpoints serve a WS directly
+            // and do not expose `/json/version` (401s). Use as-is.
+            configured.clone()
+        } else if let Ok(Ok((ws, _))) =
+            tokio::time::timeout(Duration::from_secs(3), connect_async(configured)).await
+        {
+            // Direct connect works (LightPanda).
+            drop(ws);
+            configured.clone()
+        } else {
+            // Chrome/Chromium: discover via /json/version.
+            let http_url = configured
+                .replace("ws://", "http://")
+                .replace("wss://", "https://")
+                .trim_end_matches('/')
+                .to_string()
+                + "/json/version";
 
-                // Try connecting directly first (works for LightPanda).
-                if let Ok(Ok((ws, _))) =
-                    tokio::time::timeout(Duration::from_secs(3), connect_async(configured)).await
-                {
-                    drop(ws);
-                    return Ok(configured.clone());
-                }
+            tracing::info!(
+                renderer = self.name,
+                "Discovering browser WS URL from {http_url}"
+            );
 
-                // Direct connection failed — try /json/version discovery (Chrome/Chromium).
-                let http_url = configured
-                    .replace("ws://", "http://")
-                    .replace("wss://", "https://")
-                    .trim_end_matches('/')
-                    .to_string()
-                    + "/json/version";
-
-                tracing::info!(
-                    renderer = self.name,
-                    "Discovering browser WS URL from {http_url}"
-                );
-
-                // Send Host: localhost so browsers behind socat proxies
-                // (e.g. chromedp/headless-shell) accept the request.
-                let resp = reqwest::Client::new()
-                    .get(&http_url)
-                    .header("Host", "localhost")
-                    .timeout(Duration::from_secs(5))
-                    .send()
-                    .await
-                    .map_err(|e| {
-                        CrwError::RendererError(format!(
-                            "CDP discovery failed for {}: {e}",
-                            self.name
-                        ))
-                    })?;
-
-                let body: serde_json::Value = resp.json().await.map_err(|e| {
-                    CrwError::RendererError(format!("CDP discovery parse error: {e}"))
+            // Send Host: localhost so browsers behind socat proxies
+            // (e.g. chromedp/headless-shell) accept the request.
+            let resp = reqwest::Client::new()
+                .get(&http_url)
+                .header("Host", "localhost")
+                .timeout(Duration::from_secs(5))
+                .send()
+                .await
+                .map_err(|e| {
+                    CrwError::RendererError(format!("CDP discovery failed for {}: {e}", self.name))
                 })?;
 
-                let ws_url = body
-                    .get("webSocketDebuggerUrl")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| {
-                        CrwError::RendererError(format!(
-                            "No webSocketDebuggerUrl in /json/version for {}",
-                            self.name
-                        ))
-                    })?;
+            let body: serde_json::Value = resp
+                .json()
+                .await
+                .map_err(|e| CrwError::RendererError(format!("CDP discovery parse error: {e}")))?;
 
-                let resolved = rewrite_ws_host(ws_url, configured);
-                tracing::info!(renderer = self.name, ws_url = %resolved, "Discovered browser WS URL");
-                Ok(resolved)
-            })
-            .await
-            .cloned()
+            let ws_url = body
+                .get("webSocketDebuggerUrl")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    CrwError::RendererError(format!(
+                        "No webSocketDebuggerUrl in /json/version for {}",
+                        self.name
+                    ))
+                })?;
+
+            let rewritten = rewrite_ws_host(ws_url, configured);
+            tracing::info!(renderer = self.name, ws_url = %rewritten, "Discovered browser WS URL");
+            rewritten
+        };
+
+        *self.resolved_ws_url.lock().unwrap() = Some(resolved.clone());
+        Ok(resolved)
+    }
+
+    /// Drop the cached WS URL so the next `resolve_ws_url` call re-discovers.
+    /// Called after CDP connect failures because chrome restarts mint a new
+    /// `/devtools/browser/<uuid>` path; without invalidation we'd dial a dead
+    /// URL forever.
+    fn invalidate_resolved_ws_url(&self) {
+        *self.resolved_ws_url.lock().unwrap() = None;
+    }
+
+    /// Resolve the WS URL and open a CDP connection. On failure, invalidate
+    /// the cached URL and retry once — covers the chrome-restart case where
+    /// the cached `/devtools/browser/<uuid>` is stale.
+    async fn connect_with_retry(&self) -> CrwResult<CdpConnection> {
+        let ws_url = self.resolve_ws_url().await?;
+        match CdpConnection::connect(&ws_url, WS_CONNECT_TIMEOUT).await {
+            Ok(conn) => Ok(conn),
+            Err(e) => {
+                tracing::warn!(
+                    renderer = self.name,
+                    error = %e,
+                    "CDP connect failed; invalidating cached ws_url and retrying once"
+                );
+                self.invalidate_resolved_ws_url();
+                let ws_url = self.resolve_ws_url().await?;
+                CdpConnection::connect(&ws_url, WS_CONNECT_TIMEOUT).await
+            }
+        }
     }
 }
 
@@ -860,15 +884,37 @@ fn is_capturable_mime(mime: &str) -> bool {
     )
 }
 
-async fn close_target(conn: &CdpConnection, target_id: &str) {
-    let _ = conn
+async fn close_target(conn: &CdpConnection, target_id: &str, renderer: &str) {
+    let m = crw_core::metrics::metrics();
+    match conn
         .send_recv(
             "Target.closeTarget",
             serde_json::json!({ "targetId": target_id }),
             None,
             TARGET_CLOSE_TIMEOUT,
         )
-        .await;
+        .await
+    {
+        Ok(_) => {
+            m.target_lifecycle_total
+                .with_label_values(&[renderer, "closed"])
+                .inc();
+        }
+        Err(e) => {
+            // closeTarget timed out or returned an error. Page likely
+            // still alive in chrome — that's a leak, but we have to
+            // move on. Surface as warn so it shows up in operator logs.
+            m.target_lifecycle_total
+                .with_label_values(&[renderer, "leaked"])
+                .inc();
+            tracing::warn!(
+                renderer,
+                target_id,
+                error = %e,
+                "Target.closeTarget did not complete cleanly; treating as leaked"
+            );
+        }
+    }
 }
 
 /// Consume events from `events` until `Page.loadEventFired` (returns the main
@@ -980,11 +1026,7 @@ impl PageFetcher for CdpRenderer {
     }
 
     async fn is_available(&self) -> bool {
-        let ws_url = match self.resolve_ws_url().await {
-            Ok(url) => url,
-            Err(_) => return false,
-        };
-        let conn = match CdpConnection::connect(&ws_url, WS_CONNECT_TIMEOUT).await {
+        let conn = match self.connect_with_retry().await {
             Ok(conn) => conn,
             Err(_) => return false,
         };
@@ -1053,8 +1095,7 @@ impl CdpRenderer {
             .await
             .map_err(|_| CrwError::RendererError("Connection pool closed".into()))?;
 
-        let ws_url = self.resolve_ws_url().await?;
-        let conn = CdpConnection::connect(&ws_url, WS_CONNECT_TIMEOUT).await?;
+        let conn = self.connect_with_retry().await?;
 
         let result = self.fetch_inner(&conn, url, wait_for_ms, deadline).await;
 
@@ -1419,6 +1460,10 @@ impl CdpRenderer {
             .and_then(|v| v.as_str())
             .ok_or_else(|| CrwError::RendererError(format!("No targetId: {create_result}")))?
             .to_string();
+        crw_core::metrics::metrics()
+            .target_lifecycle_total
+            .with_label_values(&[&self.name, "created"])
+            .inc();
 
         // 2. Attach to target
         let attach_result = match conn
@@ -1432,7 +1477,7 @@ impl CdpRenderer {
         {
             Ok(result) => result,
             Err(err) => {
-                close_target(conn, &target_id).await;
+                close_target(conn, &target_id, &self.name).await;
                 return Err(err);
             }
         };
@@ -1443,7 +1488,7 @@ impl CdpRenderer {
         {
             Some(value) => value.to_string(),
             None => {
-                close_target(conn, &target_id).await;
+                close_target(conn, &target_id, &self.name).await;
                 return Err(CrwError::RendererError(
                     "CDP attach did not return sessionId".into(),
                 ));
@@ -1460,7 +1505,7 @@ impl CdpRenderer {
                 )
                 .await
             {
-                close_target(conn, &target_id).await;
+                close_target(conn, &target_id, &self.name).await;
                 return Err(err);
             }
         }
@@ -1475,7 +1520,7 @@ impl CdpRenderer {
             )
             .await
         {
-            close_target(conn, &target_id).await;
+            close_target(conn, &target_id, &self.name).await;
             return Err(err);
         }
 
@@ -1496,7 +1541,7 @@ impl CdpRenderer {
                 )
                 .await
         {
-            close_target(conn, &target_id).await;
+            close_target(conn, &target_id, &self.name).await;
             return Err(err);
         }
 
@@ -1622,7 +1667,7 @@ impl CdpRenderer {
             Err(_) => None,
         };
 
-        close_target(conn, &target_id).await;
+        close_target(conn, &target_id, &self.name).await;
 
         let (html, status_code, truncated) = outcome?;
 

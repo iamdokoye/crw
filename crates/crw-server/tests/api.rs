@@ -19,8 +19,18 @@ async fn health_endpoint_returns_ok() {
     let json: serde_json::Value = resp.json();
     assert_eq!(json["status"], "ok");
     assert!(json["version"].is_string());
-    assert!(json["renderers"].is_object());
     assert!(json.get("active_crawl_jobs").is_some());
+}
+
+#[tokio::test]
+async fn ready_endpoint_returns_renderers() {
+    let server = test_app();
+    let resp = server.get("/ready").await;
+    // Status may be 200 or 503 depending on whether renderers reachable in
+    // test env; we only assert the body shape carries renderer state.
+    let json: serde_json::Value = resp.json();
+    assert!(json["renderers"].is_object());
+    assert!(json["status"].is_string());
 }
 
 #[tokio::test]

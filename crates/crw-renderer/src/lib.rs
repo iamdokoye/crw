@@ -42,6 +42,8 @@ pub mod cdp;
 #[cfg(feature = "cdp")]
 pub mod cdp_conn;
 pub mod detector;
+#[cfg(feature = "cdp")]
+pub mod health_telemetry;
 pub mod host_limiter;
 pub mod http_only;
 pub mod preference;
@@ -327,6 +329,12 @@ impl FallbackRenderer {
                 }
             }
         }
+
+        // Spawn the process-wide CDP telemetry sampler. Idempotent —
+        // OnceLock guarantees a single task across all FallbackRenderer
+        // instances. No-op on the `mode = none` early-return path above.
+        #[cfg(feature = "cdp")]
+        health_telemetry::spawn_once();
 
         if config.render_js_default == Some(true) && js_renderers.is_empty() {
             tracing::warn!(

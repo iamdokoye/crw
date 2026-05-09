@@ -32,6 +32,21 @@ pub struct Metrics {
     /// Outcomes ignored by the renderer circuit breaker (deadline-clamped,
     /// truncated-but-OK, etc.) — labeled by renderer and reason.
     pub breaker_ignored_total: IntCounterVec,
+    /// CDP `pending` map size summed across all live connections at the
+    /// last sampler tick. Should return to 0 between scrapes; sustained
+    /// growth indicates a cancellation/cleanup leak.
+    pub cdp_pending_requests: IntGauge,
+    /// Number of CDP connections currently registered as live.
+    /// Per-fetch lifecycle, so this should track concurrency, not pool size.
+    pub cdp_live_connections: IntGauge,
+    /// Target lifecycle events, labeled by renderer + phase
+    /// (`created` | `closed` | `leaked`). `leaked` is incremented when
+    /// `Target.closeTarget` times out — the engine moves on, but the page
+    /// likely stays alive in chrome.
+    pub target_lifecycle_total: IntCounterVec,
+    /// Renderer recycle events, labeled by renderer + reason
+    /// (`age` | `count`). Reserved for the optional page-sweep work in B.1.
+    pub renderer_recycle_total: IntCounterVec,
 }
 
 static METRICS: OnceLock<Metrics> = OnceLock::new();
@@ -112,6 +127,32 @@ impl Metrics {
             registry
         )
         .unwrap();
+        let cdp_pending_requests = register_int_gauge_with_registry!(
+            "crw_cdp_pending_requests",
+            "CDP pending request map size summed across all live connections (sampler tick)",
+            registry
+        )
+        .unwrap();
+        let cdp_live_connections = register_int_gauge_with_registry!(
+            "crw_cdp_live_connections",
+            "Number of CDP connections currently registered as live",
+            registry
+        )
+        .unwrap();
+        let target_lifecycle_total = register_int_counter_vec_with_registry!(
+            "crw_target_lifecycle_total",
+            "CDP target lifecycle events by renderer and phase (created/closed/leaked)",
+            &["renderer", "phase"],
+            registry
+        )
+        .unwrap();
+        let renderer_recycle_total = register_int_counter_vec_with_registry!(
+            "crw_renderer_recycle_total",
+            "Renderer recycle events by renderer and reason",
+            &["renderer", "reason"],
+            registry
+        )
+        .unwrap();
         Self {
             registry,
             render_route_decision_total,
@@ -123,6 +164,10 @@ impl Metrics {
             chrome_budget_truncated_total,
             chrome_blocked_requests_total,
             breaker_ignored_total,
+            cdp_pending_requests,
+            cdp_live_connections,
+            target_lifecycle_total,
+            renderer_recycle_total,
         }
     }
 }

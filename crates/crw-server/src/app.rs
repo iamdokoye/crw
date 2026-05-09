@@ -72,6 +72,10 @@ pub fn create_app(state: AppState) -> Router {
             get(routes::health::health).fallback(method_not_allowed),
         )
         .route(
+            "/ready",
+            get(routes::health::ready).fallback(method_not_allowed),
+        )
+        .route(
             "/metrics",
             get(routes::metrics::metrics).fallback(method_not_allowed),
         )
@@ -171,6 +175,7 @@ async fn rate_limit_middleware(
 ) -> Response {
     if let Some(limiter) = limiter
         && req.uri().path() != "/health"
+        && req.uri().path() != "/ready"
         && !limiter.try_acquire()
     {
         return (
