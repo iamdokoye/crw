@@ -260,6 +260,14 @@
 <td>LLM extraction failed (no LLM configured, or LLM returned an error)</td>
 </tr>
 <tr>
+<td><code>summary</code> format requires LLM config</td>
+<td><code>formats: [&quot;summary&quot;]</code> sent without a server-side <code>[extraction.llm]</code> block and without per-request <code>llmApiKey</code></td>
+</tr>
+<tr>
+<td>BYOK header required</td>
+<td>Server is in BYOK-only mode (<code>require_byok_header</code>) and the request lacks both the header and <code>llmApiKey</code></td>
+</tr>
+<tr>
 <td>No JS renderer available</td>
 <td><code>renderJs: true</code> but no CDP browser is configured</td>
 </tr>
@@ -287,6 +295,22 @@
 <tr>
 <td><code>JS rendering was requested but no renderer is available</code></td>
 <td>Fallback to HTTP-only fetch</td>
+</tr>
+<tr>
+<td><code>content truncated to N bytes before summarization</code></td>
+<td>Scraped content exceeded <code>maxContentChars</code> (or <code>[extraction.llm].max_html_bytes</code>); the head of the page was summarized</td>
+</tr>
+<tr>
+<td><code>summary failed: &lt;reason&gt;</code></td>
+<td>A per-result summary in <code>/v1/search</code> failed (e.g. provider 429). Other results are still returned</td>
+</tr>
+<tr>
+<td><code>answer synthesis failed: &lt;reason&gt;</code></td>
+<td>The answer call in <code>/v1/search</code> failed. <code>answer</code> is <code>null</code> but <code>summaries</code> and <code>results</code> are still returned</td>
+</tr>
+<tr>
+<td><code>N of M per-result summaries failed</code></td>
+<td>Some but not all per-result summaries failed in <code>/v1/search</code></td>
 </tr>
 </tbody></table>
 <h2>Retry Guidance</h2>

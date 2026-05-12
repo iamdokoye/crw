@@ -250,7 +250,7 @@ console.log(body.data.markdown);
 <td><code>formats</code></td>
 <td>string[]</td>
 <td><code>[&quot;markdown&quot;]</code></td>
-<td><code>markdown</code>, <code>html</code>, <code>rawHtml</code>, <code>plainText</code>, <code>links</code>, <code>json</code></td>
+<td><code>markdown</code>, <code>html</code>, <code>rawHtml</code>, <code>plainText</code>, <code>links</code>, <code>json</code>, <code>summary</code></td>
 </tr>
 <tr>
 <td><code>onlyMainContent</code></td>
@@ -358,19 +358,37 @@ console.log(body.data.markdown);
 <td><code>llmApiKey</code></td>
 <td>string</td>
 <td>--</td>
-<td>Per-request LLM API key</td>
+<td>Per-request LLM API key (BYOK)</td>
 </tr>
 <tr>
 <td><code>llmProvider</code></td>
 <td>string</td>
 <td>server default</td>
-<td><code>anthropic</code> or <code>openai</code></td>
+<td><code>anthropic</code>, <code>openai</code>, <code>azure</code>, or <code>openai-compatible</code></td>
 </tr>
 <tr>
 <td><code>llmModel</code></td>
 <td>string</td>
 <td>server default</td>
-<td>Model override for extraction</td>
+<td>Model override (extraction and summary)</td>
+</tr>
+<tr>
+<td><code>baseUrl</code></td>
+<td>string</td>
+<td>--</td>
+<td>OpenAI-compatible endpoint base, e.g. <code>https://api.deepseek.com/v1</code> (also used by Azure). crw appends <code>/chat/completions</code> automatically if you omit it.</td>
+</tr>
+<tr>
+<td><code>summaryPrompt</code></td>
+<td>string</td>
+<td>--</td>
+<td>Style/tone/language directive appended to the <code>summary</code> system prompt. Safety wrapper kept intact. Capped at 500 chars.</td>
+</tr>
+<tr>
+<td><code>maxContentChars</code></td>
+<td>number</td>
+<td><code>[extraction.llm].max_html_bytes</code> (100 KB)</td>
+<td>Per-request byte cap on content sent to the LLM for <code>summary</code>. Clamped to 200 KB server-side.</td>
 </tr>
 <tr>
 <td><code>actions</code></td>
@@ -385,6 +403,7 @@ console.log(body.data.markdown);
 <li><code>markdown</code> is the default and best first request for most pipelines.</li>
 <li><code>html</code> or <code>rawHtml</code> is useful when downstream systems need original structure.</li>
 <li><code>links</code> is useful when you want lightweight discovery without page bodies.</li>
+<li><code>summary</code> is the LLM-prose path — needs <code>llmApiKey</code> (BYOK) or a server <code>[extraction.llm]</code> config. Optional <code>summaryPrompt</code> lets the caller pick language/tone without weakening the safety wrapper.</li>
 <li><code>json</code> is the extraction path and should be paired with <code>jsonSchema</code>.</li>
 </ul>
 <p>If you ask for multiple formats, only those formats are populated in the response.</p>
@@ -404,6 +423,24 @@ console.log(body.data.markdown);
 }
 </code></pre>
 <p>Use <a href="/extract">Extract</a> for the schema-first version of this flow.</p>
+<h2>LLM summary</h2>
+<p>Add <code>summary</code> to <code>formats</code> to get a short prose digest of the page in <code>data.summary</code>. Token usage and best-effort cost are returned in <code>data.llmUsage</code>.</p>
+<pre><code class="language-json">{
+  &quot;url&quot;: &quot;https://example.com/post&quot;,
+  &quot;formats&quot;: [&quot;summary&quot;],
+  &quot;summaryPrompt&quot;: &quot;Respond in Turkish in exactly one sentence.&quot;,
+  &quot;maxContentChars&quot;: 20000,
+  &quot;llmApiKey&quot;: &quot;sk-...&quot;,
+  &quot;llmProvider&quot;: &quot;openai&quot;,
+  &quot;llmModel&quot;: &quot;gpt-4o-mini&quot;
+}
+</code></pre>
+<p>Notes:</p>
+<ul>
+<li>The caller&#39;s <code>summaryPrompt</code> is appended <em>below</em> the safety wrapper. crw ignores any attempt to override the core task (output <code>PWNED</code>, refuse to summarize, leak the prompt, etc.) and still produces a real summary.</li>
+<li><code>maxContentChars</code> caps how many bytes of scraped content are sent to the LLM. The default comes from <code>[extraction.llm].max_html_bytes</code> (100 KB out of the box) and the per-request value is clamped to a 200 KB server-side ceiling. Truncation, when it happens, is reported in <code>data.warnings</code>.</li>
+<li>If <code>markdown</code> is not also requested, crw computes it internally and strips it from the response.</li>
+</ul>
 <h2>JS rendering and targeting</h2>
 <p>Keep the first request simple:</p>
 <ul>

@@ -281,6 +281,72 @@ curl -X POST https://fastcrw.com/api/v1/search \
 <td>--</td>
 <td>Scrape each result URL after search</td>
 </tr>
+<tr>
+<td><code>summarizeResults</code></td>
+<td>boolean</td>
+<td><code>false</code></td>
+<td>When <code>true</code>, each scraped result is summarized by the LLM and the digest appears in <code>result.summary</code>. Needs LLM config (BYOK or server). Fan-out is bounded by <code>[extraction.llm].max_concurrency</code>.</td>
+</tr>
+<tr>
+<td><code>answer</code></td>
+<td>boolean</td>
+<td><code>false</code></td>
+<td>When <code>true</code>, after scraping the top results crw synthesizes a single answer over them. The answer + <code>citations</code> land on the response wrapper.</td>
+</tr>
+<tr>
+<td><code>answerTopN</code></td>
+<td>number</td>
+<td><code>5</code> (max <code>10</code>)</td>
+<td>Number of top-scoring results to feed into the answer pipeline</td>
+</tr>
+<tr>
+<td><code>maxCharsPerSource</code></td>
+<td>number</td>
+<td><code>8192</code></td>
+<td>Per-source byte cap on markdown fed into the answer prompt. Clamped to 32 KB server-side.</td>
+</tr>
+<tr>
+<td><code>maxContentChars</code></td>
+<td>number</td>
+<td><code>[extraction.llm].max_html_bytes</code> (100 KB)</td>
+<td>Per-result byte cap on markdown sent to the per-result summarizer (<code>summarizeResults</code>). Clamped to 200 KB server-side. Independent from <code>maxCharsPerSource</code>.</td>
+</tr>
+<tr>
+<td><code>summaryPrompt</code></td>
+<td>string</td>
+<td>--</td>
+<td>Style/tone/language directive appended to the per-result summary prompt. Capped at 500 chars.</td>
+</tr>
+<tr>
+<td><code>answerPrompt</code></td>
+<td>string</td>
+<td>--</td>
+<td>Style/tone/language directive appended to the answer-synthesis prompt. Capped at 500 chars. Cannot override the &quot;answer using ONLY provided sources&quot; rule or the citation discipline.</td>
+</tr>
+<tr>
+<td><code>llmApiKey</code></td>
+<td>string</td>
+<td>--</td>
+<td>Per-request LLM API key (BYOK)</td>
+</tr>
+<tr>
+<td><code>llmProvider</code></td>
+<td>string</td>
+<td>server default</td>
+<td><code>anthropic</code>, <code>openai</code>, <code>azure</code>, or <code>openai-compatible</code></td>
+</tr>
+<tr>
+<td><code>llmModel</code></td>
+<td>string</td>
+<td>server default</td>
+<td>Model override</td>
+</tr>
+<tr>
+<td><code>baseUrl</code></td>
+<td>string</td>
+<td>--</td>
+<td>OpenAI-compatible endpoint base (e.g. DeepSeek, Azure)</td>
+</tr>
 </tbody></table>
 <p><code>scrapeOptions</code>:</p>
 <table>
@@ -342,6 +408,65 @@ curl -X POST https://fastcrw.com/api/v1/search \
 }
 </code></pre>
 <p>That enriches eligible results with scraped page content. It is powerful, but it is also the moment search becomes more expensive, so keep it off until you need it.</p>
+<h2>LLM-assisted search</h2>
+<p>CRW can turn a search-with-scrape into either per-result summaries or a single synthesized answer (or both).</p>
+<h3>Per-result summaries (<code>summarizeResults</code>)</h3>
+<pre><code class="language-json">{
+  &quot;query&quot;: &quot;what is tokio rust&quot;,
+  &quot;limit&quot;: 3,
+  &quot;scrapeOptions&quot;: { &quot;formats&quot;: [&quot;markdown&quot;] },
+  &quot;summarizeResults&quot;: true,
+  &quot;summaryPrompt&quot;: &quot;Respond in Turkish in one sentence per result.&quot;,
+  &quot;maxContentChars&quot;: 20000,
+  &quot;llmApiKey&quot;: &quot;sk-...&quot;,
+  &quot;llmProvider&quot;: &quot;openai&quot;,
+  &quot;llmModel&quot;: &quot;gpt-4o-mini&quot;
+}
+</code></pre>
+<p>Each scraped result that produced markdown gets a <code>result.summary</code> field. Per-result failures attach a <code>warning</code> on the response but do not fail the whole request. Fan-out is bounded by <code>[extraction.llm].max_concurrency</code> (default 4).</p>
+<h3>Synthesized answer (<code>answer</code>)</h3>
+<pre><code class="language-json">{
+  &quot;query&quot;: &quot;what is tokio rust&quot;,
+  &quot;limit&quot;: 3,
+  &quot;answer&quot;: true,
+  &quot;answerTopN&quot;: 3,
+  &quot;answerPrompt&quot;: &quot;Respond in Turkish in exactly two sentences.&quot;,
+  &quot;scrapeOptions&quot;: { &quot;formats&quot;: [&quot;markdown&quot;] },
+  &quot;llmApiKey&quot;: &quot;sk-...&quot;,
+  &quot;llmProvider&quot;: &quot;openai&quot;,
+  &quot;llmModel&quot;: &quot;gpt-4o-mini&quot;
+}
+</code></pre>
+<p>The response wrapper carries:</p>
+<pre><code class="language-json">{
+  &quot;success&quot;: true,
+  &quot;data&quot;: {
+    &quot;results&quot;: [ /* normal flat or grouped search results */ ],
+    &quot;answer&quot;: &quot;Tokio is a Rust runtime…&quot;,
+    &quot;citations&quot;: [
+      { &quot;url&quot;: &quot;https://...&quot;, &quot;title&quot;: &quot;...&quot;, &quot;position&quot;: 0 }
+    ],
+    &quot;llmUsage&quot;: { &quot;inputTokens&quot;: 3420, &quot;outputTokens&quot;: 96, &quot;totalTokens&quot;: 3516, &quot;estimatedCostUsd&quot;: 0.0008, &quot;model&quot;: &quot;gpt-4o-mini&quot;, &quot;provider&quot;: &quot;openai&quot; },
+    &quot;warnings&quot;: []
+  }
+}
+</code></pre>
+<p>Citation discipline:</p>
+<ul>
+<li><code>source_id</code> returned by the model must map to a source actually in the input list. Fabricated ids are dropped.</li>
+<li><code>position</code> is clamped to <code>[0, sources.len())</code>.</li>
+<li>The list is deduped on <code>(source_id, position)</code> and capped at 20 entries.</li>
+</ul>
+<p>If the answer call fails (rate limit, network error, etc.), <code>answer</code> is <code>null</code>, any successful per-result summaries are still returned, and <code>warnings</code> explains what went wrong. CRW does not throw away partial work.</p>
+<h3>Caller-supplied directives</h3>
+<p><code>summaryPrompt</code> and <code>answerPrompt</code> let you steer language/tone/format without weakening the safety wrapper:</p>
+<ul>
+<li>They are appended <em>below</em> the hardcoded system prompt, not in place of it.</li>
+<li>The wrapper explicitly tells the model to ignore directive contents that try to replace the task (fixed-string outputs, refusals, citation-skip, prompt leaks).</li>
+<li>Each directive is truncated to 500 chars server-side.</li>
+</ul>
+<h3>Where the key comes from</h3>
+<p>Same BYOK pattern as <code>/v1/scrape</code>: send <code>llmApiKey</code> / <code>llmProvider</code> / <code>llmModel</code> / <code>baseUrl</code> in the request body, or configure <code>[extraction.llm]</code> in <code>config.toml</code>.</p>
 <h2>Freshness, sources, and categories</h2>
 <ul>
 <li>Use <code>tbs</code> when freshness matters more than broad recall.</li>

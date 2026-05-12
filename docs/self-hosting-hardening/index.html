@@ -156,6 +156,29 @@
 <li>Inject secrets at runtime through your platform&#39;s secret store.</li>
 <li>Rotate keys during environment changes or incident response, not only on a fixed calendar.</li>
 </ul>
+<h2>LLM features and trust boundary</h2>
+<p>CRW&#39;s <code>summary</code> format and <code>/v1/search</code> answer/summarize features need an LLM key. There are two deployment shapes; pick one and lock it down with the runtime guards listed below.</p>
+<p><strong>Solo / self-hosted (key in server config):</strong></p>
+<pre><code class="language-toml">[extraction.llm]
+provider = &quot;openai&quot;
+api_key  = &quot;sk-...&quot;
+model    = &quot;gpt-4o-mini&quot;
+</code></pre>
+<p>Anyone who can reach your opencore can spend on that key. Front it with auth, network policy, or a private network.</p>
+<p><strong>SaaS / multi-tenant (BYOK, per-request keys):</strong></p>
+<ul>
+<li>Set <code>CRW_DISABLE_SERVER_LLM_KEY=1</code> in opencore&#39;s environment. With this env var set, opencore refuses to boot if <code>[extraction.llm].api_key</code> is also configured — the most common operator mistake.</li>
+<li>Set <code>[extraction.llm].require_byok_header = &quot;X-CRW-Tenant&quot;</code> (or similar). CRW rejects LLM-touching requests that lack that header AND do not pass a per-request <code>llmApiKey</code>. Your SaaS layer adds the header on every forwarded request; direct public callers cannot.</li>
+<li>Don&#39;t expose opencore on a public address; keep it behind your SaaS proxy.</li>
+<li>Use <code>GET /v1/capabilities</code> on boot from the SaaS layer to verify the opencore version&#39;s feature set before showing LLM toggles in your UI.</li>
+</ul>
+<p><strong>Per-request budget:</strong></p>
+<ul>
+<li><code>[extraction.llm].max_html_bytes</code> (default <code>100000</code>) caps content sent to the LLM.</li>
+<li>Per-request <code>maxContentChars</code> and <code>maxCharsPerSource</code> are clamped server-side (200 KB and 32 KB respectively) regardless of value.</li>
+<li><code>summaryPrompt</code> and <code>answerPrompt</code> are truncated at 500 chars and cannot override the safety wrapper.</li>
+<li>The citation list is capped at 20 entries; fabricated <code>source_id</code>s are dropped.</li>
+</ul>
 <h2>Operational guidance</h2>
 <ul>
 <li>Rotate API keys during deployment cutovers.</li>

@@ -199,6 +199,16 @@
 <td>You are using MCP over HTTP</td>
 <td>Prefer the <a href="/mcp">MCP page</a> for setup</td>
 </tr>
+<tr>
+<td><code>GET /health</code></td>
+<td>Liveness probe</td>
+<td>Returns <code>{status, version, active_crawl_jobs}</code></td>
+</tr>
+<tr>
+<td><code>GET /v1/capabilities</code></td>
+<td>Discover server features</td>
+<td>Reports supported formats, LLM providers, whether a server-side key is configured</td>
+</tr>
 </tbody></table>
 <h2>Start with this request</h2>
 <pre><code class="language-bash">curl -X POST https://fastcrw.com/api/v1/scrape \
@@ -210,7 +220,7 @@
 <h2>Shared reference pages</h2>
 <ul>
 <li><a href="/response-shapes">Response Shapes</a> for common envelopes</li>
-<li><a href="/output-formats">Output Formats</a> for <code>markdown</code>, <code>html</code>, <code>rawHtml</code>, <code>plainText</code>, <code>links</code>, and <code>json</code></li>
+<li><a href="/output-formats">Output Formats</a> for <code>markdown</code>, <code>html</code>, <code>rawHtml</code>, <code>plainText</code>, <code>links</code>, <code>json</code>, and <code>summary</code></li>
 <li><a href="/error-codes">Error Codes</a> for failure handling</li>
 <li><a href="/rate-limits">Rate Limits</a> and <a href="/credit-costs">Credit Costs</a> for hosted usage planning</li>
 </ul>

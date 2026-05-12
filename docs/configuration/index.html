@@ -176,11 +176,14 @@ default_format = &quot;markdown&quot;
 only_main_content = true
 
 [extraction.llm]
-provider = &quot;anthropic&quot;       # &quot;anthropic&quot; or &quot;openai&quot;
+provider = &quot;anthropic&quot;       # &quot;anthropic&quot;, &quot;openai&quot;, &quot;azure&quot;, or &quot;openai-compatible&quot;
 api_key = &quot;&quot;
 model = &quot;claude-sonnet-4-20250514&quot;
 max_tokens = 4096
-# base_url = &quot;&quot;              # for OpenAI-compatible endpoints
+max_html_bytes = 100000      # content fed to LLM is truncated at this byte count
+max_concurrency = 4          # bounded fan-out for per-result summaries in /v1/search
+# base_url = &quot;&quot;              # for OpenAI-compatible endpoints (DeepSeek, Azure, Ollama, …)
+# require_byok_header = &quot;&quot;   # tenant guard: reject LLM requests missing this header AND without llmApiKey
 
 [auth]
 # api_keys = [&quot;fc-key-1234&quot;]
@@ -248,6 +251,30 @@ stealth = true
 <tr>
 <td><code>extraction.llm.provider</code></td>
 <td><code>CRW_EXTRACTION__LLM__PROVIDER</code></td>
+</tr>
+<tr>
+<td><code>extraction.llm.model</code></td>
+<td><code>CRW_EXTRACTION__LLM__MODEL</code></td>
+</tr>
+<tr>
+<td><code>extraction.llm.base_url</code></td>
+<td><code>CRW_EXTRACTION__LLM__BASE_URL</code></td>
+</tr>
+<tr>
+<td><code>extraction.llm.max_html_bytes</code></td>
+<td><code>CRW_EXTRACTION__LLM__MAX_HTML_BYTES</code></td>
+</tr>
+<tr>
+<td><code>extraction.llm.max_concurrency</code></td>
+<td><code>CRW_EXTRACTION__LLM__MAX_CONCURRENCY</code></td>
+</tr>
+<tr>
+<td><code>extraction.llm.require_byok_header</code></td>
+<td><code>CRW_EXTRACTION__LLM__REQUIRE_BYOK_HEADER</code></td>
+</tr>
+<tr>
+<td><em>(boot guard)</em></td>
+<td><code>CRW_DISABLE_SERVER_LLM_KEY</code> — when set to <code>1</code>, refuses to boot if <code>[extraction.llm].api_key</code> is also configured. Use behind a SaaS BYOK proxy.</td>
 </tr>
 </tbody></table>
 <h2>Renderer modes</h2>

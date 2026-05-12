@@ -139,6 +139,15 @@
     &quot;plainText&quot;: &quot;string or null&quot;,
     &quot;links&quot;: [&quot;string&quot;],
     &quot;json&quot;: {},
+    &quot;summary&quot;: &quot;string or null&quot;,
+    &quot;llmUsage&quot;: {
+      &quot;inputTokens&quot;: 1234,
+      &quot;outputTokens&quot;: 567,
+      &quot;totalTokens&quot;: 1801,
+      &quot;estimatedCostUsd&quot;: 0.00023,
+      &quot;model&quot;: &quot;gpt-4o-mini&quot;,
+      &quot;provider&quot;: &quot;openai&quot;
+    },
     &quot;chunks&quot;: [
       {
         &quot;content&quot;: &quot;string&quot;,
@@ -146,6 +155,7 @@
         &quot;index&quot;: 0
       }
     ],
+    &quot;warnings&quot;: [&quot;content truncated to 100000 bytes before summarization&quot;],
     &quot;warning&quot;: &quot;optional warning&quot;,
     &quot;metadata&quot;: {
       &quot;title&quot;: &quot;string&quot;,
@@ -191,34 +201,45 @@
 }
 </code></pre>
 <h2>Search</h2>
-<p>Hosted search can return two shapes:</p>
+<p><code>data</code> is a wrapper around the actual results. When you do not use any LLM feature, the wrapper still holds the results in <code>data.results</code> and the other fields stay empty/null.</p>
+<pre><code class="language-json">{
+  &quot;success&quot;: true,
+  &quot;data&quot;: {
+    &quot;results&quot;: &lt;flat array OR grouped object — see below&gt;,
+    &quot;answer&quot;: &quot;string or null&quot;,
+    &quot;citations&quot;: [
+      { &quot;url&quot;: &quot;https://...&quot;, &quot;title&quot;: &quot;...&quot;, &quot;position&quot;: 0 }
+    ],
+    &quot;llmUsage&quot;: { &quot;inputTokens&quot;: 3420, &quot;outputTokens&quot;: 96, &quot;totalTokens&quot;: 3516, &quot;estimatedCostUsd&quot;: 0.0008, &quot;model&quot;: &quot;gpt-4o-mini&quot;, &quot;provider&quot;: &quot;openai&quot; },
+    &quot;warnings&quot;: []
+  }
+}
+</code></pre>
+<p><code>results</code> shape:</p>
 <ul>
 <li>flat array when <code>sources</code> is not set</li>
 <li>grouped object when <code>sources</code> is set</li>
 </ul>
-<p>Flat:</p>
-<pre><code class="language-json">{
-  &quot;success&quot;: true,
-  &quot;data&quot;: [
-    {
-      &quot;url&quot;: &quot;https://example.com/article&quot;,
-      &quot;title&quot;: &quot;Article Title&quot;,
-      &quot;description&quot;: &quot;Search snippet...&quot;,
-      &quot;position&quot;: 1,
-      &quot;score&quot;: 9.5
-    }
-  ]
-}
+<p>Flat (each entry may also carry <code>markdown</code> from <code>scrapeOptions</code> and <code>summary</code> from <code>summarizeResults</code>):</p>
+<pre><code class="language-json">[
+  {
+    &quot;url&quot;: &quot;https://example.com/article&quot;,
+    &quot;title&quot;: &quot;Article Title&quot;,
+    &quot;description&quot;: &quot;Search snippet...&quot;,
+    &quot;position&quot;: 1,
+    &quot;score&quot;: 9.5,
+    &quot;markdown&quot;: &quot;# Article Title\n\n…&quot;,
+    &quot;summary&quot;: &quot;Short LLM-generated digest of this single result.&quot;
+  }
+]
 </code></pre>
 <p>Grouped:</p>
 <pre><code class="language-json">{
-  &quot;success&quot;: true,
-  &quot;data&quot;: {
-    &quot;web&quot;: [{ &quot;url&quot;: &quot;...&quot;, &quot;title&quot;: &quot;...&quot; }],
-    &quot;news&quot;: [{ &quot;url&quot;: &quot;...&quot;, &quot;title&quot;: &quot;...&quot;, &quot;publishedDate&quot;: &quot;2026-04-02T14:00:00&quot; }]
-  }
+  &quot;web&quot;: [{ &quot;url&quot;: &quot;...&quot;, &quot;title&quot;: &quot;...&quot; }],
+  &quot;news&quot;: [{ &quot;url&quot;: &quot;...&quot;, &quot;title&quot;: &quot;...&quot;, &quot;publishedDate&quot;: &quot;2026-04-02T14:00:00&quot; }]
 }
 </code></pre>
+<p><code>answer</code>, <code>citations</code>, and the top-level <code>llmUsage</code> are populated only when <code>answer: true</code> was sent. Per-result <code>summary</code> is populated only when <code>summarizeResults: true</code> was sent.</p>
 <h2>Error Envelope</h2>
 <pre><code class="language-json">{
   &quot;success&quot;: false,
