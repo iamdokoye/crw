@@ -45,12 +45,12 @@
 
 ## What's New
 
-### [0.6.3](https://github.com/us/crw/compare/v0.6.2...v0.6.3) (2026-05-12)
+### [0.6.4](https://github.com/us/crw/compare/v0.6.3...v0.6.4) (2026-05-12)
 
 
 ### Features
 
-* **map:** drop action URLs and strip tracking params (closes [#40](https://github.com/us/crw/issues/40)) ([#41](https://github.com/us/crw/issues/41)) ([6d9ed39](https://github.com/us/crw/commit/6d9ed39f67e4d92cc51ca16ccc21e451c4bb0373))
+* **renderer:** add bounded browser-context pool for Chrome tier ([#43](https://github.com/us/crw/issues/43)) ([69b4861](https://github.com/us/crw/commit/69b48610d269c37fa043bcd58855b3970f554f94))
 
 [Full changelog →](CHANGELOG.md)
 
