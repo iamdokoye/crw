@@ -84,7 +84,10 @@ pub fn debug_candidate(
     }
 }
 
+pub mod answer;
 pub mod llm;
+pub mod pricing;
+pub mod summary;
 
 /// Options for the high-level extraction pipeline.
 pub struct ExtractOptions<'a> {
@@ -448,8 +451,13 @@ pub fn extract(opts: ExtractOptions<'_>) -> CrwResult<ScrapeData> {
         (after_selection.to_string(), None)
     };
 
-    // Step 5: Produce requested formats.
-    let md = if formats.contains(&OutputFormat::Markdown) || formats.contains(&OutputFormat::Json) {
+    // Step 5: Produce requested formats. `Summary` also needs markdown
+    // internally — the summary path feeds the markdown into the LLM and then
+    // strips it from the response unless the caller also asked for markdown.
+    let md = if formats.contains(&OutputFormat::Markdown)
+        || formats.contains(&OutputFormat::Json)
+        || formats.contains(&OutputFormat::Summary)
+    {
         let primary_md = markdown::html_to_markdown(&content_html);
         let primary_quality = quality::analyze_md_only(&primary_md);
 
@@ -776,6 +784,8 @@ pub fn extract(opts: ExtractOptions<'_>) -> CrwResult<ScrapeData> {
         plain_text: plain,
         links,
         json,
+        summary: None,
+        llm_usage: None,
         chunks,
         warning: orphan_chunk_warning,
         warnings,

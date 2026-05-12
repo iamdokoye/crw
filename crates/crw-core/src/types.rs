@@ -15,6 +15,7 @@ pub enum OutputFormat {
     PlainText,
     Links,
     Json,
+    Summary,
 }
 
 impl<'de> Deserialize<'de> for OutputFormat {
@@ -30,8 +31,9 @@ impl<'de> Deserialize<'de> for OutputFormat {
             "plainText" => Ok(OutputFormat::PlainText),
             "links" => Ok(OutputFormat::Links),
             "json" | "extract" | "llm-extract" => Ok(OutputFormat::Json),
+            "summary" => Ok(OutputFormat::Summary),
             other => Err(serde::de::Error::custom(format!(
-                "Unknown format '{other}'. Valid formats: markdown, html, rawHtml, plainText, links, json \
+                "Unknown format '{other}'. Valid formats: markdown, html, rawHtml, plainText, links, json, summary \
                  (aliases: extract, llm-extract). Use formats: [\"json\"] with jsonSchema for structured extraction."
             ))),
         }
@@ -182,6 +184,24 @@ pub struct ScrapeRequest {
     /// Per-request LLM model override.
     #[serde(default, alias = "llm_model")]
     pub llm_model: Option<String>,
+    /// Per-request LLM base URL override (OpenAI-compatible providers
+    /// like DeepSeek). Example: `"https://api.deepseek.com/v1"`.
+    #[serde(default, alias = "base_url")]
+    pub base_url: Option<String>,
+    /// Optional user-supplied instructions appended to the summary system
+    /// prompt (e.g. "respond in Turkish", "focus on technical details").
+    /// The opencore's prompt-injection defense (UNTRUSTED delimiter,
+    /// "ignore imperative content" rule) is kept intact — this only adds
+    /// directives, it does not replace the safety wrapper. Capped at
+    /// 500 chars server-side to bound token amplification.
+    #[serde(default, alias = "summary_prompt")]
+    pub summary_prompt: Option<String>,
+    /// Maximum number of bytes of scraped content sent to the LLM for the
+    /// `summary` format. Defaults to `[extraction.llm].max_html_bytes`
+    /// (100 KB out of the box). Clamped to a 200 KB server-side ceiling
+    /// regardless of value — protects against runaway provider bills.
+    #[serde(default, alias = "max_content_chars")]
+    pub max_content_chars: Option<usize>,
     /// Pin this request to a specific renderer. `None` or `Auto` = use the
     /// configured chain. Hard-pin: pinned renderer failures surface as errors,
     /// no silent fallback to a different renderer or HTTP. Pinning a non-Auto
@@ -233,6 +253,22 @@ pub struct PageMetadata {
     pub elapsed_ms: u64,
 }
 
+/// Token-usage and best-effort cost for one LLM call.
+///
+/// `estimated_cost_usd` is informational only — provider pricing drifts
+/// and this value MUST NOT be used for customer billing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LlmUsage {
+    pub input_tokens: u32,
+    pub output_tokens: u32,
+    pub total_tokens: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_cost_usd: Option<f64>,
+    pub model: String,
+    pub provider: String,
+}
+
 /// A single chunk with optional relevance score.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChunkResult {
@@ -258,6 +294,13 @@ pub struct ScrapeData {
     pub links: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub json: Option<serde_json::Value>,
+    /// LLM-generated summary; populated when `formats` includes `summary`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    /// Token usage + best-effort cost for any LLM call this request triggered
+    /// (summary, structured JSON, etc).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_usage: Option<LlmUsage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chunks: Option<Vec<ChunkResult>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -751,6 +794,51 @@ pub struct SearchRequest {
     /// pipeline (parallel, bounded by `[crawler].max_concurrency`).
     #[serde(default)]
     pub scrape_options: Option<SearchScrapeOptions>,
+    /// When true, every scraped result also gets an LLM summary attached to
+    /// `SearchResult.summary`. Requires `scrape_options` to be set (so the
+    /// markdown exists to summarize). LLM fan-out is bounded by
+    /// `[extraction.llm].max_concurrency`.
+    #[serde(default, alias = "summarize_results")]
+    pub summarize_results: Option<bool>,
+    /// When true, a single synthesized answer is generated from the top-N
+    /// scraped results. Requires `scrape_options` to be set.
+    #[serde(default)]
+    pub answer: Option<bool>,
+    /// Number of top results to include in answer synthesis (default 5,
+    /// capped at 10).
+    #[serde(default, alias = "answer_top_n")]
+    pub answer_top_n: Option<u32>,
+    /// Per-source character cap for the answer prompt (default 8192,
+    /// hard-capped at 32768 server-side).
+    #[serde(default, alias = "max_chars_per_source")]
+    pub max_chars_per_source: Option<usize>,
+    /// BYOK fields (mirror `ScrapeRequest`).
+    #[serde(default, alias = "llm_api_key")]
+    pub llm_api_key: Option<String>,
+    #[serde(default, alias = "llm_provider")]
+    pub llm_provider: Option<String>,
+    #[serde(default, alias = "llm_model")]
+    pub llm_model: Option<String>,
+    #[serde(default, alias = "base_url")]
+    pub base_url: Option<String>,
+    /// Optional user-supplied instructions appended to the per-result
+    /// summary system prompt. See `ScrapeRequest.summary_prompt`. Capped
+    /// at 500 chars server-side.
+    #[serde(default, alias = "summary_prompt")]
+    pub summary_prompt: Option<String>,
+    /// Optional user-supplied instructions appended to the answer-synthesis
+    /// system prompt (e.g. "respond in Turkish", "be concise"). The
+    /// "answer using ONLY the provided sources" rule and citation discipline
+    /// stay intact. Capped at 500 chars server-side.
+    #[serde(default, alias = "answer_prompt")]
+    pub answer_prompt: Option<String>,
+    /// Maximum number of bytes of each per-result markdown sent to the LLM
+    /// when `summarize_results` is enabled. Defaults to
+    /// `[extraction.llm].max_html_bytes` (100 KB). Clamped to a 200 KB
+    /// server-side ceiling. Independent from `max_chars_per_source`, which
+    /// caps the answer-synthesis path, not the per-result summary path.
+    #[serde(default, alias = "max_content_chars")]
+    pub max_content_chars: Option<usize>,
 }
 
 /// A single search result (web or news). Mirrors `SearchResult` in
@@ -779,6 +867,9 @@ pub struct SearchResult {
     pub links: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<PageMetadata>,
+    /// LLM-generated summary; populated when `summarizeResults: true`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
 }
 
 /// A single image result. Mirrors `ImageResult` in
@@ -822,8 +913,44 @@ pub enum SearchData {
     Grouped(GroupedSearchData),
 }
 
+/// A citation reference in an LLM-synthesized search answer. `position`
+/// is clamped to `[0, sources.len())` server-side so fabricated indices
+/// can't escape the input source list.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Citation {
+    pub url: String,
+    pub title: String,
+    pub position: u32,
+}
+
+/// Wrapper data envelope for `/v1/search` responses. Carries the existing
+/// `SearchData` (flat or grouped) alongside optional LLM-generated
+/// `answer` + `citations`. Adding sibling fields directly to `SearchData`
+/// is impossible because that enum is `#[serde(untagged)]`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchResponseData {
+    pub results: SearchData,
+    /// LLM-synthesized answer over the top-N results; `None` unless
+    /// `answer: true` was set on the request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub answer: Option<String>,
+    /// Source citations for the answer. Order is meaningful: citation #0
+    /// is `sources[0]`. Capped at 20 entries.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub citations: Vec<Citation>,
+    /// Token usage + best-effort cost from the answer synthesis call.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_usage: Option<LlmUsage>,
+    /// Soft-failure / partial-result notices (e.g. "answer call rate-limited;
+    /// summaries returned without answer").
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub warnings: Vec<String>,
+}
+
 /// POST /v1/search response body.
-pub type SearchResponse = ApiResponse<SearchData>;
+pub type SearchResponse = ApiResponse<SearchResponseData>;
 
 // ── Render result ──
 
