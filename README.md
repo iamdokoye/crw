@@ -49,12 +49,12 @@
 
 ## What's New
 
-### [0.7.1](https://github.com/us/crw/compare/v0.7.0...v0.7.1) (2026-05-12)
+### [0.8.0](https://github.com/us/crw/compare/v0.7.1...v0.8.0) (2026-05-14)
 
 
-### Bug Fixes
+### Features
 
-* bump stale internal version pins to 0.7.0 ([#48](https://github.com/us/crw/issues/48)) ([0bec22a](https://github.com/us/crw/commit/0bec22a76e03f428e28281b30bb34364bf5e5edd))
+* **cli:** add interactive setup wizard ([a5613b9](https://github.com/us/crw/commit/a5613b965d3444ab0ad214b976cbf6e56747e523))
 
 [Full changelog →](CHANGELOG.md)
 
