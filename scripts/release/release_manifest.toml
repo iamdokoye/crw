@@ -27,7 +27,7 @@ crates = ["crw-crawl"]
 
 [[tiers]]
 order = 4
-crates = ["crw-server", "crw-cli"]
+crates = ["crw-server"]
 
 [[tiers]]
 order = 5
@@ -36,7 +36,7 @@ crates = ["crw-mcp"]
 [unpublished]
 # Internal binaries that don't need crates.io distribution.
 # Each must have `publish = false` in its Cargo.toml.
-crates = ["crw-browse"]
+crates = ["crw-browse", "crw-cli"]
 
 [npm]
 main_package = "crw-mcp"
