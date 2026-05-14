@@ -8,6 +8,7 @@ homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 description = "crw — Unified CLI for web scraping, crawling, search, and serving"
+publish = false
 
 [[bin]]
 name = "crw"
