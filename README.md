@@ -49,12 +49,19 @@
 
 ## What's New
 
-### [0.8.2](https://github.com/us/crw/compare/v0.8.1...v0.8.2) (2026-05-14)
+### [0.8.3](https://github.com/us/crw/compare/v0.8.2...v0.8.3) (2026-05-15)
 
 
-### Bug Fixes
+### Features
 
-* **release:** move crw-cli to unpublished and update dep versions ([7f121f6](https://github.com/us/crw/commit/7f121f6f731e7bfa311be48fa442e0049bbda16d))
+* **cli:** two-phase auto-fallback for `crw <url>` scrape ([a871e54](https://github.com/us/crw/commit/a871e544443673751974a8dc5ebb4f2b0eafd59f))
+* **setup:** make config.toml the canonical source for `crw setup` ([b07c154](https://github.com/us/crw/commit/b07c1549932399a355d30e15632d424f0ad28b85))
+
+
+### Miscellaneous
+
+* release 0.8.2 ([38ae764](https://github.com/us/crw/commit/38ae7641b44d321150febc38eda530db3d572046))
+* release 0.8.3 ([efba1b3](https://github.com/us/crw/commit/efba1b308d6ac3a5e7a5bbd3f132514bf631e86b))
 
 [Full changelog →](CHANGELOG.md)
 
