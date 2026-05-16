@@ -49,19 +49,12 @@
 
 ## What's New
 
-### [0.8.3](https://github.com/us/crw/compare/v0.8.2...v0.8.3) (2026-05-15)
+### [0.9.0](https://github.com/us/crw/compare/v0.8.3...v0.9.0) (2026-05-16)
 
 
 ### Features
 
-* **cli:** two-phase auto-fallback for `crw <url>` scrape ([a871e54](https://github.com/us/crw/commit/a871e544443673751974a8dc5ebb4f2b0eafd59f))
-* **setup:** make config.toml the canonical source for `crw setup` ([b07c154](https://github.com/us/crw/commit/b07c1549932399a355d30e15632d424f0ad28b85))
-
-
-### Miscellaneous
-
-* release 0.8.2 ([38ae764](https://github.com/us/crw/commit/38ae7641b44d321150febc38eda530db3d572046))
-* release 0.8.3 ([efba1b3](https://github.com/us/crw/commit/efba1b308d6ac3a5e7a5bbd3f132514bf631e86b))
+* **cli:** add AI extraction flags and `crw setup --reset` ([912eea0](https://github.com/us/crw/commit/912eea0a1fa0db5a838560f2c25da44b3ee33d44))
 
 [Full changelog →](CHANGELOG.md)
 
