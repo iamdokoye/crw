@@ -98,6 +98,21 @@
         },
         {
           "type": "toml",
+          "path": "crates/crw-cli/Cargo.toml",
+          "jsonpath": "$.dependencies.crw-search.version"
+        },
+        {
+          "type": "toml",
+          "path": "crates/crw-cli/Cargo.toml",
+          "jsonpath": "$.dependencies.crw-server.version"
+        },
+        {
+          "type": "toml",
+          "path": "crates/crw-cli/Cargo.toml",
+          "jsonpath": "$.dependencies.crw-browse.version"
+        },
+        {
+          "type": "toml",
           "path": "crates/crw-mcp/Cargo.toml",
           "jsonpath": "$.dependencies.crw-core.version"
         },

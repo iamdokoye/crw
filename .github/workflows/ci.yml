@@ -36,6 +36,9 @@ jobs:
       - name: No unguarded exit in browser-spawning code
         run: bash scripts/check-no-process-exit.sh
 
+      - name: Internal dependency versions match workspace version
+        run: bash scripts/check-internal-dep-versions.sh
+
       - name: Build
         run: cargo build --workspace --all-targets
 
