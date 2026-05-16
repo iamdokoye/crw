@@ -33,6 +33,9 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      - name: No unguarded exit in browser-spawning code
+        run: bash scripts/check-no-process-exit.sh
+
       - name: Build
         run: cargo build --workspace --all-targets
 

@@ -19,9 +19,11 @@
 //! ```
 
 mod commands;
+mod teardown;
 
 use clap::{Parser, Subcommand};
 use commands::scrape::Format;
+use teardown::{CmdError, finish, install_signal_teardown};
 
 #[derive(Parser)]
 #[command(
@@ -80,6 +82,42 @@ struct Cli {
     /// Enable stealth mode
     #[arg(long)]
     stealth: bool,
+
+    /// Generate an AI summary of the page using the configured LLM
+    #[arg(long, conflicts_with = "extract")]
+    summary: bool,
+
+    /// Style/format hint for --summary (e.g. "in 3 bullet points")
+    #[arg(long, value_name = "TEXT", requires = "summary")]
+    prompt: Option<String>,
+
+    /// Extract structured data using a JSON Schema (inline JSON or @path/to/schema.json)
+    #[arg(long, value_name = "SCHEMA")]
+    extract: Option<String>,
+
+    /// Override LLM provider for this request (anthropic, openai, deepseek, azure, openrouter)
+    #[arg(long, value_name = "NAME")]
+    llm_provider: Option<String>,
+
+    /// Override LLM API key for this request
+    #[arg(long, value_name = "KEY")]
+    llm_key: Option<String>,
+
+    /// Override LLM model for this request
+    #[arg(long, value_name = "MODEL")]
+    llm_model: Option<String>,
+
+    /// Override LLM base URL (for OpenAI-compatible or Azure endpoints)
+    #[arg(long, value_name = "URL")]
+    llm_base_url: Option<String>,
+
+    /// Shortcut for `crw setup --reset` — wipe config.toml, sentinel, and shell blocks.
+    #[arg(long, conflicts_with_all = ["command", "url"])]
+    reset: bool,
+
+    /// Skip confirmation prompt for `--reset`.
+    #[arg(long, requires = "reset")]
+    yes: bool,
 }
 
 #[derive(Subcommand)]
@@ -113,37 +151,70 @@ enum Commands {
 async fn main() {
     let cli = Cli::parse();
 
-    match cli.command {
+    // Top-level `--reset` shortcut → delegate to `setup --reset`.
+    if cli.reset {
+        let args = commands::setup::SetupArgs {
+            non_interactive: false,
+            cloud: false,
+            local: false,
+            no_color: false,
+            reset_shell: false,
+            reset: true,
+            yes: cli.yes,
+        };
+        commands::setup::run(args).await;
+        return;
+    }
+
+    // Browser-using commands route through one consolidated exit
+    // (`finish`) so `kill_all_browsers()` runs exactly once on every path.
+    // The signal teardown task is installed *before* their `run()` (and
+    // therefore before any browser spawn inside it). Non-browser commands
+    // (search/serve/setup) keep their own lifecycle and own no browser.
+    let result: Result<(), CmdError> = match cli.command {
         Some(Commands::Scrape(args)) => {
-            commands::scrape::run(args).await;
+            install_signal_teardown();
+            commands::scrape::run(args).await
         }
         Some(Commands::Search(args)) => {
             commands::search::run(args).await;
+            Ok(())
         }
         Some(Commands::Crawl(args)) => {
-            commands::crawl::run(args).await;
+            install_signal_teardown();
+            commands::crawl::run(args).await
         }
         Some(Commands::Map(args)) => {
-            commands::map::run(args).await;
+            install_signal_teardown();
+            commands::map::run(args).await
         }
         Some(Commands::Serve(args)) => {
             commands::serve::run(args).await;
+            Ok(())
         }
         Some(Commands::Mcp(args)) => {
-            commands::mcp::run(args).await;
+            install_signal_teardown();
+            commands::mcp::run(args).await
         }
         Some(Commands::Browse(args)) => {
             if let Err(e) = commands::browse::run(args).await {
                 eprintln!("error: {e}");
-                std::process::exit(1);
+                // browse connects to an external ws_url and owns no
+                // ManagedBrowser, so there is no registry teardown to run.
+                std::process::exit(1); // teardown-exit-ok
             }
+            Ok(())
         }
         Some(Commands::Setup(args)) => {
             commands::setup::run(args).await;
+            Ok(())
         }
         None => {
-            // Default mode: scrape (backwards compatible)
+            // Default mode: scrape (backwards compatible). This is the most
+            // common invocation (`crw example.com --js`) — it must route
+            // through the same teardown wrapper as the explicit Scrape arm.
             if let Some(url) = cli.url {
+                install_signal_teardown();
                 let args = commands::scrape::ScrapeArgs {
                     url,
                     format: cli.format.unwrap_or(Format::Markdown),
@@ -154,14 +225,24 @@ async fn main() {
                     xpath: cli.xpath,
                     proxy: cli.proxy,
                     stealth: cli.stealth,
+                    summary: cli.summary,
+                    prompt: cli.prompt,
+                    extract: cli.extract,
+                    llm_provider: cli.llm_provider,
+                    llm_key: cli.llm_key,
+                    llm_model: cli.llm_model,
+                    llm_base_url: cli.llm_base_url,
                 };
-                commands::scrape::run(args).await;
+                commands::scrape::run(args).await
             } else {
                 // No URL provided — show help
                 use clap::CommandFactory;
                 Cli::command().print_help().unwrap();
                 println!();
+                Ok(())
             }
         }
-    }
+    };
+
+    finish(result);
 }

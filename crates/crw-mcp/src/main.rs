@@ -26,11 +26,14 @@
 //! crw-mcp --api-url https://fastcrw.com/api --api-key fc-xxx
 //! ```
 
+mod teardown;
+
 use clap::Parser;
 use crw_core::mcp::{
     JsonRpcRequest, JsonRpcResponse, ProtocolResult, handle_protocol_method, tool_result_response,
 };
 use serde_json::{Value, json};
+use teardown::{CmdError, finish, install_signal_teardown};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 #[cfg(feature = "embedded")]
@@ -258,6 +261,14 @@ async fn main() {
         )
         .init();
 
+    // Install the signal teardown task *before* any browser spawn inside
+    // `run()`, then route every exit (Ok/Err/signal/EOF) through `finish`
+    // so `kill_all_browsers()` runs exactly once.
+    install_signal_teardown();
+    finish(run().await);
+}
+
+async fn run() -> Result<(), CmdError> {
     let cli = Cli::parse();
 
     // Resolve api_url / api_key with the standard precedence chain:
@@ -351,7 +362,7 @@ async fn main() {
                 Ok(s) => s,
                 Err(e) => {
                     tracing::error!("Failed to build application state: {e}");
-                    std::process::exit(1);
+                    return Err(CmdError::code_only(1));
                 }
             };
 
@@ -361,7 +372,7 @@ async fn main() {
 
             // Drop browser guards explicitly (kills browser processes).
             drop(_browser_guards);
-            return;
+            return Ok(());
         }
 
         #[cfg(not(feature = "embedded"))]
@@ -370,11 +381,12 @@ async fn main() {
                 "Embedded mode not available (compiled without 'embedded' feature). \
                  Use --api-url to connect to a remote CRW server."
             );
-            std::process::exit(1);
+            return Err(CmdError::code_only(1));
         }
     };
 
     run_stdio_loop(backend).await;
+    Ok(())
 }
 
 async fn run_stdio_loop(backend: Backend) {

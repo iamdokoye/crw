@@ -1,5 +1,6 @@
 //! Scrape subcommand — fetch a single URL and extract content.
 
+use crate::teardown::CmdError;
 use clap::{Args, ValueEnum};
 use crw_core::config::{RendererConfig, RendererMode, StealthConfig};
 use crw_core::types::{OutputFormat, ScrapeRequest};
@@ -54,12 +55,47 @@ pub struct ScrapeArgs {
     /// Enable stealth mode (rotate user agents, inject browser headers)
     #[arg(long)]
     pub stealth: bool,
+
+    /// Generate an AI summary of the page using the configured LLM.
+    #[arg(long, conflicts_with = "extract")]
+    pub summary: bool,
+
+    /// Style/format hint for --summary (e.g. "in 3 bullet points", "as a haiku").
+    #[arg(long, value_name = "TEXT", requires = "summary")]
+    pub prompt: Option<String>,
+
+    /// Extract structured data using a JSON Schema.
+    /// Accepts inline JSON or @path/to/schema.json.
+    #[arg(long, value_name = "SCHEMA")]
+    pub extract: Option<String>,
+
+    /// Override LLM provider for this request (anthropic, openai, deepseek, azure, openrouter).
+    #[arg(long, value_name = "NAME")]
+    pub llm_provider: Option<String>,
+
+    /// Override LLM API key for this request.
+    #[arg(long, value_name = "KEY")]
+    pub llm_key: Option<String>,
+
+    /// Override LLM model for this request.
+    #[arg(long, value_name = "MODEL")]
+    pub llm_model: Option<String>,
+
+    /// Override LLM base URL (for OpenAI-compatible or Azure endpoints).
+    #[arg(long, value_name = "URL")]
+    pub llm_base_url: Option<String>,
 }
 
-pub async fn run(mut args: ScrapeArgs) {
+pub async fn run(mut args: ScrapeArgs) -> Result<(), CmdError> {
     // Auto-prepend https:// if no scheme is provided
     if !args.url.contains("://") {
         args.url = format!("https://{}", args.url);
+    }
+
+    // First-run nudge for plain scrapes only. AI modes already prompt
+    // interactively when there's no config, so we'd be doubling up.
+    if !args.summary && args.extract.is_none() {
+        maybe_show_first_run_hint();
     }
 
     let stealth_config = StealthConfig {
@@ -68,23 +104,130 @@ pub async fn run(mut args: ScrapeArgs) {
         ..Default::default()
     };
 
-    // For JSON output, we serialize the full ScrapeData — not LLM structured extraction.
-    // Request all formats we might need for the output.
-    let request_formats = match args.format {
-        Format::Markdown => vec![OutputFormat::Markdown],
-        Format::Json => vec![
-            OutputFormat::Markdown,
-            OutputFormat::Html,
-            OutputFormat::Links,
-        ],
-        Format::Html => vec![OutputFormat::Html],
-        Format::Rawhtml => vec![OutputFormat::RawHtml],
-        Format::Text => vec![OutputFormat::PlainText],
-        Format::Links => vec![OutputFormat::Links],
+    // Load app config (config.toml) so we can pick up the user's LLM setup from `crw setup`.
+    let app_config = crw_core::config::AppConfig::load().unwrap_or_default();
+    let mut cli_extraction_cfg = app_config.extraction.clone();
+    let env_cdp_url = std::env::var("CRW_CDP_URL").ok();
+
+    // --extract: inline JSON or `@path/to/schema.json`.
+    let extract_schema: Option<serde_json::Value> = match args.extract.as_deref() {
+        Some(s) if s.starts_with('@') => {
+            let path = &s[1..];
+            match std::fs::read_to_string(path) {
+                Ok(body) => match serde_json::from_str(&body) {
+                    Ok(v) => Some(v),
+                    Err(e) => {
+                        eprintln!("error: invalid JSON in {path}: {e}");
+                        return Err(CmdError::code_only(1));
+                    }
+                },
+                Err(e) => {
+                    eprintln!("error: failed to read {path}: {e}");
+                    return Err(CmdError::code_only(1));
+                }
+            }
+        }
+        Some(s) => match serde_json::from_str(s) {
+            Ok(v) => Some(v),
+            Err(e) => {
+                eprintln!(
+                    "error: --extract is not valid JSON: {e}\n\
+                     hint: use @path/to/schema.json for files"
+                );
+                return Err(CmdError::code_only(1));
+            }
+        },
+        None => None,
     };
 
-    let cli_extraction_cfg = crw_core::config::ExtractionConfig::default();
-    let env_cdp_url = std::env::var("CRW_CDP_URL").ok();
+    let want_summary = args.summary;
+    let want_extract = extract_schema.is_some();
+
+    // Resolve effective LlmConfig: config-first, CLI overrides per-field.
+    if want_summary || want_extract {
+        let merged = match cli_extraction_cfg.llm.clone() {
+            Some(mut cfg) => {
+                if let Some(p) = args.llm_provider.clone() {
+                    cfg.provider = p;
+                }
+                if let Some(k) = args.llm_key.clone() {
+                    cfg.api_key = k;
+                }
+                if let Some(m) = args.llm_model.clone() {
+                    cfg.model = m;
+                }
+                if args.llm_base_url.is_some() {
+                    cfg.base_url = args.llm_base_url.clone();
+                }
+                Some(cfg)
+            }
+            None => {
+                // No config — need at minimum provider + key + model on the CLI.
+                match (
+                    args.llm_provider.clone(),
+                    args.llm_key.clone(),
+                    args.llm_model.clone(),
+                ) {
+                    (Some(provider), Some(api_key), Some(model)) => {
+                        Some(crw_core::config::LlmConfig {
+                            provider,
+                            api_key,
+                            model,
+                            base_url: args.llm_base_url.clone(),
+                            ..Default::default()
+                        })
+                    }
+                    _ => None,
+                }
+            }
+        };
+        let merged = match merged {
+            Some(cfg) => Some(cfg),
+            None => match run_inline_llm_setup().await {
+                Ok(Some(cfg)) => Some(cfg),
+                Ok(None) => {
+                    eprintln!("Cancelled. --summary/--extract requires an LLM.");
+                    return Err(CmdError::code_only(1));
+                }
+                Err(e) => {
+                    eprintln!("error: LLM setup failed: {e}");
+                    eprintln!(
+                        "hint: run `crw setup` to configure manually, \
+                         or pass --llm-provider/--llm-key/--llm-model."
+                    );
+                    return Err(CmdError::code_only(1));
+                }
+            },
+        };
+        cli_extraction_cfg.llm = merged;
+    }
+
+    // Request all formats we might need for the output.
+    // When --summary/--extract is set, AI output formats are requested and `--format`
+    // is ignored; we still include Markdown so phase 1 thinness detection works.
+    let request_formats = if want_summary || want_extract {
+        let mut v = vec![OutputFormat::Markdown];
+        if want_summary {
+            v.push(OutputFormat::Summary);
+        }
+        if want_extract {
+            v.push(OutputFormat::Json);
+        }
+        v
+    } else {
+        match args.format {
+            Format::Markdown => vec![OutputFormat::Markdown],
+            Format::Json => vec![
+                OutputFormat::Markdown,
+                OutputFormat::Html,
+                OutputFormat::Links,
+            ],
+            Format::Html => vec![OutputFormat::Html],
+            Format::Rawhtml => vec![OutputFormat::RawHtml],
+            Format::Text => vec![OutputFormat::PlainText],
+            Format::Links => vec![OutputFormat::Links],
+        }
+    };
 
     // Two-phase fetch when `--js` is *not* explicitly set: try HTTP-only first
     // (no browser spawn cost), then escalate to a JS-capable renderer only if
@@ -116,6 +259,8 @@ pub async fn run(mut args: ScrapeArgs) {
             args.xpath.clone(),
             args.proxy.clone(),
             args.stealth,
+            args.prompt.clone(),
+            extract_schema.clone(),
         );
 
         let http_renderer = match FallbackRenderer::new(
@@ -127,7 +272,7 @@ pub async fn run(mut args: ScrapeArgs) {
             Ok(r) => Arc::new(r),
             Err(e) => {
                 eprintln!("error: failed to build renderer: {e}");
-                std::process::exit(1);
+                return Err(CmdError::code_only(1));
             }
         };
 
@@ -135,7 +280,7 @@ pub async fn run(mut args: ScrapeArgs) {
         match scrape_url(
             &req,
             &http_renderer,
-            None,
+            cli_extraction_cfg.llm.as_ref(),
             &cli_extraction_cfg,
             "crw/0.7.0",
             args.stealth,
@@ -153,6 +298,8 @@ pub async fn run(mut args: ScrapeArgs) {
                 // the threshold and trigger pointless JS spawns.
                 let can_escalate = args.css.is_none()
                     && args.xpath.is_none()
+                    && !want_summary
+                    && !want_extract
                     && matches!(args.format, Format::Markdown | Format::Json);
                 let markdown_len = d.markdown.as_deref().map(str::len).unwrap_or(0);
                 let html_text_len = d
@@ -233,7 +380,7 @@ pub async fn run(mut args: ScrapeArgs) {
             Ok(r) => Arc::new(r),
             Err(e) => {
                 eprintln!("error: failed to build renderer: {e}");
-                std::process::exit(1);
+                return Err(CmdError::code_only(1));
             }
         };
 
@@ -246,6 +393,8 @@ pub async fn run(mut args: ScrapeArgs) {
             args.xpath,
             args.proxy.clone(),
             args.stealth,
+            args.prompt,
+            extract_schema,
         );
 
         // Size the request deadline so the configured renderer ladder
@@ -265,7 +414,7 @@ pub async fn run(mut args: ScrapeArgs) {
         match scrape_url(
             &req,
             &renderer,
-            None,
+            cli_extraction_cfg.llm.as_ref(),
             &cli_extraction_cfg,
             "crw/0.7.0",
             args.stealth,
@@ -277,7 +426,7 @@ pub async fn run(mut args: ScrapeArgs) {
             Ok(d) => data = Some(d),
             Err(e) => {
                 eprintln!("error: {e}");
-                std::process::exit(1);
+                return Err(CmdError::code_only(1));
             }
         }
     }
@@ -287,13 +436,46 @@ pub async fn run(mut args: ScrapeArgs) {
     // through the whole fetch + parse pipeline.
     drop(keep_alive_guards);
 
+    // AI output paths short-circuit `--format`. The backend populates
+    // `data.summary` / `data.json` when those OutputFormats are requested.
+    if want_summary {
+        let summary = data.summary.clone().unwrap_or_default();
+        match args.output {
+            Some(path) => {
+                if let Err(e) = std::fs::write(&path, &summary) {
+                    eprintln!("error: failed to write to {path}: {e}");
+                    return Err(CmdError::code_only(1));
+                }
+            }
+            None => print!("{summary}"),
+        }
+        return Ok(());
+    }
+    if want_extract {
+        let json = data
+            .json
+            .as_ref()
+            .map(|v| serde_json::to_string_pretty(v).unwrap_or_default())
+            .unwrap_or_default();
+        match args.output {
+            Some(path) => {
+                if let Err(e) = std::fs::write(&path, &json) {
+                    eprintln!("error: failed to write to {path}: {e}");
+                    return Err(CmdError::code_only(1));
+                }
+            }
+            None => println!("{json}"),
+        }
+        return Ok(());
+    }
+
     let content = match args.format {
         Format::Markdown => data.markdown.unwrap_or_default(),
         Format::Json => match serde_json::to_string_pretty(&data) {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("error: failed to serialize JSON: {e}");
-                std::process::exit(1);
+                return Err(CmdError::code_only(1));
             }
         },
         Format::Html => data.html.unwrap_or_default(),
@@ -306,11 +488,104 @@ pub async fn run(mut args: ScrapeArgs) {
         Some(path) => {
             if let Err(e) = std::fs::write(&path, &content) {
                 eprintln!("error: failed to write to {path}: {e}");
-                std::process::exit(1);
+                return Err(CmdError::code_only(1));
             }
         }
         None => print!("{content}"),
     }
+    Ok(())
+}
+
+/// Print a one-line nudge to run `crw setup` the first time someone scrapes
+/// without a config.toml. Idempotent across runs via a dotfile sentinel so
+/// long-time CLI-only users (who never want setup) don't get nagged.
+fn maybe_show_first_run_hint() {
+    let Some(cfg_path) = crw_core::config::user_config_path() else {
+        return;
+    };
+    if cfg_path.exists() {
+        return;
+    }
+    let sentinel = cfg_path.with_file_name(".first-run-hint-shown");
+    if sentinel.exists() {
+        return;
+    }
+    eprintln!();
+    eprintln!(
+        "  Tip: run `crw setup` to enable AI features (--summary, --extract) and SearXNG search."
+    );
+    eprintln!();
+    if let Some(parent) = sentinel.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::File::create(&sentinel);
+}
+
+/// Triggered when the user invokes `--summary` / `--extract` but no LLM is
+/// configured. Asks once whether to set one up now; on yes, runs the same
+/// interactive flow `crw setup` uses, writes the result to config.toml so it
+/// sticks across runs, and returns the resolved `LlmConfig` to continue the
+/// in-flight request.
+async fn run_inline_llm_setup()
+-> Result<Option<crw_core::config::LlmConfig>, crate::commands::setup::ui::SetupError> {
+    use crate::commands::setup::config_file::{
+        ExtractionSection, LlmSection, UserConfig, write_user_config,
+    };
+    use crate::commands::setup::{llm, ui};
+    use dialoguer::{Confirm, theme::ColorfulTheme};
+
+    ui::init_color(false);
+    println!();
+    println!(
+        "  --summary / --extract requires an LLM, but none is configured in \
+         ~/.config/crw/config.toml."
+    );
+    let confirm = Confirm::with_theme(&ColorfulTheme::default())
+        .with_prompt("Configure one now?")
+        .default(true)
+        .interact()
+        .map_err(ui::handle_dialoguer_error)?;
+    if !confirm {
+        return Ok(None);
+    }
+
+    let result = match llm::run().await? {
+        Some(r) => r,
+        None => return Ok(None), // user picked "Skip" in the provider list
+    };
+
+    // Persist to config.toml so the next `crw … --summary` just works.
+    let user_cfg = UserConfig {
+        client: None,
+        search: None,
+        extraction: Some(ExtractionSection {
+            llm: Some(LlmSection {
+                provider: Some(result.provider.config_value().to_string()),
+                api_key: Some(result.api_key.clone()),
+                model: Some(result.model.clone()),
+                base_url: result.base_url.clone(),
+                azure_api_version: result.azure_api_version.clone(),
+            }),
+        }),
+    };
+    match write_user_config(user_cfg) {
+        Ok(path) => {
+            ui::print_success(&format!("Saved to {}", path.display()));
+        }
+        Err(e) => {
+            // Don't bail — we can still run this one request with what we have.
+            eprintln!("warning: failed to save config.toml: {e}");
+        }
+    }
+
+    Ok(Some(crw_core::config::LlmConfig {
+        provider: result.provider.config_value().to_string(),
+        api_key: result.api_key,
+        model: result.model,
+        base_url: result.base_url,
+        azure_api_version: result.azure_api_version,
+        ..Default::default()
+    }))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -323,7 +598,12 @@ fn build_request(
     xpath: Option<String>,
     proxy: Option<String>,
     stealth: bool,
+    summary_prompt: Option<String>,
+    extract_schema: Option<serde_json::Value>,
 ) -> ScrapeRequest {
+    let extract = extract_schema
+        .clone()
+        .map(|s| crw_core::types::ExtractOptions { schema: Some(s) });
     ScrapeRequest {
         url,
         formats,
@@ -332,7 +612,7 @@ fn build_request(
         wait_for: None,
         include_tags: vec![],
         exclude_tags: vec![],
-        json_schema: None,
+        json_schema: extract_schema,
         headers: HashMap::new(),
         css_selector: css,
         xpath,
@@ -343,12 +623,12 @@ fn build_request(
         proxy,
         stealth: if stealth { Some(true) } else { None },
         actions: None,
-        extract: None,
+        extract,
         llm_api_key: None,
         llm_provider: None,
         llm_model: None,
         base_url: None,
-        summary_prompt: None,
+        summary_prompt,
         max_content_chars: None,
         renderer: None,
         deadline_ms: None,

@@ -89,6 +89,10 @@ url = { version = "2", features = ["serde"] }
 sha2 = "0.10"
 hex = "0.4"
 
+# Unix process-group kill (browser teardown). Unix-only; already present
+# transitively. Used by crw-renderer's BROWSER_PGIDS group-kill registry.
+libc = "0.2"
+
 # Compile-time perfect-hash sets (url_filter deny-lists)
 phf = { version = "0.11", features = ["macros"] }
 

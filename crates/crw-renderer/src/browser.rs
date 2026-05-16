@@ -7,10 +7,91 @@
 //!
 //! The spawned process/container is automatically cleaned up on drop.
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::process::Stdio;
+use std::sync::{LazyLock, Mutex};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
+
+/// Process-group IDs of every browser we spawned. Each native browser is
+/// spawned with `process_group(0)`, making it its own group leader, so the
+/// pgid equals the child PID. Group-killing the pgid reaps the browser plus
+/// every grandchild (Chrome zygote/renderers, LightPanda helpers) that a
+/// direct-PID `start_kill()` would miss (rust-lang/rust#115241).
+///
+/// This registry is the only thing robust to `process::exit`/signal — the
+/// dominant leak cause — because it does not depend on `Drop` running.
+static BROWSER_PGIDS: LazyLock<Mutex<HashSet<i32>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
+
+/// Lock the registry, recovering from a poisoned mutex. A panic in one
+/// teardown path must not cascade-abort the others.
+#[cfg(unix)]
+fn lock_pgids() -> std::sync::MutexGuard<'static, HashSet<i32>> {
+    BROWSER_PGIDS.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Register a freshly-spawned child's process group. Returns the pgid to
+/// store on the guard, or `None` if the child already exited (no panic).
+#[cfg(unix)]
+fn register_child(child: &Child) -> Option<i32> {
+    let pgid = child.id()? as i32;
+    lock_pgids().insert(pgid);
+    tracing::debug!(pgid, "registered browser process group");
+    Some(pgid)
+}
+
+#[cfg(not(unix))]
+fn register_child(_child: &Child) -> Option<i32> {
+    None
+}
+
+/// Drop a pgid from the registry the moment its group leader is reaped, so
+/// the set does not hold stale pgids across a normal browser lifetime
+/// (PID-reuse mitigation).
+#[cfg(unix)]
+fn deregister_pgid(pgid: i32) {
+    lock_pgids().remove(&pgid);
+    tracing::debug!(pgid, "deregistered browser process group");
+}
+
+/// SIGKILL every still-registered browser process group. Idempotent and
+/// safe to call from a signal/teardown path or `Drop`. Drains under the
+/// lock then kills lock-free so a re-entrant signal cannot deadlock on the
+/// registry mutex.
+#[cfg(unix)]
+pub fn kill_all_browsers() {
+    let pgids: Vec<i32> = {
+        let mut set = lock_pgids();
+        set.drain().collect()
+    };
+    let total = pgids.len();
+    let mut killed = 0usize;
+    let mut already_gone = 0usize;
+    for pgid in pgids {
+        // SAFETY: killpg is async-signal-safe. The residual race (leader
+        // reaped + pgid reused between drain and killpg) is a documented,
+        // accepted rare trade-off (see plan Open Questions).
+        if unsafe { libc::killpg(pgid, libc::SIGKILL) } == 0 {
+            killed += 1;
+        } else {
+            already_gone += 1;
+        }
+    }
+    if total > 0 {
+        tracing::info!(
+            registered = total,
+            killed,
+            already_gone,
+            "kill_all_browsers: reaped browser process groups"
+        );
+    }
+}
+
+/// No-op on non-Unix: process groups / `killpg` are Unix-only. Browsers
+/// degrade to `kill_on_drop(true)` (documented).
+#[cfg(not(unix))]
+pub fn kill_all_browsers() {}
 
 /// A managed browser process or Docker container.
 /// Automatically cleaned up when dropped.
@@ -19,8 +100,10 @@ pub struct ManagedBrowser {
 }
 
 enum BrowserKind {
-    /// A native process (LightPanda binary or Chrome).
-    Process(Child),
+    /// A native process (LightPanda binary or Chrome). `pgid` is the
+    /// process-group id registered in `BROWSER_PGIDS` (`None` if the child
+    /// had already exited at spawn time, or on non-Unix).
+    Process { child: Child, pgid: Option<i32> },
     /// A Docker container, identified by its container ID.
     Docker(String),
 }
@@ -28,8 +111,24 @@ enum BrowserKind {
 impl Drop for ManagedBrowser {
     fn drop(&mut self) {
         match &mut self.kind {
-            BrowserKind::Process(child) => {
+            BrowserKind::Process { child, pgid } => {
+                #[cfg(unix)]
+                if let Some(pg) = *pgid {
+                    // SAFETY: killpg is async-signal-safe. Group-kill first
+                    // so Chrome zygote/renderers + LightPanda helpers die,
+                    // not just the direct child PID.
+                    unsafe { libc::killpg(pg, libc::SIGKILL) };
+                    deregister_pgid(pg);
+                }
+                #[cfg(not(unix))]
+                let _ = pgid;
                 let _ = child.start_kill();
+                // Exactly one non-blocking reap attempt — never block a
+                // tokio worker (no loop, no sleep, never `wait()`). Full
+                // zombie reaping for the rare long-lived-parent case is
+                // offloaded to the teardown path; short-lived CLI runs are
+                // reaped by the OS on process exit.
+                let _ = child.try_wait();
             }
             BrowserKind::Docker(container_id) => {
                 // Best-effort stop + remove. Fire-and-forget.
@@ -193,27 +292,36 @@ async fn try_lightpanda_native() -> Option<(ManagedBrowser, String)> {
     let port = find_available_port()?;
     let port_str = port.to_string();
 
-    let child = Command::new(&bin)
-        .args(["serve", "--host", "127.0.0.1", "--port", &port_str])
+    let mut cmd = Command::new(&bin);
+    cmd.args(["serve", "--host", "127.0.0.1", "--port", &port_str])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .kill_on_drop(true)
+        .kill_on_drop(true);
+    // Own process group: a group-kill reaps any LightPanda helper procs,
+    // and detaching from crw's terminal group means Ctrl-C is delivered
+    // by the teardown task, not twice. (Must ship with Phase 2 teardown.)
+    #[cfg(unix)]
+    cmd.process_group(0);
+    let child = cmd
         .spawn()
         .map_err(|e| tracing::warn!("Failed to spawn LightPanda: {e}"))
         .ok()?;
 
+    // Register the pgid BEFORE readiness polling — there is a real leak
+    // window if Ctrl-C lands during the 5s poll. Build the guard now so a
+    // poll failure drops it (→ killpg + deregister) instead of orphaning.
+    let pgid = register_child(&child);
+    let guard = ManagedBrowser {
+        kind: BrowserKind::Process { child, pgid },
+    };
+
     // LightPanda doesn't print a WS URL to stderr like Chrome does.
     // Poll /json/version until it's ready (up to 5 seconds).
-    let ws_url = poll_cdp_endpoint(port, 5).await?;
+    let ws_url = poll_cdp_endpoint(port, 5).await?; // guard drops on None
     tracing::info!("LightPanda CDP endpoint: {ws_url}");
 
-    Some((
-        ManagedBrowser {
-            kind: BrowserKind::Process(child),
-        },
-        ws_url,
-    ))
+    Some((guard, ws_url))
 }
 
 // --- LightPanda Docker ---
@@ -330,31 +438,39 @@ async fn try_chrome_native() -> Option<(ManagedBrowser, String)> {
     let bin = find_chrome()?;
     tracing::info!("Auto-detected Chrome: {bin}");
 
-    let mut child = Command::new(&bin)
-        .args([
-            "--headless",
-            "--disable-gpu",
-            "--no-sandbox",
-            "--disable-dev-shm-usage",
-            "--remote-debugging-port=0",
-            "--remote-allow-origins=*",
-        ])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true)
+    let mut cmd = Command::new(&bin);
+    cmd.args([
+        "--headless",
+        "--disable-gpu",
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--remote-debugging-port=0",
+        "--remote-allow-origins=*",
+    ])
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+    .stderr(Stdio::piped())
+    .kill_on_drop(true);
+    // Own process group so a group-kill reaps Chrome's zygote + renderer
+    // children, not just the parent PID (rust-lang/rust#115241).
+    #[cfg(unix)]
+    cmd.process_group(0);
+    let mut child = cmd
         .spawn()
         .map_err(|e| tracing::warn!("Failed to spawn Chrome: {e}"))
         .ok()?;
 
-    let ws_url = read_ws_url_from_stderr(&mut child).await?;
+    // Take stderr before moving `child` into the guard; register the pgid
+    // BEFORE reading the WS URL so a Ctrl-C during startup still reaps it.
+    let stderr = child.stderr.take()?;
+    let pgid = register_child(&child);
+    let guard = ManagedBrowser {
+        kind: BrowserKind::Process { child, pgid },
+    };
+
+    let ws_url = read_ws_url_from_stderr(stderr).await?; // guard drops on None
     tracing::info!("Chrome CDP endpoint: {ws_url}");
-    Some((
-        ManagedBrowser {
-            kind: BrowserKind::Process(child),
-        },
-        ws_url,
-    ))
+    Some((guard, ws_url))
 }
 
 // --- Shared helpers ---
@@ -384,10 +500,9 @@ async fn poll_cdp_endpoint(port: u16, timeout_secs: u64) -> Option<String> {
     None
 }
 
-/// Read the WebSocket URL from a browser's stderr output.
+/// Read the WebSocket URL from a browser's stderr pipe.
 /// Chrome prints "DevTools listening on ws://...", LightPanda prints "Listening on ws://...".
-async fn read_ws_url_from_stderr(child: &mut Child) -> Option<String> {
-    let stderr = child.stderr.take()?;
+async fn read_ws_url_from_stderr(stderr: tokio::process::ChildStderr) -> Option<String> {
     let mut reader = BufReader::new(stderr).lines();
 
     tokio::time::timeout(std::time::Duration::from_secs(10), async {

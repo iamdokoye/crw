@@ -28,6 +28,9 @@ cargo fmt --all -- --check 2>&1 || fail "Formatting check failed. Run 'cargo fmt
 info "Running clippy..."
 cargo clippy --workspace --all-targets -- -D warnings 2>&1 || fail "Clippy found warnings. Fix them before committing."
 
+info "Checking browser-teardown exit guard..."
+bash scripts/check-no-process-exit.sh 2>&1 || fail "Unguarded exit in browser-spawning code. Return Err(CmdError) instead."
+
 info "Running tests..."
 cargo test --workspace 2>&1 || fail "Tests failed. Fix them before committing."
 

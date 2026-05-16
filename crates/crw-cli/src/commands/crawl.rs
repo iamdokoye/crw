@@ -4,6 +4,7 @@
 //! For full async crawl jobs with status polling, use `crw serve`.
 
 use crate::commands::scrape::Format;
+use crate::teardown::CmdError;
 use clap::Args;
 use crw_core::config::{RendererConfig, RendererMode, StealthConfig};
 use crw_core::types::{CrawlRequest, CrawlState, CrawlStatus, OutputFormat};
@@ -59,7 +60,7 @@ pub struct CrawlArgs {
     pub timeout: u64,
 }
 
-pub async fn run(mut args: CrawlArgs) {
+pub async fn run(mut args: CrawlArgs) -> Result<(), CmdError> {
     // Auto-prepend https:// if no scheme is provided
     if !args.url.contains("://") {
         args.url = format!("https://{}", args.url);
@@ -114,7 +115,7 @@ pub async fn run(mut args: CrawlArgs) {
         Ok(r) => Arc::new(r),
         Err(e) => {
             eprintln!("error: failed to build renderer: {e}");
-            std::process::exit(1);
+            return Err(CmdError::code_only(1));
         }
     };
 
@@ -214,11 +215,12 @@ pub async fn run(mut args: CrawlArgs) {
                 } else {
                     eprintln!("error: crawl failed");
                 }
-                std::process::exit(1);
+                return Err(CmdError::code_only(1));
             }
             CrawlStatus::InProgress => {}
         }
     }
 
     crawl_handle.await.ok();
+    Ok(())
 }

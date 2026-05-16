@@ -1,5 +1,6 @@
 //! Map subcommand — discover URLs on a website via sitemap and crawling.
 
+use crate::teardown::CmdError;
 use clap::{Args, ValueEnum};
 use crw_core::config::{RendererConfig, RendererMode, StealthConfig};
 use crw_crawl::crawl::{DiscoverOptions, discover_urls};
@@ -60,7 +61,7 @@ pub struct MapArgs {
     pub timeout: u64,
 }
 
-pub async fn run(mut args: MapArgs) {
+pub async fn run(mut args: MapArgs) -> Result<(), CmdError> {
     // Auto-prepend https:// if no scheme is provided
     if !args.url.contains("://") {
         args.url = format!("https://{}", args.url);
@@ -115,7 +116,7 @@ pub async fn run(mut args: MapArgs) {
         Ok(r) => Arc::new(r),
         Err(e) => {
             eprintln!("error: failed to build renderer: {e}");
-            std::process::exit(1);
+            return Err(CmdError::code_only(1));
         }
     };
 
@@ -138,7 +139,7 @@ pub async fn run(mut args: MapArgs) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("error: map failed: {e}");
-            std::process::exit(1);
+            return Err(CmdError::code_only(1));
         }
     };
 
@@ -170,9 +171,10 @@ pub async fn run(mut args: MapArgs) {
                 Ok(s) => println!("{s}"),
                 Err(e) => {
                     eprintln!("error: failed to serialize JSON: {e}");
-                    std::process::exit(1);
+                    return Err(CmdError::code_only(1));
                 }
             }
         }
     }
+    Ok(())
 }

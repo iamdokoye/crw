@@ -732,12 +732,77 @@ docker compose up
 
 Scrape any URL from your terminal — no server, no config. [Full CLI docs →](https://docs.fastcrw.com/quick-start/)
 
+A short tour, from "URL → clean markdown" to "search the web, scrape the top hit, and let an LLM summarize it" — the exact loop an AI agent runs.
+
+**1. Any page → clean, LLM-ready markdown**
+
 ```bash
-crw example.com                        # markdown to stdout
-crw example.com --format html          # HTML output
+crw en.wikipedia.org/wiki/Web_scraping
+```
+
+Boilerplate stripped, just the article as markdown on stdout.
+
+**2. Structured JSON for pipelines**
+
+```bash
+crw en.wikipedia.org/wiki/Web_scraping --format json | jq '.metadata'
+```
+
+Title, description, status code, the renderer that was used — everything a pipeline needs.
+
+**3. Search the web**
+
+```bash
+crw search "rust async runtime tokio"
+```
+
+Title + URL per result. Add `--format json` to pipe it somewhere.
+
+**4. Scrape + AI summary**
+
+> Steps 4–6 use an LLM. Run `crw setup` once to store a provider key, or pass `--llm-provider`/`--llm-key`/`--llm-model` per call.
+
+```bash
+crw en.wikipedia.org/wiki/Web_scraping --summary --prompt "in 3 bullet points"
+```
+
+`--summary` prints the summary text only — no markdown wrapper, ready to pipe.
+
+**5. The agent loop: search → scrape → summarize**
+
+```bash
+crw "$(crw search 'what is retrieval augmented generation' --format json | jq -r '.[0].url')" \
+  --summary --prompt "Explain it to a backend engineer in 4 sentences."
+```
+
+One line: search the web, take the top result, fetch it, and hand the LLM a clean copy.
+
+**6. Structured extraction with a JSON Schema**
+
+```bash
+crw news.ycombinator.com --extract '{
+  "type": "object",
+  "properties": {
+    "stories": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": { "title": {"type": "string"}, "points": {"type": "integer"} }
+      }
+    }
+  }
+}'
+```
+
+Typed data straight off the page — no brittle selectors, ready to feed an LLM pipeline. Pass a file with `--extract @schema.json`.
+
+**More flags:**
+
+```bash
+crw example.com --format html          # cleaned HTML
 crw example.com --format links         # extract all links
-crw example.com --js                   # with JS rendering
-crw example.com --css 'article'        # CSS selector
+crw example.com --js                   # JS rendering for SPAs
+crw example.com --js --css 'article'   # JS render + CSS selector
 crw example.com --stealth              # stealth mode (rotate UAs)
 crw example.com -o page.md             # write to file
 ```

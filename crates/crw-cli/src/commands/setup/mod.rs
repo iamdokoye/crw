@@ -5,9 +5,9 @@
 
 mod browser;
 mod cloud;
-mod config_file;
+pub(crate) mod config_file;
 mod docker;
-mod llm;
+pub(crate) mod llm;
 mod local;
 mod searxng;
 mod shell;
@@ -40,8 +40,19 @@ pub struct SetupArgs {
     /// Run this once after upgrading to the config.toml-first setup if your
     /// `.zshrc` / `.bashrc` accumulated duplicate `export CRW_*` lines from
     /// earlier setup runs. Won't touch `~/.config/crw/config.toml`.
-    #[arg(long, conflicts_with_all = ["cloud", "local"])]
+    #[arg(long, conflicts_with_all = ["cloud", "local", "reset"])]
     pub reset_shell: bool,
+
+    /// Remove all CRW setup state: `~/.config/crw/config.toml`,
+    /// the first-run-hint sentinel, and any `# CRW Configuration`
+    /// blocks in your shell rc. Asks for confirmation unless `--yes`
+    /// is also passed.
+    #[arg(long, conflicts_with_all = ["cloud", "local", "reset_shell"])]
+    pub reset: bool,
+
+    /// Skip the confirmation prompt for `--reset` (for scripting).
+    #[arg(long, requires = "reset")]
+    pub yes: bool,
 }
 
 /// Run the setup command.
@@ -55,6 +66,25 @@ pub async fn run(args: SetupArgs) {
         match res {
             Ok(()) => return,
             Err(e) => {
+                eprintln!();
+                eprintln!("  Reset failed: {}", e);
+                eprintln!();
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // Short-circuit: --reset wipes everything setup created.
+    if args.reset {
+        match run_full_reset(args.yes) {
+            Ok(()) => return,
+            Err(e) => {
+                if matches!(e, ui::SetupError::Cancelled) {
+                    println!();
+                    println!("  Reset cancelled. Nothing was removed.");
+                    println!();
+                    std::process::exit(130);
+                }
                 eprintln!();
                 eprintln!("  Reset failed: {}", e);
                 eprintln!();
@@ -88,6 +118,80 @@ pub async fn run(args: SetupArgs) {
             }
         }
     }
+}
+
+/// Implementation of `--reset`. Wipes every piece of state setup creates:
+/// the per-user config.toml, the first-run hint sentinel, and any
+/// `# CRW Configuration` blocks in the shell rc. Asks once for confirmation
+/// unless `--yes` was passed.
+fn run_full_reset(assume_yes: bool) -> Result<(), ui::SetupError> {
+    use dialoguer::{Confirm, theme::ColorfulTheme};
+
+    let cfg_path = config_file::user_config_path().map_err(ui::SetupError::Other)?;
+    let sentinel = cfg_path.with_file_name(".first-run-hint-shown");
+    let shell_kind = shell::detect_shell();
+
+    println!();
+    println!("  This will remove:");
+    println!("    • {}", cfg_path.display());
+    println!("    • {}", sentinel.display());
+    if shell_kind != shell::Shell::Unknown {
+        println!("    • any `# CRW Configuration` blocks in your shell rc");
+    }
+    println!();
+
+    if !assume_yes {
+        let confirm = Confirm::with_theme(&ColorfulTheme::default())
+            .with_prompt("Proceed?")
+            .default(false)
+            .interact()
+            .map_err(ui::handle_dialoguer_error)?;
+        if !confirm {
+            return Err(ui::SetupError::Cancelled);
+        }
+    }
+
+    let mut removed: Vec<String> = Vec::new();
+
+    if cfg_path.exists() {
+        std::fs::remove_file(&cfg_path)
+            .map_err(|e| ui::SetupError::Other(format!("remove {}: {}", cfg_path.display(), e)))?;
+        removed.push(cfg_path.display().to_string());
+    }
+
+    if sentinel.exists() {
+        std::fs::remove_file(&sentinel)
+            .map_err(|e| ui::SetupError::Other(format!("remove {}: {}", sentinel.display(), e)))?;
+        removed.push(sentinel.display().to_string());
+    }
+
+    if shell_kind != shell::Shell::Unknown {
+        match shell::reset_rc(shell_kind) {
+            Ok(report) if report.lines_removed > 0 => {
+                removed.push(format!(
+                    "{} ({} line(s))",
+                    report.rc_path.display(),
+                    report.lines_removed
+                ));
+            }
+            Ok(_) => {}
+            Err(e) => return Err(ui::SetupError::Other(e)),
+        }
+    }
+
+    println!();
+    if removed.is_empty() {
+        println!("  Nothing to clean up — setup state was already empty.");
+    } else {
+        println!("  Removed:");
+        for entry in &removed {
+            println!("    • {}", entry);
+        }
+    }
+    println!();
+    println!("  Run `crw setup` any time to reconfigure.");
+    println!();
+    Ok(())
 }
 
 /// Implementation of `--reset-shell`. Pulled out of `run()` so the early-exit

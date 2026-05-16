@@ -4,6 +4,7 @@
 //! - **Embedded (default)** — Self-contained scraping engine. No external server needed.
 //! - **Proxy** — Forwards tool calls to a remote CRW server over HTTP.
 
+use crate::teardown::CmdError;
 use clap::Args;
 use crw_core::mcp::{
     JsonRpcRequest, JsonRpcResponse, ProtocolResult, handle_protocol_method, tool_result_response,
@@ -215,7 +216,7 @@ fn truncate(s: &str, max: usize) -> &str {
 
 // --- Main ---
 
-pub async fn run(args: McpArgs) {
+pub async fn run(args: McpArgs) -> Result<(), CmdError> {
     // Log to stderr so stdout stays clean for MCP protocol
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
@@ -306,14 +307,14 @@ pub async fn run(args: McpArgs) {
                 Ok(s) => s,
                 Err(e) => {
                     tracing::error!("Failed to build application state: {e}");
-                    std::process::exit(1);
+                    return Err(CmdError::code_only(1));
                 }
             };
 
             let backend = Backend::Embedded { state };
             run_stdio_loop(backend).await;
             drop(_browser_guards);
-            return;
+            return Ok(());
         }
 
         #[cfg(not(feature = "mcp-embedded"))]
@@ -322,11 +323,12 @@ pub async fn run(args: McpArgs) {
                 "Embedded mode not available (compiled without 'mcp-embedded' feature). \
                  Use --api-url to connect to a remote CRW server."
             );
-            std::process::exit(1);
+            return Err(CmdError::code_only(1));
         }
     };
 
     run_stdio_loop(backend).await;
+    Ok(())
 }
 
 async fn run_stdio_loop(backend: Backend) {
