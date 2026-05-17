@@ -289,6 +289,26 @@ jobs:
           VERSION: ${{ needs.release-context.outputs.version }}
         run: |
           set -euo pipefail
+          # npm trips a rate-based spam detector when many similarly-named
+          # platform packages are published back-to-back (E403 "Package name
+          # triggered spam detection"). Throttle between publishes and retry
+          # with exponential backoff so the rate window can reset.
+          npm_publish_retry() {
+            local dir="$1" attempt=1 max=5 delay=20
+            while true; do
+              if ( cd "$dir" && npm publish --access public ); then
+                return 0
+              fi
+              if (( attempt >= max )); then
+                echo "::error::npm publish failed for $dir after $max attempts"
+                return 1
+              fi
+              echo "::warning::npm publish failed for $dir (attempt $attempt/$max); retrying in ${delay}s (spam-detection backoff)"
+              sleep "$delay"
+              attempt=$((attempt + 1))
+              delay=$((delay * 2))
+            done
+          }
           for dir in npm/crw-mcp-*/; do
             pkg=$(basename "$dir")
             case "$pkg" in
@@ -309,7 +329,8 @@ jobs:
             if [ "$current" = "$VERSION" ]; then
               echo "::notice::${pkg}@${VERSION} already on npm"
             else
-              ( cd "$dir" && npm publish --access public )
+              npm_publish_retry "$dir"
+              sleep 8
             fi
           done
 
@@ -320,11 +341,27 @@ jobs:
           VERSION: ${{ needs.release-context.outputs.version }}
         run: |
           set -euo pipefail
+          npm_publish_retry() {
+            local dir="$1" attempt=1 max=5 delay=20
+            while true; do
+              if ( cd "$dir" && npm publish --access public ); then
+                return 0
+              fi
+              if (( attempt >= max )); then
+                echo "::error::npm publish failed for $dir after $max attempts"
+                return 1
+              fi
+              echo "::warning::npm publish failed for $dir (attempt $attempt/$max); retrying in ${delay}s (spam-detection backoff)"
+              sleep "$delay"
+              attempt=$((attempt + 1))
+              delay=$((delay * 2))
+            done
+          }
           current=$(npm view "crw-mcp@${VERSION}" version 2>/dev/null || true)
           if [ "$current" = "$VERSION" ]; then
             echo "::notice::crw-mcp@${VERSION} already on npm"
           else
-            ( cd npm/crw-mcp && npm publish --access public )
+            npm_publish_retry npm/crw-mcp
           fi
 
       - name: Verify (existence + optionalDeps pin + install smoke)
