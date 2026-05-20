@@ -865,11 +865,19 @@ impl FallbackRenderer {
                     let failed_render = detector::looks_like_failed_render(&result.html);
                     let is_bot_wall = detector::looks_like_generic_bot_wall(&result.html);
                     let vendor_block = detector::looks_like_vendor_block(&result.html);
+                    // Mirrors the HTTP-tier escalation set (lib.rs:658). A JS
+                    // renderer can return 200 with bot HTML or 403 with content
+                    // — without this check, both slip through as "valid".
+                    let is_status_blocked = matches!(
+                        result.status_code,
+                        401 | 403 | 404 | 405 | 406 | 410 | 412 | 429 | 451 | 500 | 503
+                    );
                     if text_len >= Self::MIN_RENDERED_TEXT_LEN
                         && !is_placeholder
                         && failed_render.is_none()
                         && !is_bot_wall
                         && vendor_block.is_none()
+                        && !is_status_blocked
                     {
                         // Capture the promotion state BEFORE record_success
                         // clears the latch — otherwise AutoPromoted decisions
@@ -940,6 +948,8 @@ impl FallbackRenderer {
                         Some(detector::FailedRenderReason::EmptyNextRoot) => {
                             FailoverErrorKind::EmptyNextRoot
                         }
+                        None if vendor_block.is_some() => FailoverErrorKind::VendorBlock,
+                        None if is_status_blocked => FailoverErrorKind::StatusBlocked,
                         None if is_placeholder => FailoverErrorKind::PlaceholderContent,
                         None if is_bot_wall => FailoverErrorKind::PlaceholderContent,
                         None => FailoverErrorKind::PlaceholderContent,
@@ -988,6 +998,8 @@ impl FallbackRenderer {
                         is_placeholder,
                         is_bot_wall,
                         vendor_block,
+                        is_status_blocked,
+                        status_code = result.status_code,
                         failed_render = ?failed_render,
                         "JS renderer returned thin/placeholder/failed content, trying next renderer"
                     );
@@ -1016,13 +1028,19 @@ impl FallbackRenderer {
                             "{} returned a generic anti-bot interstitial",
                             renderer.name()
                         )
+                    } else if is_status_blocked {
+                        format!(
+                            "{} returned HTTP {} (treated as blocked)",
+                            renderer.name(),
+                            annotated.status_code
+                        )
                     } else {
                         format!(
                             "{} returned thin content (text_len={text_len})",
                             renderer.name()
                         )
                     };
-                    if is_bot_wall || vendor_block.is_some() {
+                    if is_bot_wall || vendor_block.is_some() || is_status_blocked {
                         // Surface bot-wall as a RendererError so, if every
                         // renderer in the chain hits a wall, the final error
                         // (line ~1052) carries an actionable message.
@@ -1031,15 +1049,19 @@ impl FallbackRenderer {
                         // bot-wall hosts SHOULD be promoted to Chrome by the
                         // host preference learner, since LightPanda lacks the
                         // TLS/header fingerprint to clear them.
-                        let msg = match vendor_block {
-                            Some(v) => format!(
-                                "{} returned a vendor anti-bot block ({v})",
-                                renderer.name()
-                            ),
-                            None => format!(
+                        let msg = if let Some(v) = vendor_block {
+                            format!("{} returned a vendor anti-bot block ({v})", renderer.name())
+                        } else if is_status_blocked {
+                            format!(
+                                "{} returned HTTP {} (treated as blocked)",
+                                renderer.name(),
+                                annotated.status_code
+                            )
+                        } else {
+                            format!(
                                 "{} returned a generic anti-bot interstitial",
                                 renderer.name()
-                            ),
+                            )
                         };
                         last_error = Some(CrwError::RendererError(msg));
                     }
@@ -1438,6 +1460,7 @@ mod tests {
     #[derive(Clone)]
     enum MockBehavior {
         Ok(String),
+        OkStatus(u16, String),
         Err(String),
     }
 
@@ -1450,26 +1473,28 @@ mod tests {
             _wait_for_ms: Option<u64>,
             _deadline: crw_core::Deadline,
         ) -> CrwResult<FetchResult> {
-            match &self.behavior {
-                MockBehavior::Ok(html) => Ok(FetchResult {
-                    url: url.to_string(),
-                    final_url: None,
-                    status_code: 200,
-                    html: html.clone(),
-                    content_type: Some("text/html".to_string()),
-                    raw_bytes: None,
-                    rendered_with: Some(self.name.to_string()),
-                    elapsed_ms: 0,
-                    warning: None,
-                    render_decision: None,
-                    credit_cost: 0,
-                    warnings: Vec::new(),
-                    truncated: false,
-                    deadline_exceeded: false,
-                    captured_responses: Vec::new(),
-                }),
-                MockBehavior::Err(msg) => Err(CrwError::RendererError(msg.clone())),
-            }
+            let (status, html) = match &self.behavior {
+                MockBehavior::Ok(html) => (200u16, html.clone()),
+                MockBehavior::OkStatus(s, html) => (*s, html.clone()),
+                MockBehavior::Err(msg) => return Err(CrwError::RendererError(msg.clone())),
+            };
+            Ok(FetchResult {
+                url: url.to_string(),
+                final_url: None,
+                status_code: status,
+                html,
+                content_type: Some("text/html".to_string()),
+                raw_bytes: None,
+                rendered_with: Some(self.name.to_string()),
+                elapsed_ms: 0,
+                warning: None,
+                render_decision: None,
+                credit_cost: 0,
+                warnings: Vec::new(),
+                truncated: false,
+                deadline_exceeded: false,
+                captured_responses: Vec::new(),
+            })
         }
 
         fn name(&self) -> &str {
@@ -1890,5 +1915,101 @@ mod tests {
                 renderer: RendererKind::Chrome
             })
         ));
+    }
+
+    #[tokio::test]
+    async fn js_tier_escalates_on_403_status() {
+        // LightPanda returns 403 with content (e.g. WAF block masked as content).
+        // The chain must escalate to Chrome instead of accepting the 403 body.
+        let lp = Arc::new(MockFetcher {
+            name: "lightpanda",
+            behavior: MockBehavior::OkStatus(403, rich_html("BLOCKED-")),
+        }) as Arc<dyn PageFetcher>;
+        let chrome = Arc::new(MockFetcher {
+            name: "chrome",
+            behavior: MockBehavior::Ok(rich_html("CHROME-")),
+        }) as Arc<dyn PageFetcher>;
+        let r = make_renderer_with_mocks(vec![lp, chrome]);
+
+        let result = r
+            .fetch(
+                "https://example.com",
+                &HashMap::new(),
+                Some(true),
+                None,
+                Some("auto"),
+                tdl(),
+            )
+            .await
+            .unwrap();
+        assert!(
+            result.html.contains("CHROME-"),
+            "expected chrome output after lightpanda 403"
+        );
+        assert_eq!(result.status_code, 200);
+    }
+
+    #[tokio::test]
+    async fn js_tier_escalates_on_vendor_block_with_200() {
+        // LightPanda returns 200 with a Cloudflare challenge page. The chain
+        // must escalate even though the status code is "successful".
+        let cf_html = format!(
+            "<html><head><script src=\"/cdn-cgi/challenge-platform/h/g/orchestrate/chl_page/v1\"></script></head><body>{}</body></html>",
+            "x".repeat(200)
+        );
+        let lp = Arc::new(MockFetcher {
+            name: "lightpanda",
+            behavior: MockBehavior::Ok(cf_html),
+        }) as Arc<dyn PageFetcher>;
+        let chrome = Arc::new(MockFetcher {
+            name: "chrome",
+            behavior: MockBehavior::Ok(rich_html("CHROME-")),
+        }) as Arc<dyn PageFetcher>;
+        let r = make_renderer_with_mocks(vec![lp, chrome]);
+
+        let result = r
+            .fetch(
+                "https://example.com",
+                &HashMap::new(),
+                Some(true),
+                None,
+                Some("auto"),
+                tdl(),
+            )
+            .await
+            .unwrap();
+        assert!(
+            result.html.contains("CHROME-"),
+            "expected chrome output after lightpanda vendor block"
+        );
+    }
+
+    #[tokio::test]
+    async fn js_tier_accepts_200_clean_response() {
+        // Regression: a clean 200 from the first renderer must still be
+        // accepted — no false escalation triggered by the new gates.
+        let lp = Arc::new(MockFetcher {
+            name: "lightpanda",
+            behavior: MockBehavior::Ok(rich_html("LP-CLEAN-")),
+        }) as Arc<dyn PageFetcher>;
+        let chrome = Arc::new(MockFetcher {
+            name: "chrome",
+            behavior: MockBehavior::Ok(rich_html("CHROME-")),
+        }) as Arc<dyn PageFetcher>;
+        let r = make_renderer_with_mocks(vec![lp, chrome]);
+
+        let result = r
+            .fetch(
+                "https://example.com",
+                &HashMap::new(),
+                Some(true),
+                None,
+                Some("auto"),
+                tdl(),
+            )
+            .await
+            .unwrap();
+        assert!(result.html.contains("LP-CLEAN-"));
+        assert_eq!(result.status_code, 200);
     }
 }

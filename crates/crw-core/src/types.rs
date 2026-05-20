@@ -1038,6 +1038,15 @@ pub enum FailoverErrorKind {
     CloudflareChallenge,
     /// Generic placeholder / too-short content.
     PlaceholderContent,
+    /// Vendor-specific anti-bot block (Akamai, PerimeterX, DataDome, etc.).
+    /// Vendor name is recorded via `crw_vendor_block_total{vendor}` metric
+    /// and the renderer warning — not carried in the enum variant to keep
+    /// the type `Copy`-friendly.
+    VendorBlock,
+    /// JS renderer returned a 4xx/5xx HTTP status (e.g. 403, 429) — same
+    /// status set the HTTP tier escalates on. Caught in the JS tier so a
+    /// "200 with bot HTML" or "403 with content" can't masquerade as success.
+    StatusBlocked,
     /// Network error during render.
     NetworkError,
     /// Other / unclassified failure (does NOT count for promotion).
@@ -1070,6 +1079,8 @@ impl FailoverErrorKind {
             FailoverErrorKind::LightpandaCrash => "lightpandaCrash",
             FailoverErrorKind::CloudflareChallenge => "cloudflareChallenge",
             FailoverErrorKind::PlaceholderContent => "placeholderContent",
+            FailoverErrorKind::VendorBlock => "vendorBlock",
+            FailoverErrorKind::StatusBlocked => "statusBlocked",
             FailoverErrorKind::NetworkError => "networkError",
             FailoverErrorKind::Other => "other",
         }
