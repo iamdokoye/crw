@@ -337,6 +337,12 @@ console.log(body.data.markdown);
 <td>Per-request proxy URL</td>
 </tr>
 <tr>
+<td><code>country</code></td>
+<td>string</td>
+<td>--</td>
+<td>2-letter ISO 3166-1 alpha-2 country code (lowercase, e.g. <code>us</code>, <code>gb</code>, <code>de</code>). Routes the request through the named residential pool when the <code>chrome_proxy</code> renderer tier is configured. Ignored if no proxy tier is set up. See <a href="/js-rendering">JS rendering — Per-request country</a></td>
+</tr>
+<tr>
 <td><code>stealth</code></td>
 <td>boolean</td>
 <td>--</td>

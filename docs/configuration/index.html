@@ -159,6 +159,17 @@ ws_url = &quot;ws://127.0.0.1:9222/&quot;
 # [renderer.chrome]
 # ws_url = &quot;ws://chrome:9222&quot;
 
+# Residential proxy tier (opt-in 4th renderer). When base credentials are set
+# AND a chrome_proxy ws_url is configured, the engine adds a chrome_proxy tier
+# to the fallback chain (after lightpanda → chrome). Country is selected per
+# request via the `country` field on the scrape body; see JS rendering docs.
+# proxy_base_user = &quot;&quot;              # base username, WITHOUT __cr.&lt;cc&gt; suffix
+# proxy_base_pass = &quot;&quot;
+# proxy_default_country = &quot;us&quot;      # 2-letter ISO 3166-1 alpha-2, lowercase
+
+# [renderer.chrome_proxy]
+# ws_url = &quot;ws://chrome-proxy:9222&quot;
+
 [crawler]
 max_concurrency = 10
 requests_per_second = 10.0
@@ -243,6 +254,18 @@ stealth = true
 <tr>
 <td><code>crawler.proxy</code></td>
 <td><code>CRW_CRAWLER__PROXY</code></td>
+</tr>
+<tr>
+<td><code>renderer.proxy_base_user</code></td>
+<td><code>CRW_RENDERER__PROXY_BASE_USER</code></td>
+</tr>
+<tr>
+<td><code>renderer.proxy_base_pass</code></td>
+<td><code>CRW_RENDERER__PROXY_BASE_PASS</code></td>
+</tr>
+<tr>
+<td><code>renderer.proxy_default_country</code></td>
+<td><code>CRW_RENDERER__PROXY_DEFAULT_COUNTRY</code></td>
 </tr>
 <tr>
 <td><code>extraction.llm.api_key</code></td>
