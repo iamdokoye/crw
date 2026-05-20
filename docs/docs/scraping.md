@@ -143,6 +143,7 @@ That is the default CRW success shape: requested content plus a compact metadata
 | `filterMode` | string | -- | `bm25` or `cosine` |
 | `topK` | number | `5` | Number of top chunks to keep |
 | `proxy` | string | -- | Per-request proxy URL |
+| `country` | string | -- | 2-letter ISO 3166-1 alpha-2 country code (lowercase, e.g. `us`, `gb`, `de`). Routes the request through the named residential pool when the `chrome_proxy` renderer tier is configured. Ignored if no proxy tier is set up. See [JS rendering — Per-request country](#js-rendering) |
 | `stealth` | boolean | -- | Override global stealth setting |
 | `jsonSchema` | object | -- | Schema for structured extraction |
 | `extract` | object | -- | Firecrawl-compatible alias wrapper for extraction schema |

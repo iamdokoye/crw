@@ -101,6 +101,29 @@ Hard-pinning a renderer means transient failures of that renderer surface as err
 
 For crawls, per-page failures of a pinned renderer are still logged and skipped; the rest of the crawl continues. Pages that fail will not appear in the results.
 
+## Per-request country (residential proxy tier)
+
+When the operator configures a `chrome_proxy` tier backed by a residential proxy provider (e.g. DataImpulse), each request can route through a specific country by setting `country` in the request body:
+
+```json
+{
+  "url": "https://geo-restricted.example.com",
+  "country": "us"
+}
+```
+
+| Value | Behavior |
+|-------|----------|
+| omitted | Uses `CRW_RENDERER__PROXY_DEFAULT_COUNTRY` if configured, otherwise the provider's global pool |
+| 2-letter code (`us`, `gb`, `de`, `fr`, `jp`, …) | Lowercased and appended to the base proxy username as a country selector |
+| Invalid (non-alpha, wrong length) | Silently ignored — falls back to the default country, then the global pool |
+
+The country selector is composed at request time and supplied to Chrome via the CDP `Fetch.authRequired` event — no per-country container restart needed, and concurrent requests can target different countries without cross-contamination.
+
+This field has no effect when the `chrome_proxy` tier is not configured. It is a renderer-tier routing hint, not a content filter — the engine does not translate or localize the response.
+
+See [Configuration — Residential proxy tier](#configuration) for the operator-side env vars (`CRW_RENDERER__PROXY_BASE_USER`, `CRW_RENDERER__PROXY_BASE_PASS`, `CRW_RENDERER__PROXY_DEFAULT_COUNTRY`).
+
 ## When To Turn It On
 
 Enable JS rendering when the page content is not present in the initial HTML response. Typical examples:
