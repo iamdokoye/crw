@@ -864,10 +864,12 @@ impl FallbackRenderer {
                     let is_placeholder = detector::looks_like_loading_placeholder(&result.html);
                     let failed_render = detector::looks_like_failed_render(&result.html);
                     let is_bot_wall = detector::looks_like_generic_bot_wall(&result.html);
+                    let vendor_block = detector::looks_like_vendor_block(&result.html);
                     if text_len >= Self::MIN_RENDERED_TEXT_LEN
                         && !is_placeholder
                         && failed_render.is_none()
                         && !is_bot_wall
+                        && vendor_block.is_none()
                     {
                         // Capture the promotion state BEFORE record_success
                         // clears the latch — otherwise AutoPromoted decisions
@@ -968,11 +970,24 @@ impl FallbackRenderer {
                     if let Some(g) = probe_guard.take() {
                         g.disarm();
                     }
+                    if let Some(vendor) = vendor_block {
+                        metrics()
+                            .vendor_block_total
+                            .with_label_values(&[vendor])
+                            .inc();
+                        tracing::warn!(
+                            renderer = renderer.name(),
+                            url,
+                            vendor,
+                            "vendor anti-bot block detected"
+                        );
+                    }
                     tracing::info!(
                         renderer = renderer.name(),
                         text_len,
                         is_placeholder,
                         is_bot_wall,
+                        vendor_block,
                         failed_render = ?failed_render,
                         "JS renderer returned thin/placeholder/failed content, trying next renderer"
                     );
@@ -991,6 +1006,11 @@ impl FallbackRenderer {
                         )
                     } else if is_placeholder {
                         format!("{} returned a loading placeholder", renderer.name())
+                    } else if let Some(vendor) = vendor_block {
+                        format!(
+                            "{} returned a vendor anti-bot block ({vendor})",
+                            renderer.name()
+                        )
                     } else if is_bot_wall {
                         format!(
                             "{} returned a generic anti-bot interstitial",
@@ -1002,7 +1022,7 @@ impl FallbackRenderer {
                             renderer.name()
                         )
                     };
-                    if is_bot_wall {
+                    if is_bot_wall || vendor_block.is_some() {
                         // Surface bot-wall as a RendererError so, if every
                         // renderer in the chain hits a wall, the final error
                         // (line ~1052) carries an actionable message.
@@ -1011,10 +1031,17 @@ impl FallbackRenderer {
                         // bot-wall hosts SHOULD be promoted to Chrome by the
                         // host preference learner, since LightPanda lacks the
                         // TLS/header fingerprint to clear them.
-                        last_error = Some(CrwError::RendererError(format!(
-                            "{} returned a generic anti-bot interstitial",
-                            renderer.name()
-                        )));
+                        let msg = match vendor_block {
+                            Some(v) => format!(
+                                "{} returned a vendor anti-bot block ({v})",
+                                renderer.name()
+                            ),
+                            None => format!(
+                                "{} returned a generic anti-bot interstitial",
+                                renderer.name()
+                            ),
+                        };
+                        last_error = Some(CrwError::RendererError(msg));
                     }
                     annotated.warnings.push(attempt_warning.clone());
                     annotated.warning = Some(match annotated.warning {

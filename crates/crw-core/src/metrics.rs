@@ -105,6 +105,12 @@ pub struct Metrics {
     /// `pool` ∈ {on, off}; `acquire_source` ∈ {hit_idle, created_new,
     /// health_checked, n/a}. Pool-off requests use `acquire_source="n/a"`.
     pub chrome_request_handshake_seconds: HistogramVec,
+    /// Vendor-specific anti-bot block detections in renderer responses.
+    /// Labeled by `vendor` (cloudflare, akamai, perimeterx, datadome,
+    /// imperva, sucuri, kasada, cloudfront). Distinct from the catch-all
+    /// generic-bot-wall path — only fires when a durable vendor signature
+    /// matches.
+    pub vendor_block_total: IntCounterVec,
 }
 
 static METRICS: OnceLock<Metrics> = OnceLock::new();
@@ -366,6 +372,13 @@ impl Metrics {
             registry
         )
         .unwrap();
+        let vendor_block_total = register_int_counter_vec_with_registry!(
+            "crw_vendor_block_total",
+            "Vendor-specific anti-bot block detections by vendor name",
+            &["vendor"],
+            registry
+        )
+        .unwrap();
         Self {
             registry,
             render_route_decision_total,
@@ -400,6 +413,7 @@ impl Metrics {
             chrome_pool_health_check_total,
             chrome_context_lifetime_seconds,
             chrome_request_handshake_seconds,
+            vendor_block_total,
         }
     }
 }

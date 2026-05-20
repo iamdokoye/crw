@@ -30,6 +30,7 @@ dashmap = { workspace = true }
 dirs = { version = "6", optional = true }
 moka = { workspace = true }
 publicsuffix = { workspace = true }
+regex = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = { workspace = true }
