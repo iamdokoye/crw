@@ -845,6 +845,7 @@ dependencies = [
  "axum",
  "brotli",
  "crw-core",
+ "crw-extract",
  "dashmap",
  "dirs",
  "flate2",

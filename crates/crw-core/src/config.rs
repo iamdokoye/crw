@@ -452,6 +452,13 @@ pub struct AntibotConfig {
     /// engine tier (requires `escalation.enabled`).
     #[serde(default)]
     pub escalate_on_signal: bool,
+    /// When the classifier flags a block during the renderer failover loop,
+    /// treat the result as a soft failure so the loop advances to the next
+    /// tier — ending at `chrome_proxy` (residential). Default `true`. Set
+    /// `false` to keep the classifier running (error_code + telemetry) while
+    /// disabling in-loop escalation — the one-line kill switch.
+    #[serde(default = "default_true")]
+    pub escalate_in_failover: bool,
 }
 
 impl Default for AntibotConfig {
@@ -459,6 +466,7 @@ impl Default for AntibotConfig {
         Self {
             enabled: true,
             escalate_on_signal: false,
+            escalate_in_failover: true,
         }
     }
 }

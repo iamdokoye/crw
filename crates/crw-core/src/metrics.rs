@@ -111,6 +111,12 @@ pub struct Metrics {
     /// generic-bot-wall path — only fires when a durable vendor signature
     /// matches.
     pub vendor_block_total: IntCounterVec,
+    /// Anti-bot blocks flagged by the `crw_extract::antibot` classifier
+    /// inside the renderer failover loop. Labeled by `signal` (cloudflare,
+    /// datadome, network_security, generic_block, structural_failure, …).
+    /// Emitted even when `antibot.escalate_in_failover = false`, so the
+    /// dashboard shows escalation pressure before the switch is flipped.
+    pub antibot_escalation_total: IntCounterVec,
 }
 
 static METRICS: OnceLock<Metrics> = OnceLock::new();
@@ -379,6 +385,13 @@ impl Metrics {
             registry
         )
         .unwrap();
+        let antibot_escalation_total = register_int_counter_vec_with_registry!(
+            "crw_antibot_escalation_total",
+            "Anti-bot blocks flagged by the antibot classifier in the failover loop, by signal",
+            &["signal"],
+            registry
+        )
+        .unwrap();
         Self {
             registry,
             render_route_decision_total,
@@ -414,6 +427,7 @@ impl Metrics {
             chrome_context_lifetime_seconds,
             chrome_request_handshake_seconds,
             vendor_block_total,
+            antibot_escalation_total,
         }
     }
 }

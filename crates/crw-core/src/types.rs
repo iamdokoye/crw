@@ -95,6 +95,12 @@ pub enum RequestedRenderer {
     Auto,
     Lightpanda,
     Chrome,
+    /// Residential-proxy Chrome tier — egresses through the DataImpulse
+    /// pool. `rename_all = "lowercase"` would yield `"chromeproxy"`, so the
+    /// variant is renamed explicitly to match the internal renderer name
+    /// (`"chrome_proxy"`) and `RendererKind::ChromeProxy`.
+    #[serde(rename = "chrome_proxy")]
+    ChromeProxy,
     Playwright,
 }
 
@@ -106,6 +112,7 @@ impl RequestedRenderer {
             RequestedRenderer::Auto => None,
             RequestedRenderer::Lightpanda => Some("lightpanda"),
             RequestedRenderer::Chrome => Some("chrome"),
+            RequestedRenderer::ChromeProxy => Some("chrome_proxy"),
             RequestedRenderer::Playwright => Some("playwright"),
         }
     }
@@ -537,6 +544,18 @@ mod tests {
             let parsed: RequestedRenderer = serde_json::from_str(s).unwrap();
             assert_eq!(parsed, expected, "input {s} should parse to {expected:?}");
         }
+    }
+
+    #[test]
+    fn requested_renderer_chrome_proxy_round_trip() {
+        let parsed: RequestedRenderer = serde_json::from_str("\"chrome_proxy\"").unwrap();
+        assert_eq!(parsed, RequestedRenderer::ChromeProxy);
+        let json = serde_json::to_string(&RequestedRenderer::ChromeProxy).unwrap();
+        assert_eq!(json, "\"chrome_proxy\"");
+        assert_eq!(
+            resolve_pinned_renderer(Some(RequestedRenderer::ChromeProxy)),
+            Some("chrome_proxy")
+        );
     }
 
     #[test]
@@ -1060,6 +1079,11 @@ pub enum FailoverErrorKind {
     /// status set the HTTP tier escalates on. Caught in the JS tier so a
     /// "200 with bot HTML" or "403 with content" can't masquerade as success.
     StatusBlocked,
+    /// The `crw_extract::antibot` classifier flagged a block the lighter
+    /// `detector` heuristics missed (e.g. a "blocked by network security"
+    /// WAF page served with HTTP 200). Drives escalation toward the
+    /// residential `chrome_proxy` tier; counts toward host promotion.
+    AntibotBlock,
     /// Network error during render.
     NetworkError,
     /// Other / unclassified failure (does NOT count for promotion).
@@ -1078,6 +1102,7 @@ impl FailoverErrorKind {
                 | FailoverErrorKind::LightpandaTimeout
                 | FailoverErrorKind::LightpandaCrash
                 | FailoverErrorKind::PlaceholderContent
+                | FailoverErrorKind::AntibotBlock
         )
     }
 
@@ -1094,6 +1119,7 @@ impl FailoverErrorKind {
             FailoverErrorKind::PlaceholderContent => "placeholderContent",
             FailoverErrorKind::VendorBlock => "vendorBlock",
             FailoverErrorKind::StatusBlocked => "statusBlocked",
+            FailoverErrorKind::AntibotBlock => "antibotBlock",
             FailoverErrorKind::NetworkError => "networkError",
             FailoverErrorKind::Other => "other",
         }

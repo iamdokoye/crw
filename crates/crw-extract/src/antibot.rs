@@ -481,6 +481,28 @@ mod tests {
     }
 
     #[test]
+    fn network_security_block_detected() {
+        // Reddit-class WAF page: served with HTTP 200, no vendor signature.
+        let html =
+            "<html><body>You've been blocked by network security. Contact support.</body></html>";
+        let r = classify(Some(200), html);
+        assert_eq!(r.signal, AntibotSignal::NetworkSecurity);
+    }
+
+    #[test]
+    fn short_legit_page_stays_none() {
+        // ~340 chars of real content on a 200 — must not trip structural
+        // failure. Boundary case for the in-loop classifier wiring.
+        let html = format!(
+            "<!doctype html><html><head><title>Note</title></head>\
+             <body><article><p>{}</p></article></body></html>",
+            "This is a short but legitimate article paragraph with enough words. ".repeat(5)
+        );
+        let r = classify(Some(200), &html);
+        assert_eq!(r.signal, AntibotSignal::None);
+    }
+
+    #[test]
     fn rate_limited_429() {
         let r = classify(Some(429), "<html><body>slow down</body></html>");
         assert_eq!(r.signal, AntibotSignal::RateLimited);

@@ -210,6 +210,10 @@ pub struct FallbackRenderer {
     requests_per_second: f64,
     /// Process-wide per-eTLD+1 in-flight cap. `1` enforces strict politeness.
     per_host_max_concurrent: u32,
+    /// Anti-bot classifier policy. Drives the in-loop `classify()` call that
+    /// decides whether a 200-status block page is a soft failure (escalate
+    /// toward `chrome_proxy`) or a genuine success.
+    antibot: crw_core::config::AntibotConfig,
     /// Chrome browser-context pool handle for graceful drain on shutdown.
     /// `None` when the pool is disabled or the chrome tier isn't configured.
     #[cfg(feature = "cdp")]
@@ -283,6 +287,7 @@ impl FallbackRenderer {
                 tier_timeouts: tier_timeouts_from(config),
                 requests_per_second: 0.0,
                 per_host_max_concurrent: 1,
+                antibot: config.antibot.clone(),
                 #[cfg(feature = "cdp")]
                 chrome_pool: None,
             });
@@ -471,6 +476,7 @@ impl FallbackRenderer {
             tier_timeouts: tier_timeouts_from(config),
             requests_per_second: 0.0,
             per_host_max_concurrent: 1,
+            antibot: config.antibot.clone(),
             #[cfg(feature = "cdp")]
             chrome_pool,
         })
@@ -805,7 +811,16 @@ impl FallbackRenderer {
         if !is_user_pinned
             && let Some(RendererKind::Chrome) = self.preferences.preferred(&host).await
         {
-            renderers.sort_by_key(|r| if r.name() == "chrome" { 0 } else { 1 });
+            // 3-tier rank: chrome first, then the residential chrome_proxy,
+            // then everything lighter. A stable binary key would yield
+            // `[chrome, lightpanda, chrome_proxy]` — escalating a chrome
+            // block to lightpanda (same WAF, lighter fingerprint) before
+            // ever reaching the residential tier.
+            renderers.sort_by_key(|r| match r.name() {
+                "chrome" => 0,
+                "chrome_proxy" => 1,
+                _ => 2,
+            });
             tracing::debug!(host = %host, "host promoted to chrome by preference learner");
         }
 
@@ -894,12 +909,28 @@ impl FallbackRenderer {
                         result.status_code,
                         401 | 403 | 404 | 405 | 406 | 410 | 412 | 429 | 451 | 500 | 503
                     );
+                    // The comprehensive 3-tier antibot classifier. The
+                    // `detector` heuristics above only know a fixed phrase
+                    // list + 8 named vendors; `classify()` additionally
+                    // recognises Reddit-class WAF pages ("blocked by network
+                    // security") served with HTTP 200 that otherwise slip
+                    // through as success. Always runs for telemetry when
+                    // `enabled`; only forces escalation when
+                    // `escalate_in_failover` is on (the kill switch).
+                    let antibot = if self.antibot.enabled {
+                        crw_extract::antibot::classify(Some(result.status_code), &result.html)
+                    } else {
+                        crw_extract::antibot::AntibotResult::none()
+                    };
+                    let antibot_blocked =
+                        self.antibot.escalate_in_failover && antibot.signal.is_blocked();
                     if text_len >= Self::MIN_RENDERED_TEXT_LEN
                         && !is_placeholder
                         && failed_render.is_none()
                         && !is_bot_wall
                         && vendor_block.is_none()
                         && !is_status_blocked
+                        && !antibot_blocked
                     {
                         // Capture the promotion state BEFORE record_success
                         // clears the latch — otherwise AutoPromoted decisions
@@ -974,6 +1005,8 @@ impl FallbackRenderer {
                         None if is_status_blocked => FailoverErrorKind::StatusBlocked,
                         None if is_placeholder => FailoverErrorKind::PlaceholderContent,
                         None if is_bot_wall => FailoverErrorKind::PlaceholderContent,
+                        // The classifier caught a block the detector missed.
+                        None if antibot_blocked => FailoverErrorKind::AntibotBlock,
                         None => FailoverErrorKind::PlaceholderContent,
                     };
                     last_failover_reason = Some(err_kind.clone());
@@ -1014,6 +1047,24 @@ impl FallbackRenderer {
                             "vendor anti-bot block detected"
                         );
                     }
+                    // Emit the antibot signal regardless of `escalate_in_failover`
+                    // — a pre-flip dashboard of escalation pressure.
+                    if antibot.signal.is_blocked() {
+                        metrics()
+                            .antibot_escalation_total
+                            .with_label_values(&[antibot.signal.class_name()])
+                            .inc();
+                        tracing::warn!(
+                            renderer = renderer.name(),
+                            url,
+                            signal = antibot.signal.class_name(),
+                            reason = %antibot.reason,
+                            status_code = result.status_code,
+                            text_len,
+                            escalated = antibot_blocked,
+                            "antibot classifier flagged a block"
+                        );
+                    }
                     tracing::info!(
                         renderer = renderer.name(),
                         text_len,
@@ -1021,6 +1072,8 @@ impl FallbackRenderer {
                         is_bot_wall,
                         vendor_block,
                         is_status_blocked,
+                        antibot_signal = antibot.signal.class_name(),
+                        antibot_blocked,
                         status_code = result.status_code,
                         failed_render = ?failed_render,
                         "JS renderer returned thin/placeholder/failed content, trying next renderer"
@@ -1056,13 +1109,21 @@ impl FallbackRenderer {
                             renderer.name(),
                             annotated.status_code
                         )
+                    } else if antibot_blocked {
+                        format!(
+                            "{} returned an anti-bot block ({}: {})",
+                            renderer.name(),
+                            antibot.signal.class_name(),
+                            antibot.reason
+                        )
                     } else {
                         format!(
                             "{} returned thin content (text_len={text_len})",
                             renderer.name()
                         )
                     };
-                    if is_bot_wall || vendor_block.is_some() || is_status_blocked {
+                    if is_bot_wall || vendor_block.is_some() || is_status_blocked || antibot_blocked
+                    {
                         // Surface bot-wall as a RendererError so, if every
                         // renderer in the chain hits a wall, the final error
                         // (line ~1052) carries an actionable message.
@@ -1079,10 +1140,17 @@ impl FallbackRenderer {
                                 renderer.name(),
                                 annotated.status_code
                             )
-                        } else {
+                        } else if is_bot_wall {
                             format!(
                                 "{} returned a generic anti-bot interstitial",
                                 renderer.name()
+                            )
+                        } else {
+                            format!(
+                                "{} returned an anti-bot block ({}: {})",
+                                renderer.name(),
+                                antibot.signal.class_name(),
+                                antibot.reason
                             )
                         };
                         last_error = Some(CrwError::RendererError(msg));
@@ -2033,5 +2101,146 @@ mod tests {
             .unwrap();
         assert!(result.html.contains("LP-CLEAN-"));
         assert_eq!(result.status_code, 200);
+    }
+
+    /// A page the lightweight `detector` heuristics pass but the
+    /// `crw_extract::antibot` classifier flags — a Reddit-class WAF block
+    /// ("blocked by network security") served with HTTP 200.
+    fn network_security_block_html() -> String {
+        format!(
+            "<html><body><article>You've been blocked by network security.{}</article></body></html>",
+            "x".repeat(200)
+        )
+    }
+
+    #[tokio::test]
+    async fn js_tier_escalates_to_chrome_proxy_on_antibot_block() {
+        // lightpanda + chrome both return a 200 WAF block the detector
+        // misses; only the residential chrome_proxy tier clears it.
+        let lp = Arc::new(MockFetcher {
+            name: "lightpanda",
+            behavior: MockBehavior::Ok(network_security_block_html()),
+        }) as Arc<dyn PageFetcher>;
+        let chrome = Arc::new(MockFetcher {
+            name: "chrome",
+            behavior: MockBehavior::Ok(network_security_block_html()),
+        }) as Arc<dyn PageFetcher>;
+        let chrome_proxy = Arc::new(MockFetcher {
+            name: "chrome_proxy",
+            behavior: MockBehavior::Ok(rich_html("PROXY-")),
+        }) as Arc<dyn PageFetcher>;
+        let r = make_renderer_with_mocks(vec![lp, chrome, chrome_proxy]);
+
+        let result = r
+            .fetch(
+                "https://example.com",
+                &HashMap::new(),
+                Some(true),
+                None,
+                Some("auto"),
+                tdl(),
+            )
+            .await
+            .unwrap();
+        assert!(
+            result.html.contains("PROXY-"),
+            "expected chrome_proxy output after antibot block"
+        );
+        assert_eq!(
+            result.render_decision,
+            Some(RenderDecision::Failover {
+                chain: vec![
+                    RendererKind::Lightpanda,
+                    RendererKind::Chrome,
+                    RendererKind::ChromeProxy,
+                ],
+                reason: FailoverErrorKind::AntibotBlock,
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn antibot_block_returns_as_success_when_escalation_disabled() {
+        // Kill switch: escalate_in_failover = false → classify() still runs
+        // for telemetry, but the block page is returned as success with no
+        // escalation. Proves the gate is wired correctly.
+        let lp = Arc::new(MockFetcher {
+            name: "lightpanda",
+            behavior: MockBehavior::Ok(network_security_block_html()),
+        }) as Arc<dyn PageFetcher>;
+        let chrome = Arc::new(MockFetcher {
+            name: "chrome",
+            behavior: MockBehavior::Ok(rich_html("CHROME-")),
+        }) as Arc<dyn PageFetcher>;
+        let mut r = make_renderer_with_mocks(vec![lp, chrome]);
+        r.antibot.escalate_in_failover = false;
+
+        let result = r
+            .fetch(
+                "https://example.com",
+                &HashMap::new(),
+                Some(true),
+                None,
+                Some("auto"),
+                tdl(),
+            )
+            .await
+            .unwrap();
+        assert!(
+            result.html.contains("network security"),
+            "block page should be returned as-is when escalation is disabled"
+        );
+        assert_eq!(result.rendered_with.as_deref(), Some("lightpanda"));
+    }
+
+    #[tokio::test]
+    async fn promoted_host_escalates_chrome_to_chrome_proxy_not_lightpanda() {
+        // After host promotion the preference sort must place chrome_proxy
+        // immediately after chrome — a chrome block escalates straight to
+        // the residential tier, never back down to lightpanda.
+        let lp = Arc::new(MockFetcher {
+            name: "lightpanda",
+            behavior: MockBehavior::Ok(rich_html("LP-")),
+        }) as Arc<dyn PageFetcher>;
+        let chrome = Arc::new(MockFetcher {
+            name: "chrome",
+            behavior: MockBehavior::Ok(network_security_block_html()),
+        }) as Arc<dyn PageFetcher>;
+        let chrome_proxy = Arc::new(MockFetcher {
+            name: "chrome_proxy",
+            behavior: MockBehavior::Ok(rich_html("PROXY-")),
+        }) as Arc<dyn PageFetcher>;
+        let r = make_renderer_with_mocks(vec![lp, chrome, chrome_proxy]);
+
+        // Force-promote "example.com" so the loop sorts chrome first.
+        for _ in 0..3 {
+            r.preferences
+                .record_failure("example.com", &FailoverErrorKind::NextJsClientError)
+                .await;
+        }
+
+        let result = r
+            .fetch(
+                "https://example.com",
+                &HashMap::new(),
+                Some(true),
+                None,
+                None,
+                tdl(),
+            )
+            .await
+            .unwrap();
+        assert!(
+            result.html.contains("PROXY-"),
+            "expected chrome_proxy output"
+        );
+        assert_eq!(
+            result.render_decision,
+            Some(RenderDecision::Failover {
+                chain: vec![RendererKind::Chrome, RendererKind::ChromeProxy],
+                reason: FailoverErrorKind::AntibotBlock,
+            }),
+            "chrome must escalate straight to chrome_proxy, skipping lightpanda"
+        );
     }
 }
