@@ -72,15 +72,18 @@ CRW is meant to feel easy on day one without closing off the more serious use ca
 
 ## Benchmarks
 
-Tested against [Firecrawl scrape-content-dataset-v1](https://huggingface.co/datasets/firecrawl/scrape-content-dataset-v1) on 1,000 real-world URLs:
+Public 3-way run on [Firecrawl scrape-content-dataset-v1](https://huggingface.co/datasets/firecrawl/scrape-content-dataset-v1), full 1000 URL, canonical `diagnose_3way.py` harness (concurrency 5 / timeout 120s):
 
-| Metric | CRW | Firecrawl | Crawl4AI |
+| Metric | CRW | crawl4ai | Firecrawl |
 |---|---|---|---|
-| **Coverage (1K URLs)** | **92.0%** | 77.2% | — |
-| **Avg Latency** | **833ms** | 4,600ms | — |
-| **Idle RAM** | **6.6 MB** | ~500 MB+ | — |
-| **Cold start** | **85 ms** | 30–60 s | — |
-| **Dependencies** | single binary | Node + Redis + PG + RabbitMQ | Python + Playwright |
+| **Truth-recall (522/819 labeled URLs)** | **63.74%** | 59.95% | 56.04% |
+| Scrape-success (of 1000) | 877 (87.7%) | 835 (83.5%) | 897 (89.7%) |
+| Thrown errors (3000 requests) | 0 | 0 | 0 |
+| p50 latency | **1914ms** | 1916ms | 2305ms |
+| p90 latency | 14157ms | **4754ms** | 6937ms |
+| Dependencies | single binary | Python + Playwright | Node + Redis + PG + RabbitMQ |
+
+The 63.74% denominator is **819 labeled/matchable URLs** — not 3,000 requests, not 1,000. The **87.7% scrape-success** is stated next to "0 errors" deliberately. crw's p50 beats Firecrawl; its p90 is the disclosed worst-of-three (the recovery fallback that lifts recall is also why the tail is worst). Full result: [`bench/server-runs/RESULT_3WAY_1000_FULL.md`](https://github.com/us/crw/blob/main/bench/server-runs/RESULT_3WAY_1000_FULL.md).
 
 ## What to read next
 

@@ -179,7 +179,7 @@ All notable changes to CRW are documented here.
 * **renderer:** leak-through fallback when global breaker open & host clean ([86a9e36](https://github.com/us/crw/commit/86a9e36880f2dddcb3d7b7bd6c993825559cf487))
 * **renderer:** outcome-aware breaker + extraction and stealth fixes ([86dd10f](https://github.com/us/crw/commit/86dd10fd014235cb9bd107e32c7cf6e04cb03367))
 * **renderer:** own per-eTLD+1 host limiter in FallbackRenderer ([0577516](https://github.com/us/crw/commit/0577516bd41dc284f24cbaf3ed95544504ba50be))
-* **renderer:** recover FC-wins URLs to reach 92% bench coverage ([ba12424](https://github.com/us/crw/commit/ba12424e44c34aa44bb8a41bc1f16d1dd87f498a))
+* **renderer:** recover FC-wins URLs (lifts truth-recall toward the canonical 3-way result; see `bench/server-runs/RESULT_3WAY_1000_FULL.md`) ([ba12424](https://github.com/us/crw/commit/ba12424e44c34aa44bb8a41bc1f16d1dd87f498a))
 
 
 ### Bug Fixes

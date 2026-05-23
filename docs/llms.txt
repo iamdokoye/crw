@@ -2,6 +2,13 @@
 
 > CRW is a high-performance web scraper for agents and developer workflows. Start with one `scrape` request, then branch into `crawl`, `map`, `search`, extraction, or MCP as needed. Source: https://github.com/us/crw
 
+## For agents (single-fetch shortcuts)
+- Runnable quickstart inlined on the root page: https://docs.fastcrw.com/ (Python /v1/search example using stdlib only — copy-paste-and-run)
+- Machine-readable API contract: https://docs.fastcrw.com/openapi.json
+- Agent skill manifest: https://docs.fastcrw.com/agent-onboarding/SKILL.md
+- MCP server (Claude Code, Cursor, Windsurf): `npx crw-mcp` — https://www.npmjs.com/package/crw-mcp
+- Typed Python SDK: `pip install crw` — https://pypi.org/project/crw/
+
 ## Get Started
 - [Introduction](https://raw.githubusercontent.com/us/crw/main/docs/docs/introduction.md): The fastest way to understand what CRW does and where to start
 - [Quick Start](https://raw.githubusercontent.com/us/crw/main/docs/docs/quick-start.md): Make your first successful request in under a minute

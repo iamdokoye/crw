@@ -49,7 +49,7 @@
       "6 output formats: Markdown, HTML, JSON, plain text, links",
       "CSS selector and XPath extraction",
       "Chunking with BM25 and cosine ranking for RAG pipelines",
-      "Single binary, 6.6 MB idle RAM"
+      "Single static binary, low idle footprint"
     ]
   }
   </script>
@@ -133,11 +133,6 @@
 The source of truth is the repository root changelog. Do not edit this docs page manually.
 :::</p>
 <p>All notable changes to CRW are documented here.</p>
-<h2><a href="https://github.com/us/crw/compare/v0.9.0...v0.9.1">0.9.1</a> (2026-05-16)</h2>
-<h3>Bug Fixes</h3>
-<ul>
-<li><strong>release:</strong> sync crw-cli internal dep versions with workspace (<a href="https://github.com/us/crw/commit/26c528e737c5ed136d3c6e72da36b9324363805f">26c528e</a>)</li>
-</ul>
 <h2><a href="https://github.com/us/crw/compare/v0.8.3...v0.9.0">0.9.0</a> (2026-05-16)</h2>
 <h3>Features</h3>
 <ul>
@@ -253,7 +248,7 @@ The source of truth is the repository root changelog. Do not edit this docs page
 <li><strong>renderer:</strong> leak-through fallback when global breaker open &amp; host clean (<a href="https://github.com/us/crw/commit/86a9e36880f2dddcb3d7b7bd6c993825559cf487">86a9e36</a>)</li>
 <li><strong>renderer:</strong> outcome-aware breaker + extraction and stealth fixes (<a href="https://github.com/us/crw/commit/86dd10fd014235cb9bd107e32c7cf6e04cb03367">86dd10f</a>)</li>
 <li><strong>renderer:</strong> own per-eTLD+1 host limiter in FallbackRenderer (<a href="https://github.com/us/crw/commit/0577516bd41dc284f24cbaf3ed95544504ba50be">0577516</a>)</li>
-<li><strong>renderer:</strong> recover FC-wins URLs to reach 92% bench coverage (<a href="https://github.com/us/crw/commit/ba12424e44c34aa44bb8a41bc1f16d1dd87f498a">ba12424</a>)</li>
+<li><strong>renderer:</strong> recover FC-wins URLs (lifts truth-recall toward the canonical 3-way result; see <code>bench/server-runs/RESULT_3WAY_1000_FULL.md</code>) (<a href="https://github.com/us/crw/commit/ba12424e44c34aa44bb8a41bc1f16d1dd87f498a">ba12424</a>)</li>
 </ul>
 <h3>Bug Fixes</h3>
 <ul>
