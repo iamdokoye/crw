@@ -8,6 +8,8 @@
   <meta name="keywords" content="web scraper, web crawler, firecrawl alternative, crawl4ai alternative, self-hosted scraper, rust web scraper, mcp server, ai web scraping, rag pipeline, llm extraction, open source crawler, headless browser scraper">
   <link rel="canonical" href="https://docs.fastcrw.com/self-hosting">
   <link rel="icon" href="/favicon.png?v=2" type="image/png">
+  <link rel="alternate" type="application/json" href="/openapi.json" title="OpenAPI 3.1 spec">
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt index">
 
   <!-- Open Graph -->
   <meta property="og:type" content="website">
@@ -54,6 +56,26 @@
   }
   </script>
 
+  <!-- API Reference (JSON-LD) — surfaces endpoints to LLM crawlers -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "APIReference",
+    "name": "CRW REST API",
+    "url": "https://docs.fastcrw.com/",
+    "documentation": "https://docs.fastcrw.com/openapi.json",
+    "programmingModel": "REST",
+    "targetPlatform": ["Hosted: https://fastcrw.com/api", "Self-hosted: http://localhost:3000"],
+    "potentialAction": [
+      {"@type": "ConsumeAction", "name": "/v1/search", "target": "https://fastcrw.com/api/v1/search"},
+      {"@type": "ConsumeAction", "name": "/v1/scrape", "target": "https://fastcrw.com/api/v1/scrape"},
+      {"@type": "ConsumeAction", "name": "/v1/crawl",  "target": "https://fastcrw.com/api/v1/crawl"},
+      {"@type": "ConsumeAction", "name": "/v1/map",    "target": "https://fastcrw.com/api/v1/map"},
+      {"@type": "ConsumeAction", "name": "/v1/extract","target": "https://fastcrw.com/api/v1/extract"}
+    ]
+  }
+  </script>
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" onload="this.onload=null;this.rel='stylesheet'">
@@ -65,6 +87,119 @@
   <link rel="modulepreload" href="/site.config.js">
 </head>
 <body>
+  <!--
+    Agent shell: a static, single-fetch quickstart for LLM crawlers and
+    `WebFetch`-style HTML→markdown pipelines. Off-screen for human users
+    (the SPA still drives #article). Do not remove without updating
+    docs/openapi.json and docs/llms.txt in lockstep.
+  -->
+  <section id="agent-shell" data-agent-shell aria-hidden="true">
+    <h1>CRW — open-source web scraper &amp; crawler (Firecrawl-compatible)</h1>
+    <blockquote>
+      Docs at <code>docs.fastcrw.com</code>. Hosted API at
+      <code>https://fastcrw.com/api</code>. Self-hosted at
+      <code>http://localhost:3000</code>.
+      Five endpoints: <code>/v1/search</code>, <code>/v1/scrape</code>,
+      <code>/v1/crawl</code>, <code>/v1/map</code>, <code>/v1/extract</code>.
+    </blockquote>
+
+    <h2>/v1/search</h2>
+    <p><strong>Auth (hosted only):</strong>
+      <code>Authorization: Bearer $CRW_API_KEY</code>.
+      Self-hosted needs no header.</p>
+    <p><strong>Body:</strong>
+      <code>{ "query": string, "limit": number (default 5, max 20), "lang"?: "en", "tbs"?: "qdr:d|w|m|y", "sources"?: ["web"|"news"|"images"] }</code></p>
+
+    <h3>Python (stdlib only; works hosted or self-hosted with no edits)</h3>
+<pre><code class="language-python">#!/usr/bin/env python3
+"""Search CRW and print top results as JSON."""
+import json, os, urllib.request
+
+API_KEY = os.environ.get("CRW_API_KEY")
+URL = ("https://fastcrw.com/api/v1/search"
+       if API_KEY else "http://localhost:3000/v1/search")
+headers = {"Content-Type": "application/json"}
+if API_KEY:
+    headers["Authorization"] = f"Bearer {API_KEY}"
+
+req = urllib.request.Request(
+    URL,
+    data=json.dumps({"query": "renewable energy trends 2024", "limit": 3}).encode(),
+    headers=headers,
+    method="POST",
+)
+with urllib.request.urlopen(req) as r:
+    body = json.loads(r.read())
+
+# CRW returns search hits at body["data"]; each row has `description`.
+# Task often asks for `snippet`, so rename here.
+print(json.dumps(
+    [{"title": x["title"], "url": x["url"], "snippet": x.get("description", "")}
+     for x in body["data"]],
+    indent=2,
+))
+</code></pre>
+
+    <h3>cURL</h3>
+<pre><code class="language-bash">curl -X POST https://fastcrw.com/api/v1/search \
+  -H "Authorization: Bearer $CRW_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"renewable energy trends 2024","limit":3}'
+</code></pre>
+
+    <h3>Response shape</h3>
+<pre><code class="language-json">{
+  "success": true,
+  "data": [
+    {"url": "https://...", "title": "...", "description": "...",
+     "position": 1, "score": 9.5}
+  ]
+}
+</code></pre>
+
+    <h2>Other endpoints</h2>
+    <ul>
+      <li><code>POST /v1/scrape</code> <code>{"url":"...","formats":["markdown"]}</code> — one URL → markdown</li>
+      <li><code>POST /v1/map</code> <code>{"url":"...","limit":50}</code> — discover URLs</li>
+      <li><code>POST /v1/crawl</code> <code>{"url":"...","maxPages":5}</code> — async multi-page; poll <code>GET /v1/crawl/{id}</code></li>
+      <li><code>POST /v1/scrape</code> with <code>formats:["json"]</code> + <code>jsonOptions.schema</code> — structured extract</li>
+    </ul>
+
+    <h2>Install (local setup only)</h2>
+    <p>
+      <code>pip install crw</code> ·
+      <code>npx crw-mcp</code> ·
+      <code>brew install us/crw/crw</code> ·
+      <code>curl -fsSL https://raw.githubusercontent.com/us/crw/main/install.sh | sh</code> ·
+      <code>docker run -p 3000:3000 ghcr.io/us/crw:latest</code>
+    </p>
+
+    <h2>Resources</h2>
+    <ul>
+      <li><a href="/openapi.json">OpenAPI spec</a></li>
+      <li><a href="/llms.txt">llms.txt</a></li>
+      <li><a href="https://context7.com/us/crw">Context7</a></li>
+      <li><a href="https://www.npmjs.com/package/crw-mcp">MCP Server (npm)</a></li>
+      <li><a href="https://pypi.org/project/crw/">Typed Python SDK</a></li>
+      <li><a href="/agent-onboarding/SKILL.md">Agent Skills (SKILL.md)</a></li>
+      <li><a href="https://github.com/us/homebrew-crw">CLI (Homebrew tap)</a></li>
+      <li><a href="https://github.com/us/crw">GitHub</a></li>
+    </ul>
+  </section>
+  <style>
+    [data-agent-shell] {
+      position: absolute;
+      left: -9999px;
+      top: auto;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+  </style>
+
   <div class="reading-progress" id="reading-progress"></div>
 
   <header class="navbar">
