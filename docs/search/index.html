@@ -309,7 +309,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <h2>Searching the web with CRW</h2>
 <h3>/v1/search</h3>
 <pre><code class="language-http">POST http://localhost:3000/v1/search          # self-hosted
-POST https://fastcrw.com/api/v1/search        # hosted
+POST https://api.fastcrw.com/v1/search        # hosted
 </code></pre>
 <p>Authentication:</p>
 <ul>
@@ -337,13 +337,16 @@ resp = requests.post(
 
 # Or hosted (with API key)
 # resp = requests.post(
-#     &quot;https://fastcrw.com/api/v1/search&quot;,
+#     &quot;https://api.fastcrw.com/v1/search&quot;,
 #     headers={&quot;Authorization&quot;: &quot;Bearer YOUR_API_KEY&quot;},
 #     json={&quot;query&quot;: &quot;web scraping tools&quot;, &quot;limit&quot;: 5},
 # )
 
+# Each result row has: title, url, snippet, description, position, score.
+# `snippet` is the LLM-ready summary line (Firecrawl-compatible name);
+# `description` is the same value, kept as an alias.
 for item in resp.json()[&quot;data&quot;]:
-    print(item[&quot;title&quot;], item[&quot;url&quot;])
+    print(item[&quot;title&quot;], item[&quot;url&quot;], item[&quot;snippet&quot;])
 </code></pre>
 <p>::tab{title=&quot;Node.js&quot;}</p>
 <pre><code class="language-javascript">const resp = await fetch(&quot;http://localhost:3000/v1/search&quot;, {
@@ -362,7 +365,7 @@ curl -X POST http://localhost:3000/v1/search \
   -d &#39;{&quot;query&quot;: &quot;web scraping tools&quot;, &quot;limit&quot;: 5}&#39;
 
 # Hosted
-curl -X POST https://fastcrw.com/api/v1/search \
+curl -X POST https://api.fastcrw.com/v1/search \
   -H &quot;Authorization: Bearer YOUR_API_KEY&quot; \
   -H &quot;Content-Type: application/json&quot; \
   -d &#39;{&quot;query&quot;: &quot;web scraping tools&quot;, &quot;limit&quot;: 5}&#39;
@@ -375,13 +378,17 @@ curl -X POST https://fastcrw.com/api/v1/search \
     {
       &quot;url&quot;: &quot;https://example.com/article&quot;,
       &quot;title&quot;: &quot;Article Title&quot;,
-      &quot;description&quot;: &quot;A snippet from the search result...&quot;,
+      &quot;snippet&quot;: &quot;A summary line from the search result...&quot;,
+      &quot;description&quot;: &quot;A summary line from the search result...&quot;,
       &quot;position&quot;: 1,
       &quot;score&quot;: 9.5
     }
   ]
 }
 </code></pre>
+<p><code>snippet</code> is the LLM-ready summary line — name kept identical to Firecrawl
+so existing pipelines work unchanged. <code>description</code> is the same value
+under the SearXNG-native name. Pick whichever; both are emitted.</p>
 <p>That is the flat response shape used when <code>sources</code> is not set.</p>
 <h2>Parameters</h2>
 <table>
@@ -533,7 +540,8 @@ curl -X POST https://fastcrw.com/api/v1/search \
     {
       &quot;url&quot;: &quot;https://example.com/article&quot;,
       &quot;title&quot;: &quot;Article Title&quot;,
-      &quot;description&quot;: &quot;Search snippet...&quot;,
+      &quot;snippet&quot;: &quot;Search summary line...&quot;,
+      &quot;description&quot;: &quot;Search summary line...&quot;,
       &quot;position&quot;: 1,
       &quot;score&quot;: 9.5
     }
@@ -544,8 +552,8 @@ curl -X POST https://fastcrw.com/api/v1/search \
 <pre><code class="language-json">{
   &quot;success&quot;: true,
   &quot;data&quot;: {
-    &quot;web&quot;: [{ &quot;url&quot;: &quot;...&quot;, &quot;title&quot;: &quot;...&quot;, &quot;description&quot;: &quot;...&quot; }],
-    &quot;news&quot;: [{ &quot;url&quot;: &quot;...&quot;, &quot;title&quot;: &quot;...&quot;, &quot;publishedDate&quot;: &quot;2026-04-02T14:00:00&quot; }],
+    &quot;web&quot;: [{ &quot;url&quot;: &quot;...&quot;, &quot;title&quot;: &quot;...&quot;, &quot;snippet&quot;: &quot;...&quot;, &quot;description&quot;: &quot;...&quot; }],
+    &quot;news&quot;: [{ &quot;url&quot;: &quot;...&quot;, &quot;title&quot;: &quot;...&quot;, &quot;snippet&quot;: &quot;...&quot;, &quot;description&quot;: &quot;...&quot;, &quot;publishedDate&quot;: &quot;2026-04-02T14:00:00&quot; }],
     &quot;images&quot;: [{ &quot;url&quot;: &quot;...&quot;, &quot;imageUrl&quot;: &quot;...&quot;, &quot;thumbnailUrl&quot;: &quot;...&quot; }]
   }
 }
