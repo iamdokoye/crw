@@ -137,8 +137,8 @@ req = urllib.request.Request(
 with urllib.request.urlopen(req) as r:
     body = json.loads(r.read())
 
-# Each row already includes a `snippet` field (alias of `description`,
-# Firecrawl parity). Print the LLM-ready projection directly.
+# Each result row has `title`, `url`, `snippet`, `description`,
+# `position`, `score`, `category` — print the LLM-ready subset.
 print(json.dumps(
     [{"title": x["title"], "url": x["url"], "snippet": x["snippet"]}
      for x in body["data"]],
