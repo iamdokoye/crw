@@ -139,12 +139,10 @@ req = urllib.request.Request(
 with urllib.request.urlopen(req) as r:
     body = json.loads(r.read())
 
-# CRW search rows expose the result blurb as `description`. The benchmark
-# rubric (and Firecrawl parity) asks for `snippet`, so project it here.
+# Each row already includes a `snippet` field (alias of `description`,
+# Firecrawl parity). Print the LLM-ready projection directly.
 print(json.dumps(
-    [{"title": x["title"],
-      "url": x["url"],
-      "snippet": x.get("description") or x.get("snippet") or ""}
+    [{"title": x["title"], "url": x["url"], "snippet": x["snippet"]}
      for x in body["data"]],
     indent=2,
 ))
@@ -173,7 +171,8 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <pre><code class="language-json">{
   "success": true,
   "data": [
-    {"url": "https://...", "title": "...", "description": "...",
+    {"url": "https://...", "title": "...",
+     "description": "...", "snippet": "...",
      "position": 1, "score": 9.5}
   ]
 }
