@@ -236,7 +236,8 @@
         "properties": {
           "url":         { "type": "string", "format": "uri" },
           "title":       { "type": "string" },
-          "description": { "type": "string", "description": "Search snippet (also returned as 'snippet' callers may want to rename)" },
+          "snippet":     { "type": "string", "description": "Result blurb (LLM-ready summary line)" },
+          "description": { "type": "string", "description": "Alias of snippet (same value, kept for Firecrawl response-shape parity)" },
           "position":    { "type": "integer" },
           "score":       { "type": "number" },
           "category":    { "type": "string", "description": "SearXNG result category (e.g. 'general')" },
