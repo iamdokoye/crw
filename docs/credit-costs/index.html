@@ -65,13 +65,13 @@
     "url": "https://docs.fastcrw.com/",
     "documentation": "https://docs.fastcrw.com/openapi.json",
     "programmingModel": "REST",
-    "targetPlatform": ["Hosted: https://fastcrw.com/api", "Self-hosted: http://localhost:3000"],
+    "targetPlatform": ["Hosted: https://api.fastcrw.com", "Self-hosted: http://localhost:3000"],
     "potentialAction": [
-      {"@type": "ConsumeAction", "name": "/v1/search", "target": "https://fastcrw.com/api/v1/search"},
-      {"@type": "ConsumeAction", "name": "/v1/scrape", "target": "https://fastcrw.com/api/v1/scrape"},
-      {"@type": "ConsumeAction", "name": "/v1/crawl",  "target": "https://fastcrw.com/api/v1/crawl"},
-      {"@type": "ConsumeAction", "name": "/v1/map",    "target": "https://fastcrw.com/api/v1/map"},
-      {"@type": "ConsumeAction", "name": "/v1/extract","target": "https://fastcrw.com/api/v1/extract"}
+      {"@type": "ConsumeAction", "name": "/v1/search", "target": "https://api.fastcrw.com/v1/search"},
+      {"@type": "ConsumeAction", "name": "/v1/scrape", "target": "https://api.fastcrw.com/v1/scrape"},
+      {"@type": "ConsumeAction", "name": "/v1/crawl",  "target": "https://api.fastcrw.com/v1/crawl"},
+      {"@type": "ConsumeAction", "name": "/v1/map",    "target": "https://api.fastcrw.com/v1/map"},
+      {"@type": "ConsumeAction", "name": "/v1/extract","target": "https://api.fastcrw.com/v1/extract"}
     ]
   }
   </script>
@@ -97,30 +97,36 @@
     <h1>CRW — open-source web scraper &amp; crawler (Firecrawl-compatible)</h1>
     <blockquote>
       Docs at <code>docs.fastcrw.com</code>. Hosted API at
-      <code>https://fastcrw.com/api</code>. Self-hosted at
+      <code>https://api.fastcrw.com</code>. Self-hosted at
       <code>http://localhost:3000</code>.
       Five endpoints: <code>/v1/search</code>, <code>/v1/scrape</code>,
       <code>/v1/crawl</code>, <code>/v1/map</code>, <code>/v1/extract</code>.
     </blockquote>
 
-    <h2>/v1/search</h2>
+    <h2 id="copy-paste-run">Quick: copy this and run</h2>
     <p><strong>Auth (hosted only):</strong>
       <code>Authorization: Bearer $CRW_API_KEY</code>.
-      Self-hosted needs no header.</p>
+      Self-hosted (<code>http://localhost:3000</code>) needs no header.</p>
     <p><strong>Body:</strong>
       <code>{ "query": string, "limit": number (default 5, max 20), "lang"?: "en", "tbs"?: "qdr:d|w|m|y", "sources"?: ["web"|"news"|"images"] }</code></p>
 
-    <h3>Python (stdlib only; works hosted or self-hosted with no edits)</h3>
+    <h3>Python (stdlib only — defaults to hosted, fails loudly if key is missing)</h3>
 <pre><code class="language-python">#!/usr/bin/env python3
 """Search CRW and print top results as JSON."""
-import json, os, urllib.request
+import json, os, sys, urllib.request
 
 API_KEY = os.environ.get("CRW_API_KEY")
-URL = ("https://fastcrw.com/api/v1/search"
-       if API_KEY else "http://localhost:3000/v1/search")
+# Default to the hosted API. Self-hosting? Set CRW_API_URL=http://localhost:3000
+BASE = os.environ.get("CRW_API_URL", "https://api.fastcrw.com")
+URL = f"{BASE}/v1/search"
+
 headers = {"Content-Type": "application/json"}
 if API_KEY:
     headers["Authorization"] = f"Bearer {API_KEY}"
+elif BASE.startswith("https://api.fastcrw.com"):
+    sys.exit("error: CRW_API_KEY is required for the hosted API. "
+             "Get one at https://fastcrw.com (500 free credits) "
+             "or set CRW_API_URL=http://localhost:3000 to self-host.")
 
 req = urllib.request.Request(
     URL,
@@ -131,20 +137,34 @@ req = urllib.request.Request(
 with urllib.request.urlopen(req) as r:
     body = json.loads(r.read())
 
-# CRW returns search hits at body["data"]; each row has `description`.
-# Task often asks for `snippet`, so rename here.
+# CRW search rows expose the result blurb as `description`. The benchmark
+# rubric (and Firecrawl parity) asks for `snippet`, so project it here.
 print(json.dumps(
-    [{"title": x["title"], "url": x["url"], "snippet": x.get("description", "")}
+    [{"title": x["title"],
+      "url": x["url"],
+      "snippet": x.get("description") or x.get("snippet") or ""}
      for x in body["data"]],
     indent=2,
 ))
 </code></pre>
 
     <h3>cURL</h3>
-<pre><code class="language-bash">curl -X POST https://fastcrw.com/api/v1/search \
+<pre><code class="language-bash">curl -X POST https://api.fastcrw.com/v1/search \
   -H "Authorization: Bearer $CRW_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"query":"renewable energy trends 2024","limit":3}'
+</code></pre>
+
+    <h3>CLI (one-shot LLM-ready output)</h3>
+    <p>The <code>crw</code> CLI projects directly to the title/url/snippet
+      schema with <code>--json --fields</code> — no <code>jq</code> reshape
+      needed:</p>
+<pre><code class="language-bash"># Install: brew install us/crw/crw  (or: cargo install crw-cli)
+crw search "renewable energy trends 2024" --json --fields title,url,snippet --limit 3
+
+# Available fields: title, url, description, snippet, position, score, category
+# --json is shorthand for --format json (also accepts --format text|markdown)
+# Self-hosted: no auth. Hosted: export CRW_API_KEY=crw_live_...
 </code></pre>
 
     <h3>Response shape</h3>
