@@ -63,10 +63,12 @@ fn dedupe_by_url(items: Vec<SearxngResult>) -> Vec<SearxngResult> {
 }
 
 fn to_search_result(r: &SearxngResult, position: u32) -> SearchResult {
+    let description = r.content.clone().unwrap_or_default();
     SearchResult {
         url: url_of(r).to_string(),
         title: title_of(r),
-        description: r.content.clone().unwrap_or_default(),
+        snippet: description.clone(),
+        description,
         position,
         score: r.score,
         published_date: r.published_date.clone(),

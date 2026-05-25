@@ -193,7 +193,7 @@ pub fn tool_definitions(proxy_mode: bool) -> Value {
     let _ = proxy_mode;
     tools.push(json!({
         "name": "crw_search",
-        "description": "Search the web and return relevant results with titles, URLs, and descriptions. Backed by a SearXNG sidecar in embedded mode, or by the configured remote API in proxy mode.",
+        "description": "Search the web and return relevant results with titles, URLs, and descriptions/snippets. Backed by a SearXNG sidecar in embedded mode (no API key needed), or by the configured remote API in proxy mode (uses CRW_API_KEY).\n\nReturn shape: `{ \"success\": true, \"data\": [{ \"url\", \"title\", \"description\", \"snippet\", \"position\", \"score\" }, ...] }`. The `snippet` field is an alias of `description` — both carry the same body text so downstream LLM pipelines that ask for either get a match.\n\nExample: `crw_search(query=\"renewable energy trends 2024\", limit=3)` returns the top 3 web results with title/url/snippet.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -208,6 +208,10 @@ pub fn tool_definitions(proxy_mode: bool) -> Value {
                 "lang": {
                     "type": "string",
                     "description": "Language code for results (e.g. \"en\", \"tr\")"
+                },
+                "country": {
+                    "type": "string",
+                    "description": "Country code for results (e.g. \"us\", \"tr\"). Hint to bias regional results; ignored if the underlying engine does not support it."
                 },
                 "tbs": {
                     "type": "string",
@@ -240,6 +244,29 @@ pub fn tool_definitions(proxy_mode: bool) -> Value {
                 }
             },
             "required": ["query"]
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "success": { "type": "boolean" },
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "url": { "type": "string" },
+                            "title": { "type": "string" },
+                            "description": { "type": "string", "description": "Body snippet for the result. `snippet` is an alias of this field." },
+                            "snippet": { "type": "string", "description": "Alias of `description`. Always populated." },
+                            "position": { "type": "integer" },
+                            "score": { "type": "number" },
+                            "category": { "type": "string" }
+                        },
+                        "required": ["url", "title", "description", "snippet", "position"]
+                    }
+                }
+            },
+            "required": ["success", "data"]
         }
     }));
 

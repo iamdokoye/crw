@@ -32,7 +32,7 @@ This installs the CRW skill and MCP server to all detected AI agents (Claude Cod
 ## Authentication
 
 - **Embedded mode** (default): No key needed — the MCP server runs a self-contained scraper in ~6 MB RAM. No server required.
-- **Cloud mode** (fastcrw.com): Set `CRW_API_KEY=crw_live_...` and `CRW_API_URL=https://fastcrw.com/api`. Get a free key at https://fastcrw.com with 500 one-time lifetime credits (never resets, not monthly).
+- **Cloud mode** (fastcrw.com): Set `CRW_API_KEY=crw_live_...` and `CRW_API_URL=https://api.fastcrw.com`. Get a free key at https://fastcrw.com with 500 one-time lifetime credits (never resets, not monthly).
 
 ## MCP Tools
 
@@ -111,6 +111,18 @@ crw_check_crawl_status(id="...")  → poll until completed
 ```
 crw_search(query="your search query", limit=5)
 ```
+
+**Search from the CLI (one-shot LLM-ready output):**
+
+When the `crw` binary is available, prefer the native field projection
+over piping through `jq` — it's one call instead of two:
+
+```bash
+crw search "renewable energy 2024" --json --fields title,url,snippet --limit 3
+```
+
+Available fields: `title`, `url`, `description`, `snippet`, `position`,
+`score`, `category`. `--json` is shorthand for `--format json`.
 
 ## Common Edge Cases
 

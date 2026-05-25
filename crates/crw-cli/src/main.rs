@@ -28,19 +28,28 @@ use teardown::{CmdError, finish, install_signal_teardown};
 #[derive(Parser)]
 #[command(
     name = "crw",
+    version,
     about = "Web scraper for AI agents",
     long_about = "Unified CLI for web scraping, crawling, search, and serving.\n\n\
         The fastest web scraper built for AI agents and LLM data pipelines.\n\n\
         Examples:\n  \
-        crw example.com                    # Scrape URL (default mode)\n  \
+        crw example.com                                                 # Scrape URL (default mode)\n  \
         crw scrape example.com --format json\n  \
-        crw search \"rust web scraper\"     # Web search via SearXNG\n  \
-        crw crawl example.com --depth 3   # BFS crawl\n  \
-        crw map example.com               # Discover URLs\n  \
-        crw serve --port 3000             # Start REST API server\n  \
-        crw mcp                           # Start MCP server\n  \
-        crw browse                        # Start browser automation MCP\n  \
-        crw setup                         # Interactive setup wizard"
+        crw search \"rust web scraper\" --json --fields title,url,snippet  # LLM-ready JSON\n  \
+        crw crawl example.com --depth 3                                 # BFS crawl\n  \
+        crw map example.com                                             # Discover URLs\n  \
+        crw serve --port 3000                                           # Start REST API server\n  \
+        crw mcp                                                         # Start MCP server\n  \
+        crw browse                                                      # Start browser automation MCP\n  \
+        crw setup                                                       # Interactive setup wizard",
+    after_help = "INSTALL:\n  \
+        brew install us/crw/crw                                         # macOS / Linux\n  \
+        cargo install crw-cli                                           # Any Rust toolchain\n  \
+        curl -fsSL https://raw.githubusercontent.com/us/crw/main/install.sh | sh\n\n\
+        DOCS:    https://docs.fastcrw.com  ·  https://github.com/us/crw\n\
+        CLOUD:   https://fastcrw.com (500 free credits, no monthly reset)\n\
+        SEARCH:  set CRW_SEARXNG_URL=https://searx.be for a public SearXNG instance\n\
+        "
 )]
 struct Cli {
     #[command(subcommand)]

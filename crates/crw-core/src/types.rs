@@ -898,6 +898,12 @@ pub struct SearchResult {
     pub url: String,
     pub title: String,
     pub description: String,
+    /// Alias of `description`. Always populated. Emitted so downstream LLM
+    /// pipelines that ask for "snippet" (Firecrawl convention) don't need a
+    /// rename step. `#[serde(default)]` keeps deserialization permissive for
+    /// callers that don't supply it.
+    #[serde(default)]
+    pub snippet: String,
     pub position: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub score: Option<f64>,
