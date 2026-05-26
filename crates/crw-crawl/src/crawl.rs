@@ -280,8 +280,15 @@ async fn run_crawl_inner(opts: CrawlOptions<'_>) {
         if let (Some(schema), Some(llm)) = (&req.json_schema, llm_config)
             && let Some(md) = &data.markdown
         {
-            match crw_extract::structured::extract_structured(md, schema, llm).await {
-                Ok(json) => data.json = Some(json),
+            match crw_extract::structured::extract_structured_with_usage(md, schema, llm, None)
+                .await
+            {
+                Ok(result) => {
+                    data.json = Some(result.value);
+                    if data.llm_usage.is_none() {
+                        data.llm_usage = result.usage;
+                    }
+                }
                 Err(e) => {
                     tracing::warn!(url = url.as_str(), "Crawl LLM extraction failed: {e}")
                 }

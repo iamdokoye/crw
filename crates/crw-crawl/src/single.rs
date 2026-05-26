@@ -415,8 +415,21 @@ async fn scrape_url_inner(
     if formats_include_json(&req.formats) {
         if let (Some(schema), Some(llm)) = (effective_schema, effective_llm) {
             let md = data.markdown.as_deref().unwrap_or("");
-            match crw_extract::structured::extract_structured(md, schema, llm).await {
-                Ok(json) => data.json = Some(json),
+            match crw_extract::structured::extract_structured_with_usage(md, schema, llm, None)
+                .await
+            {
+                Ok(result) => {
+                    data.json = Some(result.value);
+                    // Surface per-call LLM token usage so callers (billing,
+                    // dashboards) see the structured-extraction spend.
+                    // Summary may overwrite this slot below; that's fine —
+                    // each route triggers at most one of the two paths in
+                    // the dominant flow, and the "first wins" tiebreak is
+                    // preserved by checking is_none() before assignment.
+                    if data.llm_usage.is_none() {
+                        data.llm_usage = result.usage;
+                    }
+                }
                 Err(e) => {
                     tracing::error!("Structured extraction failed: {e}");
                     return Err(e);

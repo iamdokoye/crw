@@ -1,10 +1,43 @@
+use crate::pricing;
 use crw_core::config::LlmConfig;
 use crw_core::error::{CrwError, CrwResult};
+use crw_core::types::LlmUsage;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
 /// Request timeout for LLM API calls.
 const LLM_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Default UTF-8-safe truncation ceiling on markdown sent to the LLM for
+/// structured extraction. Matches the Next.js side's pre-flight cap so the
+/// per-call reserve never goes wildly out of band. Pages larger than this
+/// can still be processed with an explicit caller-supplied override.
+pub const DEFAULT_MAX_INPUT_BYTES: usize = 50_000;
+
+/// Result of a structured-extraction LLM call: the validated JSON value
+/// plus per-call token usage and a `truncated` flag indicating whether the
+/// markdown input was clipped at [`DEFAULT_MAX_INPUT_BYTES`] (or the
+/// caller-supplied override) before being sent to the LLM.
+#[derive(Debug, Clone)]
+pub struct StructuredExtractResult {
+    pub value: serde_json::Value,
+    pub usage: Option<LlmUsage>,
+    pub truncated: bool,
+}
+
+/// UTF-8-safe truncation: clip at `max_bytes` but walk back to the nearest
+/// char boundary so we never split a multibyte sequence. Returns
+/// `(truncated_slice, was_truncated)`.
+fn truncate_md(s: &str, max_bytes: usize) -> (&str, bool) {
+    if s.len() <= max_bytes {
+        return (s, false);
+    }
+    let mut idx = max_bytes;
+    while idx > 0 && !s.is_char_boundary(idx) {
+        idx -= 1;
+    }
+    (&s[..idx], true)
+}
 
 /// Shared HTTP client for LLM API calls (avoids per-request connection overhead).
 fn shared_client() -> &'static reqwest::Client {
@@ -35,11 +68,35 @@ fn validate_against_schema(value: &serde_json::Value, schema: &serde_json::Value
 }
 
 /// Extract structured JSON from markdown content using an LLM.
+///
+/// Backward-compatible thin wrapper: callers that only need the validated
+/// JSON value can keep calling this. New callers that also want the LLM
+/// token-usage envelope + truncation flag should use
+/// [`extract_structured_with_usage`].
 pub async fn extract_structured(
     markdown: &str,
     schema: &serde_json::Value,
     llm: &LlmConfig,
 ) -> CrwResult<serde_json::Value> {
+    Ok(extract_structured_with_usage(markdown, schema, llm, None)
+        .await?
+        .value)
+}
+
+/// Extract structured JSON and return token usage + truncation status.
+///
+/// `max_input_bytes` overrides the per-call markdown byte ceiling. `None`
+/// falls back to [`DEFAULT_MAX_INPUT_BYTES`] (50 KB). Truncation is done
+/// on a UTF-8 char boundary; if it occurred, the returned
+/// [`StructuredExtractResult::truncated`] is `true` and the
+/// `LlmUsage.truncated` field (when usage is present) is also set so
+/// downstream billing surfaces can flag pages that were clipped.
+pub async fn extract_structured_with_usage(
+    markdown: &str,
+    schema: &serde_json::Value,
+    llm: &LlmConfig,
+    max_input_bytes: Option<usize>,
+) -> CrwResult<StructuredExtractResult> {
     if llm.api_key.is_empty() {
         return Err(CrwError::ExtractionError(
             "LLM API key is empty. Set [extraction.llm.api_key] or CRW_EXTRACTION__LLM__API_KEY."
@@ -47,16 +104,27 @@ pub async fn extract_structured(
         ));
     }
 
-    let result = match llm.provider.as_str() {
-        "anthropic" => call_anthropic(markdown, schema, llm).await,
-        "openai" => call_openai(markdown, schema, llm).await,
+    let max_bytes = max_input_bytes.unwrap_or(DEFAULT_MAX_INPUT_BYTES);
+    let (clipped, truncated) = truncate_md(markdown, max_bytes);
+
+    let (value, mut usage) = match llm.provider.as_str() {
+        "anthropic" => call_anthropic(clipped, schema, llm).await,
+        "openai" => call_openai(clipped, schema, llm).await,
         other => Err(CrwError::ExtractionError(format!(
             "Unsupported LLM provider: {other}. Use 'anthropic' or 'openai'."
         ))),
     }?;
 
-    validate_against_schema(&result, schema)?;
-    Ok(result)
+    if truncated && let Some(u) = usage.as_mut() {
+        u.truncated = true;
+    }
+
+    validate_against_schema(&value, schema)?;
+    Ok(StructuredExtractResult {
+        value,
+        usage,
+        truncated,
+    })
 }
 
 // ── Anthropic ──
@@ -86,6 +154,20 @@ struct Message {
 #[derive(Deserialize)]
 struct AnthropicResponse {
     content: Vec<AnthropicContentBlock>,
+    #[serde(default)]
+    usage: Option<AnthropicUsage>,
+}
+
+#[derive(Deserialize, Default)]
+struct AnthropicUsage {
+    #[serde(default)]
+    input_tokens: u32,
+    #[serde(default)]
+    output_tokens: u32,
+    #[serde(default)]
+    cache_read_input_tokens: Option<u32>,
+    #[serde(default)]
+    cache_creation_input_tokens: Option<u32>,
 }
 
 #[derive(Deserialize)]
@@ -107,7 +189,7 @@ async fn call_anthropic(
     markdown: &str,
     schema: &serde_json::Value,
     llm: &LlmConfig,
-) -> CrwResult<serde_json::Value> {
+) -> CrwResult<(serde_json::Value, Option<LlmUsage>)> {
     let base_url = llm
         .base_url
         .as_deref()
@@ -161,10 +243,39 @@ async fn call_anthropic(
         CrwError::ExtractionError(format!("Failed to parse Anthropic response: {e}"))
     })?;
 
+    let usage = parsed.usage.as_ref().map(|u| {
+        let (cache_hit, cache_miss) =
+            match (u.cache_read_input_tokens, u.cache_creation_input_tokens) {
+                (None, None) => (None, None),
+                (read, create) => {
+                    let hit = read.unwrap_or(0);
+                    let create = create.unwrap_or(0);
+                    let miss = u.input_tokens.saturating_add(create);
+                    (Some(hit), Some(miss))
+                }
+            };
+        LlmUsage {
+            input_tokens: u.input_tokens,
+            output_tokens: u.output_tokens,
+            total_tokens: u.input_tokens + u.output_tokens,
+            estimated_cost_usd: pricing::calculate_cost(
+                &llm.model,
+                u.input_tokens,
+                u.output_tokens,
+            ),
+            model: llm.model.clone(),
+            provider: "anthropic".to_string(),
+            cache_hit_input_tokens: cache_hit,
+            cache_miss_input_tokens: cache_miss,
+            truncated: false,
+            calls: 1,
+        }
+    });
+
     // Try tool_use blocks first (structured output).
     for block in &parsed.content {
         if let AnthropicContentBlock::ToolUse { input, .. } = block {
-            return Ok(input.clone());
+            return Ok((input.clone(), usage));
         }
     }
 
@@ -179,7 +290,8 @@ async fn call_anthropic(
         .collect::<Vec<_>>()
         .join("");
 
-    parse_json_response(&raw_text)
+    let value = parse_json_response(&raw_text)?;
+    Ok((value, usage))
 }
 
 // ── OpenAI ──
@@ -209,6 +321,30 @@ struct OpenAiFunctionDef {
 #[derive(Deserialize)]
 struct OpenAiResponse {
     choices: Vec<OpenAiChoice>,
+    #[serde(default)]
+    usage: Option<OpenAiUsage>,
+}
+
+#[derive(Deserialize, Default)]
+struct OpenAiUsage {
+    #[serde(default)]
+    prompt_tokens: u32,
+    #[serde(default)]
+    completion_tokens: u32,
+    #[serde(default)]
+    total_tokens: Option<u32>,
+    #[serde(default)]
+    prompt_cache_hit_tokens: Option<u32>,
+    #[serde(default)]
+    prompt_cache_miss_tokens: Option<u32>,
+    #[serde(default)]
+    prompt_tokens_details: Option<OpenAiPromptDetails>,
+}
+
+#[derive(Deserialize, Default)]
+struct OpenAiPromptDetails {
+    #[serde(default)]
+    cached_tokens: Option<u32>,
 }
 
 #[derive(Deserialize)]
@@ -240,7 +376,7 @@ async fn call_openai(
     markdown: &str,
     schema: &serde_json::Value,
     llm: &LlmConfig,
-) -> CrwResult<serde_json::Value> {
+) -> CrwResult<(serde_json::Value, Option<LlmUsage>)> {
     let base_url = llm.base_url.as_deref().unwrap_or("https://api.openai.com");
 
     let url = format!("{base_url}/v1/chat/completions");
@@ -293,6 +429,48 @@ async fn call_openai(
     let parsed: OpenAiResponse = serde_json::from_str(&text)
         .map_err(|e| CrwError::ExtractionError(format!("Failed to parse OpenAI response: {e}")))?;
 
+    let usage = parsed.usage.as_ref().map(|u| {
+        let total = u
+            .total_tokens
+            .unwrap_or_else(|| u.prompt_tokens + u.completion_tokens);
+        let openai_cached = u
+            .prompt_tokens_details
+            .as_ref()
+            .and_then(|d| d.cached_tokens);
+        let (cache_hit, cache_miss) = match (
+            u.prompt_cache_hit_tokens,
+            u.prompt_cache_miss_tokens,
+            openai_cached,
+        ) {
+            (Some(h), Some(m), _) => (Some(h), Some(m)),
+            (Some(h), None, _) => (Some(h), Some(u.prompt_tokens.saturating_sub(h))),
+            (None, Some(m), _) => (Some(u.prompt_tokens.saturating_sub(m)), Some(m)),
+            (None, None, Some(c)) => (Some(c), Some(u.prompt_tokens.saturating_sub(c))),
+            (None, None, None) => (None, None),
+        };
+        LlmUsage {
+            input_tokens: u.prompt_tokens,
+            output_tokens: u.completion_tokens,
+            total_tokens: total,
+            estimated_cost_usd: pricing::calculate_cost(
+                &llm.model,
+                u.prompt_tokens,
+                u.completion_tokens,
+            ),
+            model: llm.model.clone(),
+            // NOTE: structured.rs is reached only when the dispatcher in
+            // extract_structured() matched "openai". DeepSeek goes through
+            // the lib.rs/llm.rs path and is tagged correctly there. If a
+            // future caller routes DeepSeek through this file, this tag
+            // must thread through too.
+            provider: llm.provider.clone(),
+            cache_hit_input_tokens: cache_hit,
+            cache_miss_input_tokens: cache_miss,
+            truncated: false,
+            calls: 1,
+        }
+    });
+
     let choice = parsed
         .choices
         .first()
@@ -302,16 +480,19 @@ async fn call_openai(
     if let Some(tool_calls) = &choice.message.tool_calls
         && let Some(call) = tool_calls.first()
     {
-        return serde_json::from_str(&call.function.arguments).map_err(|e| {
-            CrwError::ExtractionError(format!(
-                "Failed to parse OpenAI function call arguments: {e}"
-            ))
-        });
+        let value: serde_json::Value =
+            serde_json::from_str(&call.function.arguments).map_err(|e| {
+                CrwError::ExtractionError(format!(
+                    "Failed to parse OpenAI function call arguments: {e}"
+                ))
+            })?;
+        return Ok((value, usage));
     }
 
     // Fallback: extract from content text.
     let raw_text = choice.message.content.clone().unwrap_or_default();
-    parse_json_response(&raw_text)
+    let value = parse_json_response(&raw_text)?;
+    Ok((value, usage))
 }
 
 /// Parse JSON from LLM response, stripping markdown fences if present.
@@ -406,5 +587,45 @@ mod tests {
     fn test_parse_json_response_with_fences() {
         let result = parse_json_response("```json\n{\"key\": \"value\"}\n```").unwrap();
         assert_eq!(result, json!({"key": "value"}));
+    }
+
+    #[test]
+    fn truncate_md_passes_through_short_input() {
+        let s = "hello world";
+        let (out, was) = truncate_md(s, 50_000);
+        assert_eq!(out, s);
+        assert!(!was);
+    }
+
+    #[test]
+    fn truncate_md_clips_at_default_50k_byte_cutoff() {
+        // Build a payload larger than DEFAULT_MAX_INPUT_BYTES (50_000) where
+        // a multibyte char STRADDLES the 50_000-byte boundary. The 4-byte
+        // rocket emoji at byte 49_998 occupies bytes 49_998..=50_001; a
+        // naive slice at 50_000 would split it and panic. The safe
+        // truncation must walk back to byte 49_998.
+        let prefix = "a".repeat(49_998);
+        let big = format!("{prefix}🚀{}", "z".repeat(10_000));
+        assert!(big.len() > DEFAULT_MAX_INPUT_BYTES);
+        let (out, was) = truncate_md(&big, DEFAULT_MAX_INPUT_BYTES);
+        assert!(was, "expected truncation to fire above 50 KB");
+        assert!(
+            out.is_char_boundary(out.len()),
+            "truncated slice must end on a UTF-8 char boundary"
+        );
+        // The walked-back boundary lands before the emoji, NOT mid-emoji.
+        assert_eq!(out.len(), 49_998);
+        // And the prefix is intact — every byte is 'a'.
+        assert!(out.bytes().all(|b| b == b'a'));
+    }
+
+    #[test]
+    fn truncate_md_honours_explicit_smaller_cap() {
+        let s = format!("{}🚀tail", "a".repeat(99));
+        let (out, was) = truncate_md(&s, 100);
+        assert!(was);
+        // 99 'a's fit; emoji starts at byte 99 (4 bytes) — must NOT split.
+        assert!(out.len() <= 100);
+        assert!(out.is_char_boundary(out.len()));
     }
 }

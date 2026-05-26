@@ -147,8 +147,10 @@ async fn dispatch(
             .await
         }
         // DeepSeek and other OpenAI-compatible providers use the same wire
-        // protocol; users select them via `base_url`.
-        "openai" | "deepseek" | "openai-compatible" => {
+        // protocol; users select them via `base_url`. Thread the dispatcher's
+        // provider tag through so usage records reflect the actual provider
+        // (e.g. `deepseek`) instead of always reporting `openai`.
+        provider_tag @ ("openai" | "deepseek" | "openai-compatible") => {
             call_openai(
                 client,
                 api_key,
@@ -157,6 +159,7 @@ async fn dispatch(
                 max_tokens,
                 system_prompt,
                 user_msg,
+                provider_tag,
             )
             .await
         }
@@ -257,6 +260,7 @@ async fn call_openai(
     max_tokens: u32,
     system_prompt: &str,
     user_msg: &str,
+    provider: &str,
 ) -> CrwResult<LlmCallResult> {
     // Accept either a full endpoint URL or a `…/v1` base; append the path if
     // missing so users don't have to remember the suffix.
@@ -307,7 +311,7 @@ async fn call_openai(
         .map(|s| s.to_string())
         .ok_or_else(|| CrwError::Internal("openai response missing content".to_string()))?;
 
-    let usage = parse_openai_usage(&payload, model, "openai");
+    let usage = parse_openai_usage(&payload, model, provider);
     Ok(LlmCallResult {
         content,
         usage,
@@ -378,6 +382,30 @@ fn parse_anthropic_usage(payload: &serde_json::Value, model: &str) -> Option<Llm
     let usage = payload.get("usage")?;
     let input_tokens = usage.get("input_tokens").and_then(|v| v.as_u64())? as u32;
     let output_tokens = usage.get("output_tokens").and_then(|v| v.as_u64())? as u32;
+    // Anthropic prompt-cache fields (only present when cache is in use).
+    // `cache_read_input_tokens` is a cache HIT (discounted read).
+    // `cache_creation_input_tokens` is a cache WRITE — billed at the full
+    // input rate, so we count it as a "miss" for the hit/miss breakdown.
+    let cache_read = usage
+        .get("cache_read_input_tokens")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as u32);
+    let cache_creation = usage
+        .get("cache_creation_input_tokens")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as u32);
+    let (cache_hit_input_tokens, cache_miss_input_tokens) = match (cache_read, cache_creation) {
+        (None, None) => (None, None),
+        (read, create) => {
+            let hit = read.unwrap_or(0);
+            let create = create.unwrap_or(0);
+            // Anthropic reports `input_tokens` as non-cached input only —
+            // the cache_read/cache_creation buckets are additive on top.
+            // Treat plain `input_tokens` + cache_creation as the miss side.
+            let miss = input_tokens.saturating_add(create);
+            (Some(hit), Some(miss))
+        }
+    };
     let total = input_tokens + output_tokens;
     Some(LlmUsage {
         input_tokens,
@@ -386,6 +414,10 @@ fn parse_anthropic_usage(payload: &serde_json::Value, model: &str) -> Option<Llm
         estimated_cost_usd: pricing::calculate_cost(model, input_tokens, output_tokens),
         model: model.to_string(),
         provider: "anthropic".to_string(),
+        cache_hit_input_tokens,
+        cache_miss_input_tokens,
+        truncated: false,
+        calls: 1,
     })
 }
 
@@ -402,6 +434,35 @@ fn parse_openai_usage(
         .and_then(|v| v.as_u64())
         .map(|n| n as u32)
         .unwrap_or(input_tokens + output_tokens);
+
+    // Cache breakdown — providers expose this two different ways:
+    //   * OpenAI / Azure / OpenAI-compat: `usage.prompt_tokens_details.cached_tokens`
+    //     (cache_hit; cache_miss = prompt_tokens - cached_tokens)
+    //   * DeepSeek: explicit `prompt_cache_hit_tokens` / `prompt_cache_miss_tokens`
+    //     at the top level of `usage`.
+    let deepseek_hit = usage
+        .get("prompt_cache_hit_tokens")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as u32);
+    let deepseek_miss = usage
+        .get("prompt_cache_miss_tokens")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as u32);
+    let openai_cached = usage
+        .get("prompt_tokens_details")
+        .and_then(|d| d.get("cached_tokens"))
+        .and_then(|v| v.as_u64())
+        .map(|n| n as u32);
+
+    let (cache_hit_input_tokens, cache_miss_input_tokens) =
+        match (deepseek_hit, deepseek_miss, openai_cached) {
+            (Some(hit), Some(miss), _) => (Some(hit), Some(miss)),
+            (Some(hit), None, _) => (Some(hit), Some(input_tokens.saturating_sub(hit))),
+            (None, Some(miss), _) => (Some(input_tokens.saturating_sub(miss)), Some(miss)),
+            (None, None, Some(cached)) => (Some(cached), Some(input_tokens.saturating_sub(cached))),
+            (None, None, None) => (None, None),
+        };
+
     Some(LlmUsage {
         input_tokens,
         output_tokens,
@@ -409,6 +470,10 @@ fn parse_openai_usage(
         estimated_cost_usd: pricing::calculate_cost(model, input_tokens, output_tokens),
         model: model.to_string(),
         provider: provider.to_string(),
+        cache_hit_input_tokens,
+        cache_miss_input_tokens,
+        truncated: false,
+        calls: 1,
     })
 }
 
@@ -505,5 +570,67 @@ mod tests {
         assert_eq!(usage.input_tokens, 200);
         assert_eq!(usage.output_tokens, 100);
         assert_eq!(usage.total_tokens, 300);
+        assert_eq!(usage.calls, 1);
+        assert!(!usage.truncated);
+        assert!(usage.cache_hit_input_tokens.is_none());
+        assert!(usage.cache_miss_input_tokens.is_none());
+    }
+
+    #[test]
+    fn parse_anthropic_usage_extracts_cache_hit_tokens() {
+        let payload = serde_json::json!({
+            "usage": {
+                "input_tokens": 80,
+                "output_tokens": 40,
+                "cache_read_input_tokens": 1024,
+                "cache_creation_input_tokens": 256,
+            }
+        });
+        let usage = parse_anthropic_usage(&payload, "claude-haiku-4-5").unwrap();
+        assert_eq!(usage.input_tokens, 80);
+        assert_eq!(usage.output_tokens, 40);
+        assert_eq!(usage.cache_hit_input_tokens, Some(1024));
+        // miss = plain input_tokens + cache_creation (both billed at full rate)
+        assert_eq!(usage.cache_miss_input_tokens, Some(80 + 256));
+        assert_eq!(usage.provider, "anthropic");
+        assert_eq!(usage.calls, 1);
+    }
+
+    #[test]
+    fn parse_openai_usage_deepseek_cache_breakdown() {
+        // DeepSeek-style explicit hit/miss fields.
+        let payload = serde_json::json!({
+            "usage": {
+                "prompt_tokens": 1500,
+                "completion_tokens": 200,
+                "total_tokens": 1700,
+                "prompt_cache_hit_tokens": 1200,
+                "prompt_cache_miss_tokens": 300,
+            }
+        });
+        let usage = parse_openai_usage(&payload, "deepseek-chat", "deepseek").unwrap();
+        assert_eq!(usage.input_tokens, 1500);
+        assert_eq!(usage.cache_hit_input_tokens, Some(1200));
+        assert_eq!(usage.cache_miss_input_tokens, Some(300));
+        // Provider tag must be carried through — NOT hardcoded to "openai".
+        assert_eq!(usage.provider, "deepseek");
+    }
+
+    #[test]
+    fn parse_openai_usage_compat_cached_tokens() {
+        // OpenAI / OpenAI-compatible style: nested prompt_tokens_details.cached_tokens.
+        let payload = serde_json::json!({
+            "usage": {
+                "prompt_tokens": 1000,
+                "completion_tokens": 50,
+                "total_tokens": 1050,
+                "prompt_tokens_details": { "cached_tokens": 400 },
+            }
+        });
+        let usage = parse_openai_usage(&payload, "gpt-4o-mini", "openai").unwrap();
+        assert_eq!(usage.input_tokens, 1000);
+        assert_eq!(usage.cache_hit_input_tokens, Some(400));
+        assert_eq!(usage.cache_miss_input_tokens, Some(600));
+        assert_eq!(usage.provider, "openai");
     }
 }

@@ -273,6 +273,15 @@ pub struct PageMetadata {
 ///
 /// `estimated_cost_usd` is informational only — provider pricing drifts
 /// and this value MUST NOT be used for customer billing.
+///
+/// `cache_hit_input_tokens` / `cache_miss_input_tokens` surface the
+/// provider's prompt-cache breakdown (Anthropic `cache_read_input_tokens`,
+/// OpenAI `prompt_tokens_details.cached_tokens`, DeepSeek
+/// `prompt_cache_hit_tokens`). `None` means the provider did not report a
+/// breakdown for this call. `truncated` flags requests whose markdown
+/// input was clipped before the LLM call. `calls` aggregates the number
+/// of underlying provider calls when usage is summed across multiple
+/// invocations (default 1 for a single call).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LlmUsage {
@@ -283,6 +292,23 @@ pub struct LlmUsage {
     pub estimated_cost_usd: Option<f64>,
     pub model: String,
     pub provider: String,
+
+    // ── Wave 2 additions (additive, backward-compatible via serde defaults) ──
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_hit_input_tokens: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_miss_input_tokens: Option<u32>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub truncated: bool,
+    #[serde(default = "one_u32", skip_serializing_if = "is_one_u32")]
+    pub calls: u32,
+}
+
+fn one_u32() -> u32 {
+    1
+}
+fn is_one_u32(n: &u32) -> bool {
+    *n == 1
 }
 
 /// A single chunk with optional relevance score.
