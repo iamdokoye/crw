@@ -612,5 +612,20 @@ On self-hosted deployments, JSON extraction requires either <code>[extraction.ll
   <script type="module" src="/js/search.js"></script>
   <script type="module" src="/js/app.js"></script>
   <script>window.__INITIAL_SLUG__ = "extract";</script>
+  <!-- FAQ-INJECTED:extract -->
+  <section class="faq" id="faq-extract" aria-labelledby="faq-extract-heading">
+    <h2 id="faq-extract-heading">Frequently asked</h2>
+    <dl>
+    <dt>Is /v1/extract a separate endpoint?</dt>
+    <dd>No. In CRW, extraction is a mode of /v1/scrape: send formats:[&quot;json&quot;] and a jsonSchema describing the fields you want back. The response lands in data.json. This keeps one HTTP shape for both markdown and structured output.</dd>
+    <dt>How do I bring my own LLM key for extraction (BYOK)?</dt>
+    <dd>Set llmApiKey in the request body alongside llmProvider (anthropic or openai) and optionally llmModel. The key is used only for that request and is not persisted. If you omit llmApiKey, CRW falls back to the server&#39;s [extraction.llm] config.</dd>
+    <dt>What does an extraction request cost in credits?</dt>
+    <dd>Extraction runs through /v1/scrape, so the hosted billing rule is one credit per request (cloud only — self-hosted has no credit billing). LLM token usage for the extraction model is billed separately by your provider when you use BYOK.</dd>
+    <dt>Can I use Firecrawl&#39;s extract.schema wrapper instead of jsonSchema?</dt>
+    <dd>Yes. CRW accepts an extract object as a Firecrawl-compatible alias and reads extract.schema as the schema. You can keep existing Firecrawl payloads unchanged when migrating.</dd>
+    </dl>
+  </section>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Is /v1/extract a separate endpoint?","acceptedAnswer":{"@type":"Answer","text":"No. In CRW, extraction is a mode of /v1/scrape: send formats:[\"json\"] and a jsonSchema describing the fields you want back. The response lands in data.json. This keeps one HTTP shape for both markdown and structured output."}},{"@type":"Question","name":"How do I bring my own LLM key for extraction (BYOK)?","acceptedAnswer":{"@type":"Answer","text":"Set llmApiKey in the request body alongside llmProvider (anthropic or openai) and optionally llmModel. The key is used only for that request and is not persisted. If you omit llmApiKey, CRW falls back to the server's [extraction.llm] config."}},{"@type":"Question","name":"What does an extraction request cost in credits?","acceptedAnswer":{"@type":"Answer","text":"Extraction runs through /v1/scrape, so the hosted billing rule is one credit per request (cloud only — self-hosted has no credit billing). LLM token usage for the extraction model is billed separately by your provider when you use BYOK."}},{"@type":"Question","name":"Can I use Firecrawl's extract.schema wrapper instead of jsonSchema?","acceptedAnswer":{"@type":"Answer","text":"Yes. CRW accepts an extract object as a Firecrawl-compatible alias and reads extract.schema as the schema. You can keep existing Firecrawl payloads unchanged when migrating."}}]}</script>
 </body>
 </html>

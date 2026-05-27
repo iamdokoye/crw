@@ -748,5 +748,20 @@ under the SearXNG-native name. Pick whichever; both are emitted.</p>
   <script type="module" src="/js/search.js"></script>
   <script type="module" src="/js/app.js"></script>
   <script>window.__INITIAL_SLUG__ = "search";</script>
+  <!-- FAQ-INJECTED:search -->
+  <section class="faq" id="faq-search" aria-labelledby="faq-search-heading">
+    <h2 id="faq-search-heading">Frequently asked</h2>
+    <dl>
+    <dt>What search backend does /v1/search use?</dt>
+    <dd>Self-hosted CRW boots a bundled SearXNG sidecar via docker compose, so /v1/search works on http://localhost:3000 with no third-party API key. To point at an existing SearXNG instance, set CRW_SEARCH__SEARXNG_URL; to disable search entirely, set [search].enabled = false (the route then returns HTTP 503 with errorCode search_disabled).</dd>
+    <dt>What fields come back in each search result?</dt>
+    <dd>Each row carries title, url, description, snippet, position, score, and category. snippet is the LLM-ready summary line (Firecrawl-compatible name); the same text is also emitted under the SearXNG-native field so existing clients keep working.</dd>
+    <dt>How are search results ranked?</dt>
+    <dd>Results are returned in SearXNG&#39;s aggregated ranking order, with position starting at 1 for the top hit and score reflecting the upstream relevance signal. Use position for stable ordering rather than score, which depends on the upstream engines SearXNG queried.</dd>
+    <dt>Can search fetch the page content for each result in one call?</dt>
+    <dd>Yes. Add scrapeOptions (for example scrapeOptions:{formats:[&quot;markdown&quot;]}) to the search payload and CRW scrapes each result inline. On the hosted plan this costs one credit for the search plus one credit per successfully scraped result; failed scrapes are refunded.</dd>
+    </dl>
+  </section>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What search backend does /v1/search use?","acceptedAnswer":{"@type":"Answer","text":"Self-hosted CRW boots a bundled SearXNG sidecar via docker compose, so /v1/search works on http://localhost:3000 with no third-party API key. To point at an existing SearXNG instance, set CRW_SEARCH__SEARXNG_URL; to disable search entirely, set [search].enabled = false (the route then returns HTTP 503 with errorCode search_disabled)."}},{"@type":"Question","name":"What fields come back in each search result?","acceptedAnswer":{"@type":"Answer","text":"Each row carries title, url, description, snippet, position, score, and category. snippet is the LLM-ready summary line (Firecrawl-compatible name); the same text is also emitted under the SearXNG-native field so existing clients keep working."}},{"@type":"Question","name":"How are search results ranked?","acceptedAnswer":{"@type":"Answer","text":"Results are returned in SearXNG's aggregated ranking order, with position starting at 1 for the top hit and score reflecting the upstream relevance signal. Use position for stable ordering rather than score, which depends on the upstream engines SearXNG queried."}},{"@type":"Question","name":"Can search fetch the page content for each result in one call?","acceptedAnswer":{"@type":"Answer","text":"Yes. Add scrapeOptions (for example scrapeOptions:{formats:[\"markdown\"]}) to the search payload and CRW scrapes each result inline. On the hosted plan this costs one credit for the search plus one credit per successfully scraped result; failed scrapes are refunded."}}]}</script>
 </body>
 </html>
