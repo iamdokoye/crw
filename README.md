@@ -1,547 +1,177 @@
-<a name="readme-top"></a>
+# fastCRW — Self-hosted, Rust-native web crawler & scraper for AI agents
+
+The open-source alternative to Firecrawl. One static binary, ~50 MB RAM idle,
+Firecrawl-compatible REST API (`/v1/scrape`, `/v1/crawl`, `/v1/extract`,
+`/v1/map`, `/v1/search`) plus first-class MCP. Self-host free under
+AGPL-3.0, or hit our managed API at `api.fastcrw.com`. Reproducible 63.74%
+truth-recall on the public 1,000-URL dataset (`diagnose_3way.py`,
+2026-05-08) — see [fastcrw.com/benchmarks](https://fastcrw.com/benchmarks).
+Built in Rust because every millisecond of agent latency compounds.
+
 <p align="center">
-  <a href="https://fastcrw.com">
-    <img src="docs/logo.png" alt="fastCRW" height="120" />
-  </a>
-  <p align="center">The web scraper built for AI agents. Single binary. Zero config.</p>
-  <p align="center">
-    <a href="https://crates.io/crates/crw-server"><img src="https://img.shields.io/crates/v/crw-server.svg" alt="crates.io"></a>
-    <a href="https://github.com/us/crw/actions"><img src="https://github.com/us/crw/workflows/CI/badge.svg" alt="CI"></a>
-    <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="License"></a>
-    <a href="https://github.com/us/crw/stargazers"><img src="https://img.shields.io/github/stars/us/crw?style=social" alt="GitHub Stars"></a>
-    <a href="https://fastcrw.com"><img src="https://img.shields.io/badge/Managed%20Cloud-fastcrw.com-blueviolet" alt="fastcrw.com"></a>
-  </p>
-  <p align="center">
-    <a href="https://twitter.com/fastcrw">
-      <img src="https://img.shields.io/badge/Follow%20on%20X-000000?style=for-the-badge&logo=x&logoColor=white" alt="Follow on X" />
-    </a>
-    <a href="https://www.linkedin.com/company/fastcrw">
-      <img src="https://img.shields.io/badge/Follow%20on%20LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white" alt="Follow on LinkedIn" />
-    </a>
-    <a href="https://discord.gg/kkFh2SC8">
-      <img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join our Discord" />
-    </a>
-  </p>
-  <p align="center">
-    <a href="https://www.producthunt.com/products/fastcrw?utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-fastcrw" target="_blank" rel="noopener noreferrer"><img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1116966&theme=light&t=1775671073751" alt="fastCRW - Search + scrape live web results for AI agents | Product Hunt" width="250" height="54" /></a>
-  </p>
-  <p align="center">
-    Works with: Claude Code · Cursor · Windsurf · Cline · Copilot · Continue.dev · Codex · Gemini CLI
-  </p>
-  <p align="center">
-    <a href="#-quick-start">Quick Start</a> &bull;
-    <a href="#-connect-to-ai-agents">AI Agents</a> &bull;
-    <a href="#-benchmark">Benchmarks</a> &bull;
-    <a href="https://docs.fastcrw.com/#rest-api">API Reference</a> &bull;
-    <a href="https://fastcrw.com">Cloud</a> &bull;
-    <a href="https://discord.gg/kkFh2SC8">Discord</a>
-  </p>
-  <p align="center">
-    <b>English</b> | <a href="README.zh-CN.md">中文</a>
-  </p>
+  <a href="https://crates.io/crates/crw-server"><img src="https://img.shields.io/crates/v/crw-server.svg" alt="crates.io"></a>
+  <a href="https://github.com/us/crw/actions"><img src="https://github.com/us/crw/workflows/CI/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="License"></a>
+  <a href="https://github.com/us/crw/stargazers"><img src="https://img.shields.io/github/stars/us/crw?style=social" alt="GitHub Stars"></a>
+  <a href="https://fastcrw.com"><img src="https://img.shields.io/badge/Managed%20Cloud-fastcrw.com-blueviolet" alt="fastcrw.com"></a>
 </p>
 
 <p align="center">
-  <img src="docs/demo.gif" alt="fastCRW Demo" width="700" />
+  <a href="https://twitter.com/fastcrw"><img src="https://img.shields.io/badge/Follow%20on%20X-000000?style=for-the-badge&logo=x&logoColor=white" alt="Follow on X" /></a>
+  <a href="https://www.linkedin.com/company/fastcrw"><img src="https://img.shields.io/badge/Follow%20on%20LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white" alt="Follow on LinkedIn" /></a>
+  <a href="https://discord.gg/kkFh2SC8"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join our Discord" /></a>
 </p>
 
----
-
-## What's New
-
-### [0.10.0](https://github.com/us/crw/compare/v0.9.1...v0.10.0) (2026-05-20)
-
-
-### Features
-
-* **detector:** add vendor-specific anti-bot block markers ([c88c508](https://github.com/us/crw/commit/c88c508fb90b166dfe3727fd5dfb4f1597e43667))
-* **renderer:** add chrome_proxy as 4th fallback tier ([b4da4f7](https://github.com/us/crw/commit/b4da4f79bb4d0ed71c25f14aaae5137d00f8b26b))
-* **renderer:** per-request country via CDP proxy auth ([11b4d32](https://github.com/us/crw/commit/11b4d32285ed8a4e6bee8f390c264f9fc0be1b1a))
-
-
-### Bug Fixes
-
-* **release:** harden npm publish + fix mcp-registry verifier ([9d4076f](https://github.com/us/crw/commit/9d4076fadd252a33e7887ee6e4925be8e6aa7d8e))
-* **renderer:** detect CloudFront/WAF 403 as bot-wall ([7e058b2](https://github.com/us/crw/commit/7e058b2915eff8b36d1186013e0810b2290492f4))
-* **renderer:** escalate JS tier on 4xx/5xx and vendor-detected blocks ([648c372](https://github.com/us/crw/commit/648c372ee5d52aed1459c22725be2e6d34d95afb))
-
-[Full changelog →](CHANGELOG.md)
+Works with: Claude Code · Cursor · Windsurf · Cline · Copilot · Continue.dev · Codex · Gemini CLI
 
 ---
 
-# fastCRW — Open Source Web Scraping API for AI Agents
+## Why fastCRW?
 
-**Power AI agents with clean web data.** Single Rust binary, zero config, Firecrawl-compatible API. The open-source Firecrawl alternative you can self-host for free — or use our [managed cloud](https://fastcrw.com).
-
-> **Don't want to self-host?** [**Sign up free →**](https://fastcrw.com) — managed cloud with global proxy network, web search, and dashboard. Same API, zero infra. **500 free credits, no credit card required.**
-
----
-
-## Why CRW? — Firecrawl & Crawl4AI Alternative
-
-- **Single binary, 6 MB RAM** — no Redis, no Node.js, no containers. Firecrawl needs 5 containers and 4 GB+. Crawl4AI requires Python + Playwright
-- **5.5x faster than Firecrawl** — 833ms avg vs 4,600ms ([see benchmarks](#benchmark)). P50 at 446ms
-- **73/100 search win rate** — beats Firecrawl (25/100) and Tavily (2/100) in head-to-head benchmarks
-- **Free self-hosting** — $0/1K scrapes vs Firecrawl's $0.83–5.33. No infra, no cold starts (85ms). No API key required for local mode
-- **Agent ready** — add to any MCP client in one command. Embedded mode: no server needed
-- **Firecrawl-compatible API** — drop-in replacement. Same `/v1/scrape`, `/v1/crawl`, `/v1/map` endpoints. HTML to markdown, structured data extraction, website crawler — all built-in
-- **Built for RAG pipelines** — clean LLM-ready markdown output for vector databases and AI data ingestion
-- **Open source** — AGPL-3.0, developed transparently. [Join our community](https://discord.gg/kkFh2SC8)
-
-| Metric | CRW (self-hosted) | fastcrw.com (cloud) | Firecrawl | Tavily | Crawl4AI |
-|---|---|---|---|---|---|
-| **Coverage (1K URLs)** | **92.0%** | **92.0%** | 77.2% | — | — |
-| **Avg Scrape Latency** | **833ms** | **833ms** | 4,600ms | — | — |
-| **Avg Search Latency** | **880ms** | **880ms** | 954ms | 2,000ms | — |
-| **Search Win Rate** | **73/100** | **73/100** | 25/100 | 2/100 | — |
-| **Idle RAM** | 6.6 MB | 0 (managed) | ~500 MB+ | — (cloud) | — |
-| **Cold start** | 85 ms | 0 (always-on) | 30–60 s | — | — |
-| **Self-hosting** | **Single binary** | — | Multi-container | No | Python + Playwright |
-| **Cost / 1K scrapes** | **$0** (self-hosted) | From $13/mo | $0.83–5.33 | — | $0 |
-| **License** | AGPL-3.0 | Managed | AGPL-3.0 | Proprietary | Apache-2.0 |
+- **Rust-native, single static binary** — no Redis, no Node.js, no Python venv, no headless-browser sidecar in the request path. One binary, one config file, one process.
+- **~50 MB RAM idle** — leaves headroom on a $5 VPS. Browser-render-first stacks (Firecrawl, Crawl4AI) carry a Chromium heap baseline measured in hundreds of MB before a single request lands.
+- **Firecrawl-compatible drop-in** — same `/v1/scrape`, `/v1/crawl`, `/v1/extract`, `/v1/map`, `/v1/search` endpoints with compatible request/response shapes. Swap the base URL and keep your code.
+- **AGPL-3.0 open core + managed option** — self-host free, or point at `api.fastcrw.com` for managed proxy network, dashboard, and SLA without the AGPL obligations on your application code.
 
 ---
 
-## Web Scraping & Crawling Features
+## Comparison Table
 
-**Core**
+Qualitative positioning vs. the three most-cited alternatives. Numerical
+claims trace to the inline sources noted; everything else is descriptive.
 
-| Feature | Description |
-|---------|-------------|
-| [**Scrape**](#scrape) | Convert any URL to markdown, HTML, JSON, or links |
-| [**Crawl**](#crawl) | Async BFS website crawler with rate limiting |
-| [**Map**](#map) | Discover all URLs on a site instantly |
-| [**Search**](#search) | Web search + content scraping — bundled SearXNG sidecar, free Tavily alternative |
+| | **fastCRW** | Firecrawl | Crawl4AI | Spider |
+|---|---|---|---|---|
+| Language | Rust | Node.js + Playwright | Python + Playwright | Rust |
+| License | AGPL-3.0 (commercial avail.) | AGPL-3.0 (commercial avail.) | Apache-2.0 | Source-available / commercial ([spider.cloud](https://spider.cloud)) |
+| Self-host install size | Single static binary (~8 MB) | Multi-container (~500 MB+ image) | ~2 GB image (browser bundled) | Managed-first; self-host via crate |
+| Memory baseline (idle) | ~50 MB | Large (Chromium heap) | Large (Chromium heap) | Light (Rust) |
+| Firecrawl-compat API | Yes — `/v1/scrape`, `/v1/crawl`, `/v1/extract`, `/v1/map`, `/v1/search` | Native | No | No |
+| MCP server | Built-in (`crw-mcp`) | Separate package | Community add-on | No first-party |
+| Hosted option | `api.fastcrw.com` (BYOK or managed) | firecrawl.dev | None official | spider.cloud (primary product) |
+| Reproducible public benchmark | Yes — 63.74% truth-recall on 1,000-URL dataset (`diagnose_3way.py`, 2026-05-08) | Vendor-published only | Vendor-published only | Vendor-published only |
 
-**More**
-
-| Feature | Description |
-|---------|-------------|
-| [**LLM Extraction**](#llm-structured-extraction) | Send a JSON schema, get validated structured data back |
-| **LLM Summary** | `formats: ["summary"]` on `/v1/scrape` — clean prose digest of any page. BYOK (Anthropic / OpenAI / Azure / DeepSeek / any OpenAI-compatible). |
-| **LLM Search Answer** | `answer: true` / `summarizeResults: true` on `/v1/search` — synthesized answer with citations or per-result summaries |
-| [**JS Rendering**](#js-rendering) | Auto-detect SPAs, render via LightPanda or Chrome |
-| [**CLI**](#cli) | Scrape any URL from your terminal — no server needed |
-| [**MCP Server**](#mcp-server-for-ai-agents) | Built-in stdio + HTTP transport for any AI agent |
-
-**Use Cases:** RAG pipelines · AI agent web access · content monitoring · data extraction · HTML to markdown conversion · web archiving
+Pricing/spec cells where claimed link to the vendor page; everything else
+is the qualitative architectural shape, not a comparison number.
 
 ---
 
-## 🚀 Quick Start
+## Quickstart
+
+Hit the managed API at `api.fastcrw.com`, or self-host the same binary.
 
 ```bash
-# Install:
-curl -fsSL https://raw.githubusercontent.com/us/crw/main/install.sh | CRW_BINARY=crw sh
-
-# Interactive setup wizard (recommended):
-crw setup
-
-# Scrape:
-crw example.com
-
-# Add to Claude Code (local):
-claude mcp add crw -- npx crw-mcp
-# Add to Claude Code (cloud — includes web search, 500 free credits at fastcrw.com):
-claude mcp add -e CRW_API_URL=https://fastcrw.com/api -e CRW_API_KEY=your-key crw -- npx crw-mcp
-```
-
-> Or: `pip install crw` (Python SDK) · `npx crw-mcp` (zero install) · `brew install us/crw/crw` (Homebrew) · [All install options →](https://docs.fastcrw.com/installation/)
-
-### Scrape
-
-Convert any URL to clean markdown, HTML, or structured JSON.
-
-```python
-from crw import CrwClient
-
-client = CrwClient(api_url="https://fastcrw.com/api", api_key="YOUR_API_KEY")  # local: CrwClient()
-result = client.scrape("https://example.com")
-print(result["markdown"])
-```
-
-> **Local mode:** `CrwClient()` with no arguments runs a self-contained scraping engine — no server, no API key, no setup. The SDK automatically downloads the `crw-mcp` binary on first use.
-
-<details>
-<summary><b>CLI / cURL</b></summary>
-
-**CLI:**
-```bash
-crw example.com
-crw example.com --format html
-crw example.com --js --css 'article'
-```
-
-**Self-hosted** (`crw-server` running on `:3000`):
-```bash
-curl -X POST http://localhost:3000/v1/scrape \
+# /v1/scrape — URL → markdown / HTML / JSON / links
+curl -X POST https://api.fastcrw.com/v1/scrape \
+  -H "Authorization: Bearer $CRW_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"url": "https://example.com"}'
+  -d '{"url":"https://example.com","formats":["markdown"]}'
 ```
 
-**Cloud:**
 ```bash
-curl -X POST https://fastcrw.com/api/v1/scrape \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://example.com"}'
-```
-
-**With LLM summary** (BYOK — bring your own provider key):
-```bash
-curl -X POST http://localhost:3000/v1/scrape \
+# /v1/extract — structured JSON from a URL via a JSON Schema
+curl -X POST https://api.fastcrw.com/v1/extract \
+  -H "Authorization: Bearer $CRW_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "url": "https://en.wikipedia.org/wiki/Tokio_(software)",
-    "formats": ["markdown", "summary"],
-    "summaryPrompt": "Answer in two sentences.",
-    "maxContentChars": 50000,
-    "llmProvider": "openai-compatible",
-    "llmModel": "deepseek-chat",
-    "baseUrl": "https://api.deepseek.com/v1",
-    "llmApiKey": "YOUR_PROVIDER_KEY"
-  }'
-```
-</details>
-
-Output:
-```
-# Example Domain
-
-This domain is for use in illustrative examples in documents.
-You may use this domain in literature without prior coordination.
-```
-
-#### Renderer selection & response metadata
-
-CRW picks between three rendering backends per request:
-
-- **`http`** (1 credit) — plain HTTP fetch. Used for static pages.
-- **`lightpanda`** (1 credit) — lightweight JS renderer for most SPAs.
-- **`chrome`** (2 credits) — full Chromium for sites where LightPanda's hydration crashes (e.g. some Next.js App Router pages).
-
-By default the engine auto-selects, learns per-host preferences after repeated failures, and falls over chrome → lightpanda → http transparently. Pass `"renderer"` to pin one of `auto | http | lightpanda | chrome` (Firecrawl's `engine` is also accepted as an alias).
-
-Every successful response includes routing metadata so callers can audit and debug:
-
-```jsonc
-{
-  "data": {
-    "markdown": "...",
-    "renderDecision": {
-      "kind": "failover",                 // autoDefault | autoPromoted | userPinned | failover | breakerSkipped
-      "chain": ["lightpanda", "chrome"],  // renderers actually attempted
-      "reason": "nextJsClientError"       // why the chain advanced
-    },
-    "creditCost": 2,
-    "warnings": [
-      "lightpanda returned a failed render (nextjs_client_error)"
-    ],
-    "metadata": { "renderedWith": "chrome", /* … */ }
-  }
-}
-```
-
-When you hard-pin a renderer that fails (e.g. `"renderer":"lightpanda"` on a hydration-crashing page), `success` stays `true` for protocol compatibility — but `data.warnings[]` carries an actionable hint suggesting `renderer="chrome"` or auto mode. Clients should surface the warnings array.
-
-### Crawl
-
-Scrape all pages of a website asynchronously.
-
-```python
-from crw import CrwClient
-
-client = CrwClient(api_url="https://fastcrw.com/api", api_key="YOUR_API_KEY")  # local: CrwClient()
-pages = client.crawl("https://docs.example.com", max_depth=2, max_pages=50)
-for page in pages:
-    print(page["metadata"]["sourceURL"], page["markdown"][:80])
-```
-
-<details>
-<summary><b>CLI / cURL</b></summary>
-
-```bash
-# Start crawl
-curl -X POST http://localhost:3000/v1/crawl \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://docs.example.com", "maxDepth": 2, "maxPages": 50}'
-
-# Check status (use job ID from above)
-curl http://localhost:3000/v1/crawl/JOB_ID
-```
-</details>
-
-### Map
-
-Discover all URLs on a site instantly.
-
-```python
-from crw import CrwClient
-
-client = CrwClient(api_url="https://fastcrw.com/api", api_key="YOUR_API_KEY")  # local: CrwClient()
-urls = client.map("https://example.com")
-print(urls)  # ["https://example.com", "https://example.com/about", ...]
-```
-
-<details>
-<summary><b>cURL</b></summary>
-
-```bash
-curl -X POST http://localhost:3000/v1/map \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://example.com"}'
-```
-</details>
-
-#### URL Filtering (default-on)
-
-`/v1/map` filters its output by default to keep content URLs and drop
-transactional action URLs (e.g. WooCommerce `?add-to-cart=…`,
-`?add_to_wishlist=…&_wpnonce=…`). Tracking parameters (`utm_*`, `gclid`,
-`fbclid`, …) are stripped from the URLs that remain. Counts come back in
-`droppedActionCount` and `strippedTrackingCount`.
-
-Per-request fields (all optional):
-
-| Field | Effect |
-|---|---|
-| `ignoreQueryParameters: true` | Coarse Firecrawl-compatible: strip ALL params from kept URLs (action drop still runs). |
-| `ignoreQueryParameters: false` | Disable both filters — raw URLs. |
-| `stripTrackingParams: bool` | Toggle Tier B only. |
-| `dropActionUrls: bool` | Toggle Tier A only. |
-| `extraTrackingParams: [string]` | Additive (≤64 keys). |
-| `extraActionParams: [string]` | Additive (≤64 keys). |
-| `preserveParams: [string]` | Never strip / never drop these keys (≤64 keys). |
-
-Precedence: per-request value > TOML (`[map.url_filter]`) > compile-time
-default (both `true`). To restore pre-filter behaviour globally, set
-`strip_tracking_params = false` and `drop_action_urls = false` in
-`config.default.toml`.
-
-### Search
-
-Search the web and get full page content from results. Self-hosted CRW
-ships with a SearXNG sidecar (started automatically by `docker compose up`),
-so search works out of the box — **no Tavily/Serper/Brave API key needed,
-$0/month**. Tavily-style endpoints with a 30-line migration adapter — see
-the [Tavily compatibility matrix](https://fastcrw.com/alternatives/tavily#compatibility-matrix)
-for the field-by-field diff.
-
-```python
-from crw import CrwClient
-
-# Self-hosted (default Docker compose stack)
-client = CrwClient(api_url="http://localhost:3000")
-results = client.search("open source web scraper 2026", limit=10)
-
-# Or cloud
-# client = CrwClient(api_url="https://fastcrw.com/api", api_key="YOUR_KEY")
-```
-
-<details>
-<summary><b>cURL</b></summary>
-
-```bash
-# Self-hosted
-curl -X POST http://localhost:3000/v1/search \
-  -H "Content-Type: application/json" \
-  -d '{"query": "open source web scraper 2026", "limit": 10}'
-
-# With grouped sources + scrape enrichment
-curl -X POST http://localhost:3000/v1/search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "rust async runtime",
-    "sources": ["web", "news"],
-    "scrapeOptions": {"formats": ["markdown"]}
-  }'
-
-# With LLM answer synthesis over the top results (BYOK)
-curl -X POST http://localhost:3000/v1/search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "what is tokio rust",
-    "limit": 3,
-    "answer": true,
-    "answerTopN": 3,
-    "answerPrompt": "Respond in Turkish in two sentences.",
-    "scrapeOptions": {"formats": ["markdown"]},
-    "llmApiKey": "sk-...",
-    "llmProvider": "openai",
-    "llmModel": "gpt-4o-mini"
-  }'
-```
-
-The sidecar uses the upstream `searxng/searxng` image with config mounted
-read-only from `config/searxng/settings.yml`. To point at an existing
-SearXNG instance instead, set `CRW_SEARCH__SEARXNG_URL=http://your-host:8080`
-and remove the `searxng` service from the compose file. To disable search
-entirely, set `[search].enabled = false` in your config — the route will
-return a clear `search_disabled` error.
-</details>
-
-### API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/v1/scrape` | Scrape a single URL, optionally with LLM extraction |
-| `POST` | `/v1/crawl` | Start async BFS crawl (returns job ID) |
-| `GET` | `/v1/crawl/:id` | Check crawl status and retrieve results |
-| `DELETE` | `/v1/crawl/:id` | Cancel a running crawl job |
-| `POST` | `/v1/map` | Discover all URLs on a site |
-| `POST` | `/v1/search` | Web search via SearXNG sidecar, with optional content scraping |
-| `GET` | `/health` | Health check (no auth required) |
-| `POST` | `/mcp` | Streamable HTTP MCP transport |
-
-[Full API reference →](https://docs.fastcrw.com/#rest-api)
-
----
-
-## 🤖 Connect to AI Agents
-
-Add CRW to any AI agent or MCP client in seconds.
-
-### Skill
-
-Install the CRW skill to all detected agents with one command:
-
-```bash
-npx crw-mcp init --all
-```
-
-Restart your agent after installing. Works with Claude Code, Cursor, Gemini CLI, Codex, OpenCode, and Windsurf.
-
-### MCP Server for AI Agents
-
-Add CRW to any MCP-compatible client:
-
-```json
-{
-  "mcpServers": {
-    "crw": {
-      "command": "npx",
-      "args": ["crw-mcp"]
+    "url":"https://example.com",
+    "schema":{
+      "type":"object",
+      "properties":{"title":{"type":"string"}}
     }
-  }
-}
+  }'
 ```
-
-> Works with Claude Desktop, Cursor, Windsurf, Cline, Continue.dev, and any MCP client.
->
-> **Config file locations:** Claude Code — `claude mcp add` (no file edit). Claude Desktop — `~/Library/Application Support/Claude/claude_desktop_config.json`. Cursor — `.cursor/mcp.json`. Windsurf — `~/.codeium/windsurf/mcp_config.json`. [All clients →](https://docs.fastcrw.com/mcp-clients/)
-
-**Cloud mode** — point at fastcrw.com for global proxy network and dashboard:
-
-```json
-{
-  "mcpServers": {
-    "crw": {
-      "command": "npx",
-      "args": ["crw-mcp"],
-      "env": {
-        "CRW_API_URL": "https://fastcrw.com/api",
-        "CRW_API_KEY": "your-api-key"
-      }
-    }
-  }
-}
-```
-
-### MCP Tools
-
-| Mode | Tool | Description |
-|------|------|-------------|
-| **Embedded + Cloud** | `crw_scrape` | Scrape a URL → markdown, HTML, JSON, links |
-| **Embedded + Cloud** | `crw_crawl` | Start async BFS crawl (returns job ID) |
-| **Embedded + Cloud** | `crw_check_crawl_status` | Poll crawl job status (use with `crw_crawl`) |
-| **Embedded + Cloud** | `crw_map` | Discover all URLs on a site |
-| **Server + Cloud** | `crw_search` | Web search + optional content scraping (server uses bundled SearXNG sidecar) |
-
-> **Embedded mode** (default): no server, no API key, no setup — the MCP binary runs a self-contained scraping engine (search not available — needs the SearXNG sidecar from `docker compose up`). **Server mode** (`CRW_API_URL=http://localhost:3000`): full API including `crw_search`. **Cloud mode** (`CRW_API_URL=https://fastcrw.com/api`): adds global proxy network and dashboard.
-
-[Full MCP docs →](https://docs.fastcrw.com/mcp/)
-
-**Claude Code shortcut:**
 
 ```bash
-# Local (embedded — no server, no API key):
-claude mcp add crw -- npx crw-mcp
-
-# Cloud (+ web search):
-claude mcp add -e CRW_API_URL=https://fastcrw.com/api -e CRW_API_KEY=your-key crw -- npx crw-mcp
+# /v1/crawl — async multi-page job (returns a job id; poll with /v1/crawl/:id)
+curl -X POST https://api.fastcrw.com/v1/crawl \
+  -H "Authorization: Bearer $CRW_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://docs.example.com","maxDepth":2,"maxPages":50}'
 ```
 
-> Listed on the [MCP Registry](https://registry.modelcontextprotocol.io/?q=crw)
-
-### Agent Onboarding
-
-Are you an AI agent? Fetch this skill file to configure CRW for the user's coding agents. The SKILL.md contains tool descriptions, usage examples, authentication setup, and edge case handling:
-
 ```bash
-curl -s https://fastcrw.com/agent-onboarding/SKILL.md
+# Self-host (no auth, localhost) — single docker command
+docker run -p 3000:3000 ghcr.io/us/crw
+curl http://localhost:3000/v1/scrape \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://example.com"}'
 ```
 
----
-
-## 📊 Benchmark
-
-### Search — CRW vs Firecrawl vs Tavily (100 queries, concurrent)
-
-| Metric | CRW | Firecrawl | Tavily |
-|---|---|---|---|
-| **Avg Latency** | **880ms** | 954ms | 2,000ms |
-| **Median Latency** | **785ms** | 932ms | 1,724ms |
-| **Win Rate** | **73/100** | 25/100 | 2/100 |
-
-CRW is **2.3x faster than Tavily** and won 73% of latency races. [Full search benchmark →](https://fastcrw.com/benchmarks/tavily-search)
-
-### Scrape — CRW vs Firecrawl (1,000 URLs, JS rendering enabled)
-
-Tested on [Firecrawl's scrape-content-dataset-v1](https://huggingface.co/datasets/firecrawl/scrape-content-dataset-v1):
-
-| Metric | CRW | Firecrawl v2.5 |
-|---|---|---|
-| **Coverage** | **92.0%** | 77.2% |
-| **Avg Latency** | **833ms** | 4,600ms |
-| **P50 Latency** | **446ms** | — |
-| **Noise Rejection** | **88.4%** | noise 6.8% |
-| **Idle RAM** | **6.6 MB** | ~500 MB+ |
-| **Cost / 1K scrapes** | **$0** (self-hosted) | $0.83–5.33 |
-
-<details>
-<summary><b>Resource comparison</b></summary>
-
-| Metric | CRW | Firecrawl |
-|---|---|---|
-| Min RAM | ~7 MB | 4 GB |
-| Recommended RAM | ~64 MB (under load) | 8–16 GB |
-| Docker images | single ~8 MB binary | ~2–3 GB total |
-| Cold start | 85 ms | 30–60 seconds |
-| Containers needed | 1 (+optional sidecar) | 5 |
-
-</details>
-
-[Full benchmark details →](https://docs.fastcrw.com/introduction/#benchmarks)
-
-Run the benchmark yourself:
+Other install paths (each documented under
+[`Install`](#install) further down):
 
 ```bash
-pip install datasets aiohttp
-python bench/run_bench.py
-```
-
----
-
-## 📦 Install
-
-### MCP Server (`crw-mcp`) — recommended for AI agents
-
-```bash
-npx crw-mcp                           # zero install (npm)
+npx crw-mcp                           # zero install — runs the embedded engine
 pip install crw                        # Python SDK (auto-downloads binary)
-brew install us/crw/crw-mcp            # Homebrew
-cargo install crw-mcp                  # Cargo
-docker run -i ghcr.io/us/crw crw-mcp  # Docker
+brew install us/crw/crw                # Homebrew
+cargo install crw-cli                  # Cargo
+curl -fsSL https://raw.githubusercontent.com/us/crw/main/install.sh | sh
+```
+
+---
+
+## Why Rust?
+
+Cold start is sub-second and the resident memory ceiling is bounded by the
+crawl queue, not by a JavaScript runtime or a headless browser parked in
+the background. An agent that issues N scrapes per task pays the network
+floor N times — anything you add on top (process spawn, JIT warmup,
+browser navigation overhead) multiplies. Pushing the request-path
+language down to Rust strips that surcharge out of every call. The same
+property lets one static binary saturate a $5 VPS instead of needing a
+multi-container compose stack, which is why the idle footprint is in the
+tens of MB rather than the hundreds.
+
+---
+
+## MCP + SDK quickstart
+
+fastCRW ships a built-in MCP server so any MCP-compatible agent (Claude
+Code, Cursor, Windsurf, Cline, Continue.dev, Codex, Gemini CLI) can call
+scraping tools without bespoke glue. Embedded mode runs the engine
+in-process — no server, no API key, no setup. The `crw` Python SDK and
+the `crw-mcp` Node binary both shell to the same Rust core.
+
+```bash
+npm install -g crw-mcp          # MCP server (Node wrapper)
+pip install crw                 # Python SDK (auto-downloads binary)
+claude mcp add crw -- npx crw-mcp                                          # Claude Code, embedded
+claude mcp add -e CRW_API_URL=https://api.fastcrw.com -e CRW_API_KEY=… \
+  crw -- npx crw-mcp                                                       # Claude Code, managed
+```
+
+Per-client config recipes (Claude Desktop, Cursor, Windsurf, Cline,
+Continue.dev) live under [docs.fastcrw.com/mcp-clients/](https://docs.fastcrw.com/mcp-clients/).
+
+---
+
+## Self-host vs Managed
+
+| | **Self-host (free)** | **Managed — `api.fastcrw.com`** |
+|---|---|---|
+| Best when | You want full data residency, AGPL is fine, you can run your own proxy strategy, latency to your infra matters more than ours. | You want zero infra, a global proxy network, a dashboard, usage metering, and AGPL carve-out for closed-source product code. |
+| Install | `docker run -p 3000:3000 ghcr.io/us/crw` or `cargo install crw-server`. | Sign up at [fastcrw.com](https://fastcrw.com) — 500 free credits, no card. |
+| Search | Bundled SearXNG sidecar (`docker compose up`). | Managed search backend. |
+| Proxy rotation | Bring your own pool via env vars. | Built-in. |
+| Cost | $0 + your hosting bill. | From $13/mo; pricing on [fastcrw.com/pricing](https://fastcrw.com/pricing). |
+| License obligations | AGPL-3.0 applies if you expose the API to third parties. | AGPL carve-out included. |
+
+The binary is the same in both modes — you can develop against your
+self-hosted instance and ship to managed without code changes.
+
+---
+
+## Install
+
+### MCP server (`crw-mcp`) — recommended for AI agents
+
+```bash
+npx crw-mcp                              # zero install (npm)
+pip install crw                          # Python SDK (auto-downloads binary)
+brew install us/crw/crw-mcp              # Homebrew
+cargo install crw-mcp                    # Cargo
+docker run -i ghcr.io/us/crw crw-mcp     # Docker
 ```
 
 ### CLI (`crw`) — scrape URLs from your terminal
@@ -554,15 +184,17 @@ curl -fsSL https://raw.githubusercontent.com/us/crw/main/install.sh | CRW_BINARY
 
 # APT (Debian/Ubuntu):
 curl -fsSL https://apt.fastcrw.com/gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/crw.gpg
-echo "deb [signed-by=/usr/share/keyrings/crw.gpg] https://apt.fastcrw.com stable main" | sudo tee /etc/apt/sources.list.d/crw.list
+echo "deb [signed-by=/usr/share/keyrings/crw.gpg] https://apt.fastcrw.com stable main" \
+  | sudo tee /etc/apt/sources.list.d/crw.list
 sudo apt update && sudo apt install crw
 
 cargo install crw-cli
 ```
 
-### API Server (`crw-server`) — Firecrawl-compatible REST API
+### API server (`crw-server`) — Firecrawl-compatible REST API
 
-For serving multiple apps, other languages (Node.js, Go, Java), or as a shared microservice.
+For serving multiple apps, other languages (Node.js, Go, Java), or as a
+shared microservice.
 
 ```bash
 brew install us/crw/crw-server
@@ -574,47 +206,87 @@ curl -fsSL https://raw.githubusercontent.com/us/crw/main/install.sh | CRW_BINARY
 docker run -p 3000:3000 ghcr.io/us/crw
 ```
 
-Custom port:
-```bash
-CRW_SERVER__PORT=8080 crw-server                                       # env var
-docker run -p 8080:8080 -e CRW_SERVER__PORT=8080 ghcr.io/us/crw       # Docker
-```
-
-**Docker Compose** ships with `lightpanda` enabled by default; `chrome` is opt-in to keep small VPS deploys lean (~500MB image + 1GB resident):
+Docker Compose ships with `lightpanda` by default; `chrome` is opt-in:
 
 ```bash
-# baseline — http + lightpanda
-docker compose up -d
-
-# add chrome failover (recommended for production)
-docker compose --profile heavy up -d
-
-# stealth tier — browserless/chromium with anti-fingerprint plugin
-# (+2.5pt bench success on bot-defended sites; SSPL-3.0, see warning below)
-echo "BROWSERLESS_TOKEN=$(openssl rand -hex 24)" >> .env
-docker compose -f docker-compose.yml -f docker-compose.stealth.yml \
-  --profile stealth up -d
+docker compose up -d                                         # http + lightpanda
+docker compose --profile heavy up -d                         # + chrome failover
+docker compose -f docker-compose.yml \
+  -f docker-compose.stealth.yml --profile stealth up -d      # browserless stealth tier
 ```
 
-Without `--profile heavy` or `--profile stealth`, the engine still serves all endpoints — chrome-required URLs will exhaust their lightpanda failover and surface `data.warnings[]` instead of routing to chrome.
-
-> ⚠️ **Stealth profile licensing — compliance risk to review.**
-> `--profile stealth` pulls `ghcr.io/browserless/chromium`, which is
-> **SSPL-3.0**. SSPL §13 obliges anyone who makes the functionality of the
-> Program available to third parties as a service (commercial *or*
-> otherwise) to release the *Service Source Code* — the full
-> management/automation/hosting stack around it. CRW (AGPL-3) connects
-> over a network socket only, so the opencore CRW source is most likely
-> outside §13's reach — but the boundary is fact-specific and we are not
-> lawyers. Get legal review before exposing this stack to third parties.
-> The default `--profile heavy` (chromedp/headless-shell, Apache-2/BSD)
-> carries none of this risk.
-
-> **When do you need `crw-server`?** Only if you want a REST API endpoint. The Python SDK (`CrwClient()`) and MCP binary (`crw-mcp`) both run a self-contained engine — no server required.
+See the [self-hosting guide](https://docs.fastcrw.com/#self-hosting) for
+production hardening, auth, reverse proxy, and resource tuning.
 
 ---
 
-## SDKs
+## API endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/v1/scrape` | Scrape a single URL, optionally with LLM extraction or summary |
+| `POST` | `/v1/crawl` | Start async BFS crawl (returns job ID) |
+| `GET` | `/v1/crawl/:id` | Check crawl status and retrieve results |
+| `DELETE` | `/v1/crawl/:id` | Cancel a running crawl job |
+| `POST` | `/v1/map` | Discover all URLs on a site |
+| `POST` | `/v1/extract` | Structured JSON extraction from a URL via JSON Schema |
+| `POST` | `/v1/search` | Web search via SearXNG sidecar, with optional content scraping |
+| `GET` | `/health` | Health check (no auth required) |
+| `POST` | `/mcp` | Streamable HTTP MCP transport |
+
+Full reference at [docs.fastcrw.com/#rest-api](https://docs.fastcrw.com/#rest-api).
+The Firecrawl compatibility matrix (field-by-field diff) lives in
+[`COMPATIBILITY-firecrawl.md`](COMPATIBILITY-firecrawl.md).
+
+---
+
+## Benchmark
+
+Reproduce it yourself first — the canonical harness is `diagnose_3way.py`
+(matches truth text against `md + strip_md_links(md)`, applied identically
+to all three tools — a fairness control, not a looser number):
+
+```bash
+cd ~/coding/crw/crw-opencore
+docker compose -f docker-compose.yml -f docker-compose.override.yml \
+               -f docker-compose.stealth.yml --profile stealth up -d
+docker start crawl4ai-bench
+cd ~/coding/crw/competitors/firecrawl && docker compose up -d
+
+cd ~/coding/crw/crw-opencore
+uv run python bench/diagnose_3way.py \
+  --max-urls 1000 --tools crw,crawl4ai,firecrawl \
+  --concurrency 5 --timeout 120 \
+  --out bench/server-runs/diag3w-1000-full.jsonl
+```
+
+3-way scrape benchmark, full 1,000-URL run on
+[Firecrawl's `scrape-content-dataset-v1`](https://huggingface.co/datasets/firecrawl/scrape-content-dataset-v1)
+(`diagnose_3way.py`, 2026-05-08, concurrency 5, timeout 120s):
+
+| Metric | fastCRW | crawl4ai | Firecrawl |
+|---|---|---|---|
+| **Truth-recall (522/819 labeled URLs)** | **63.74%** | 59.95% | 56.04% |
+| Scrape-success (of 1,000) | 877 (87.7%) | 835 (83.5%) | 897 (89.7%) |
+| Thrown errors (3,000 requests) | 0 | 0 | 0 |
+| p50 latency | **1914 ms** | 1916 ms | 2305 ms |
+| p90 latency | 14157 ms | **4754 ms** | 6937 ms |
+
+Single 1,000-URL run (N=1,000 crushes variance; the 150-URL subset
+oscillated ±0.83pp). The **63.74% denominator is 819 labeled/matchable
+URLs** — not 3,000 requests, not 1,000. Read the **87.7% scrape-success
+adjacent to "0 errors"**: 12.3% returned no usable content without
+throwing. fastCRW's **p50 beats Firecrawl**; its **p90 is the worst of
+the three** — the chrome-stealth fallback that recovers the URLs the
+others miss is also why the tail is worst. We publish the full
+distribution because the recall is worth the tail.
+
+Full result of record:
+[`bench/server-runs/RESULT_3WAY_1000_FULL.md`](bench/server-runs/RESULT_3WAY_1000_FULL.md).
+
+---
+
+## SDKs and integrations
 
 ### Python
 
@@ -625,240 +297,34 @@ pip install crw
 ```python
 from crw import CrwClient
 
-# Cloud (fastcrw.com — includes web search):
-client = CrwClient(api_url="https://fastcrw.com/api", api_key="YOUR_API_KEY")
+# Managed (includes web search):
+client = CrwClient(api_url="https://api.fastcrw.com", api_key="YOUR_API_KEY")
 # Local (embedded, no server needed):
 # client = CrwClient()
 
-# Scrape
 result = client.scrape("https://example.com", formats=["markdown", "links"])
-print(result["markdown"])
-
-# Crawl (blocks until complete)
 pages = client.crawl("https://docs.example.com", max_depth=2, max_pages=50)
-
-# Map
 urls = client.map("https://example.com")
-
-# Search (self-hosted via bundled SearXNG, or cloud)
 results = client.search("AI news", limit=10, sources=["web", "news"])
 ```
 
-> **Requires:** Python 3.9+. Local mode auto-downloads the `crw-mcp` binary on first use — no manual setup.
+Requires Python 3.9+. Local mode auto-downloads `crw-mcp` on first use.
 
 ### Community SDKs
 
 - [`crewai-crw`](https://pypi.org/project/crewai-crw/) — CRW scraping tools for CrewAI agents
 - [`langchain-crw`](https://pypi.org/project/langchain-crw/) — CRW document loader for LangChain
 
-> **Node.js:** No official SDK yet — use the REST API directly or `npx crw-mcp` for MCP. [SDK examples →](https://docs.fastcrw.com/sdk-examples/)
+**Node.js:** no official SDK yet — use the REST API directly or `npx crw-mcp`
+for MCP. [SDK examples →](https://docs.fastcrw.com/sdk-examples/)
 
----
+### Frameworks & platforms
 
-## Integrations
+[CrewAI](https://pypi.org/project/crewai-crw/) · [LangChain](https://pypi.org/project/langchain-crw/)
+· [Agno](https://github.com/agno-agi/agno/pull/7183) · [Dify](https://github.com/langgenius/dify)
+· [n8n](https://fastcrw.com/blog/n8n-web-scraping-crw) · [Flowise](https://github.com/FlowiseAI/Flowise/pull/6066)
 
-**Frameworks:** [CrewAI](https://pypi.org/project/crewai-crw/) · [LangChain](https://pypi.org/project/langchain-crw/) · [Agno](https://github.com/agno-agi/agno/pull/7183) · [Dify](https://github.com/langgenius/dify)
-
-**Platforms:** [n8n](https://fastcrw.com/blog/n8n-web-scraping-crw) · [Flowise](https://github.com/FlowiseAI/Flowise/pull/6066)
-
-Missing your favorite tool? [Open an issue →](https://github.com/us/crw/issues) · [All integrations →](https://docs.fastcrw.com/integrations/)
-
----
-
-## LLM Structured Extraction
-
-Send a JSON schema, get validated structured data back using LLM function calling. [Full extraction docs →](https://docs.fastcrw.com/extract/)
-
-```bash
-curl -X POST http://localhost:3000/v1/scrape \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://example.com/product",
-    "formats": ["json"],
-    "jsonSchema": {
-      "type": "object",
-      "properties": {
-        "name": { "type": "string" },
-        "price": { "type": "number" }
-      },
-      "required": ["name", "price"]
-    }
-  }'
-```
-
-Configure the LLM provider:
-
-```toml
-[extraction.llm]
-provider = "anthropic"        # "anthropic" or "openai"
-api_key = "sk-..."            # or CRW_EXTRACTION__LLM__API_KEY env var
-model = "claude-sonnet-4-20250514"
-```
-
----
-
-## JS Rendering
-
-CRW auto-detects SPAs and renders them via a headless browser. [Full JS rendering docs →](https://docs.fastcrw.com/js-rendering/)
-
-```bash
-crw setup          # interactive wizard (recommended)
-# or
-crw-server setup   # downloads LightPanda, creates config.local.toml
-```
-
-| Renderer | Protocol | Best for |
-|----------|----------|----------|
-| LightPanda | CDP over WebSocket | Low-resource environments (default); simple sites |
-| Chrome (chromedp/headless-shell) | CDP over WebSocket | Modern React/Vite/Next SPAs; recommended for production |
-| Chrome (browserless/chromium, opt-in `stealth` profile) | CDP over WebSocket | Bot-defended sites (Cloudflare Turnstile, DataDome) — SSPL-3.0, see compose notes |
-| Playwright | CDP over WebSocket | Full browser compatibility |
-
-> **Renderer choice matters for SPAs.** LightPanda is fast and cheap but its
-> JS runtime does not fully cover every modern bundle format. For React /
-> Vite / Next sites whose content appears only after hydration, configure
-> Chrome (or Playwright) alongside LightPanda — CRW will fall back to Chrome
-> automatically when LightPanda returns a loading placeholder. Leaving
-> LightPanda as the *only* renderer may silently return
-> `"Loading..."`-style shell content for these sites.
-
-With Docker Compose, LightPanda runs as a sidecar automatically:
-
-```bash
-docker compose up
-```
-
----
-
-## CLI
-
-Scrape any URL from your terminal — no server, no config. [Full CLI docs →](https://docs.fastcrw.com/quick-start/)
-
-A short tour, from "URL → clean markdown" to "search the web, scrape the top hit, and let an LLM summarize it" — the exact loop an AI agent runs.
-
-**1. Any page → clean, LLM-ready markdown**
-
-```bash
-crw en.wikipedia.org/wiki/Web_scraping
-```
-
-Boilerplate stripped, just the article as markdown on stdout.
-
-**2. Structured JSON for pipelines**
-
-```bash
-crw en.wikipedia.org/wiki/Web_scraping --format json | jq '.metadata'
-```
-
-Title, description, status code, the renderer that was used — everything a pipeline needs.
-
-**3. Search the web**
-
-```bash
-crw search "rust async runtime tokio"
-```
-
-Title + URL per result. Add `--format json` to pipe it somewhere.
-
-**4. Scrape + AI summary**
-
-> Steps 4–6 use an LLM. Run `crw setup` once to store a provider key, or pass `--llm-provider`/`--llm-key`/`--llm-model` per call.
-
-```bash
-crw en.wikipedia.org/wiki/Web_scraping --summary --prompt "in 3 bullet points"
-```
-
-`--summary` prints the summary text only — no markdown wrapper, ready to pipe.
-
-**5. The agent loop: search → scrape → summarize**
-
-```bash
-crw "$(crw search 'what is retrieval augmented generation' --format json | jq -r '.[0].url')" \
-  --summary --prompt "Explain it to a backend engineer in 4 sentences."
-```
-
-One line: search the web, take the top result, fetch it, and hand the LLM a clean copy.
-
-**6. Structured extraction with a JSON Schema**
-
-```bash
-crw news.ycombinator.com --extract '{
-  "type": "object",
-  "properties": {
-    "stories": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": { "title": {"type": "string"}, "points": {"type": "integer"} }
-      }
-    }
-  }
-}'
-```
-
-Typed data straight off the page — no brittle selectors, ready to feed an LLM pipeline. Pass a file with `--extract @schema.json`.
-
-**More flags:**
-
-```bash
-crw example.com --format html          # cleaned HTML
-crw example.com --format links         # extract all links
-crw example.com --js                   # JS rendering for SPAs
-crw example.com --js --css 'article'   # JS render + CSS selector
-crw example.com --stealth              # stealth mode (rotate UAs)
-crw example.com -o page.md             # write to file
-```
-
----
-
-## 🏠 Self-Hosting
-
-Once [installed](#api-server-crw-server--firecrawl-compatible-rest-api), start the server and optionally enable JS rendering:
-
-```bash
-crw-server                    # start REST API on :3000
-crw-server setup              # optional: downloads LightPanda for JS rendering
-docker compose up             # alternative: Docker with LightPanda sidecar
-```
-
-### Setup Wizard (CLI)
-
-The CLI includes an interactive setup wizard for easy configuration:
-
-```bash
-crw setup
-```
-
-The wizard guides you through:
-- **Cloud vs Local** mode selection
-- **Browser engine** setup (LightPanda or Chrome for JS rendering)
-- **Search engine** setup (SearXNG via Docker)
-- **LLM provider** configuration (BYOK for AI features)
-- **Shell configuration** (auto-adds to `.zshrc`/`.bashrc`)
-
-Options:
-- `crw setup --cloud` — skip to cloud setup
-- `crw setup --local` — skip to local setup
-- `crw setup --no-color` — disable colored output (accessibility)
-- Press **ESC** to cancel gracefully at any prompt
-
-See the [self-hosting guide](https://docs.fastcrw.com/#self-hosting) for production hardening, auth, reverse proxy, and resource tuning.
-
----
-
-## Open Source vs Cloud
-
-| | Self-hosted (free) | [fastcrw.com](https://fastcrw.com) Cloud |
-|---|---|---|
-| Core scraping | ✅ | ✅ |
-| JS rendering | ✅ (LightPanda/Chrome) | ✅ |
-| Web search | ✅ (bundled SearXNG sidecar) | ✅ (managed) |
-| Global proxy network | ❌ | ✅ |
-| Dashboard | ❌ | ✅ |
-| Commercial use without open-sourcing | Requires AGPL compliance | ✅ Included |
-| Cost | $0 | From $13/mo |
-
-> [**Sign up free →**](https://fastcrw.com) — **500 free credits**, no credit card required.
+[All integrations →](https://docs.fastcrw.com/integrations/)
 
 ---
 
@@ -879,47 +345,17 @@ See the [self-hosting guide](https://docs.fastcrw.com/#self-hosting) for product
 └─────────────────────────────────────────────┘
 ```
 
-| Crate | Description | |
-|-------|-------------|-|
-| [`crw-core`](crates/crw-core) | Core types, config, and error handling | [![crates.io](https://img.shields.io/crates/v/crw-core.svg)](https://crates.io/crates/crw-core) |
-| [`crw-renderer`](crates/crw-renderer) | HTTP + CDP browser rendering engine | [![crates.io](https://img.shields.io/crates/v/crw-renderer.svg)](https://crates.io/crates/crw-renderer) |
-| [`crw-extract`](crates/crw-extract) | HTML → markdown/plaintext extraction | [![crates.io](https://img.shields.io/crates/v/crw-extract.svg)](https://crates.io/crates/crw-extract) |
-| [`crw-crawl`](crates/crw-crawl) | Async BFS crawler with robots.txt & sitemap | [![crates.io](https://img.shields.io/crates/v/crw-crawl.svg)](https://crates.io/crates/crw-crawl) |
-| [`crw-server`](crates/crw-server) | Axum API server (Firecrawl-compatible) | [![crates.io](https://img.shields.io/crates/v/crw-server.svg)](https://crates.io/crates/crw-server) |
-| [`crw-mcp`](crates/crw-mcp) | MCP stdio server (embedded + proxy mode) | [![crates.io](https://img.shields.io/crates/v/crw-mcp.svg)](https://crates.io/crates/crw-mcp) |
-| [`crw-cli`](crates/crw-cli) | Standalone CLI (`crw` binary, no server) | [![crates.io](https://img.shields.io/crates/v/crw-cli.svg)](https://crates.io/crates/crw-cli) |
+| Crate | Description |
+|-------|-------------|
+| [`crw-core`](crates/crw-core) | Core types, config, and error handling |
+| [`crw-renderer`](crates/crw-renderer) | HTTP + CDP browser rendering engine |
+| [`crw-extract`](crates/crw-extract) | HTML → markdown/plaintext extraction |
+| [`crw-crawl`](crates/crw-crawl) | Async BFS crawler with robots.txt & sitemap |
+| [`crw-server`](crates/crw-server) | Axum API server (Firecrawl-compatible) |
+| [`crw-mcp`](crates/crw-mcp) | MCP stdio server (embedded + proxy mode) |
+| [`crw-cli`](crates/crw-cli) | Standalone CLI (`crw` binary, no server) |
 
 [Full architecture docs →](https://docs.fastcrw.com/architecture/)
-
----
-
-## Configuration
-
-Layered TOML config with environment variable overrides:
-
-1. `config.default.toml` — built-in defaults
-2. `config.local.toml` — local overrides (or `CRW_CONFIG=myconfig`)
-3. Environment variables — `CRW_` prefix, `__` separator (e.g. `CRW_SERVER__PORT=8080`)
-
-```toml
-[server]
-host = "0.0.0.0"
-port = 3000
-rate_limit_rps = 10
-
-[renderer]
-mode = "auto"  # auto | lightpanda | playwright | chrome | none
-
-[crawler]
-max_concurrency = 10
-requests_per_second = 10.0
-respect_robots_txt = true
-
-[auth]
-# api_keys = ["fc-key-1234"]
-```
-
-See [full configuration reference](https://docs.fastcrw.com/#configuration).
 
 ---
 
@@ -929,25 +365,15 @@ See [full configuration reference](https://docs.fastcrw.com/#configuration).
 - **Auth** — optional Bearer token with constant-time comparison
 - **robots.txt** — RFC 9309 compliant with wildcard patterns
 - **Rate limiting** — token-bucket algorithm, returns 429 with `error_code`
-- **Resource limits** — max body 1 MB, max crawl depth 10, max pages 1000
+- **Resource limits** — max body 1 MB, max crawl depth 10, max pages 1,000
 
 [Full security docs →](https://docs.fastcrw.com/self-hosting-hardening/)
 
 ---
 
-## Resources
-
-- [Documentation](https://docs.fastcrw.com)
-- [API Reference](https://docs.fastcrw.com/#rest-api)
-- [MCP Setup Guide](https://docs.fastcrw.com/#mcp)
-- [Playground](https://docs.fastcrw.com/playground/)
-- [Changelog](CHANGELOG.md)
-
----
-
 ## Contributing
 
-Contributions are welcome! Please open an issue or submit a pull request.
+Contributions are welcome — issues and PRs both.
 
 1. Fork the repository
 2. Install pre-commit hooks: `make hooks`
@@ -956,9 +382,8 @@ Contributions are welcome! Please open an issue or submit a pull request.
 5. Push to the branch (`git push origin feat/my-feature`)
 6. Open a Pull Request
 
-The pre-commit hook runs the same checks as CI (`cargo fmt`, `cargo clippy`, `cargo test`). Run manually with `make check`.
-
-### Contributors
+The pre-commit hook runs the same checks as CI (`cargo fmt`, `cargo clippy`,
+`cargo test`). Run manually with `make check`.
 
 <a href="https://github.com/us/crw/graphs/contributors">
   <img alt="contributors" src="https://contrib.rocks/image?repo=us/crw"/>
@@ -968,20 +393,32 @@ The pre-commit hook runs the same checks as CI (`cargo fmt`, `cargo clippy`, `ca
 
 ## License
 
-CRW is open-source under [AGPL-3.0](LICENSE). For a managed version without AGPL obligations, see [fastcrw.com](https://fastcrw.com).
+fastCRW is open source under [AGPL-3.0](LICENSE). If you embed fastCRW in
+a closed-source product or expose it as a hosted service to third parties
+and you can't comply with AGPL's source-availability requirements, the
+managed offering at [fastcrw.com](https://fastcrw.com) includes a
+commercial carve-out, and standalone commercial licenses are available
+on request — write to **hello@fastcrw.com**.
 
 ---
 
-## Get Started
+## Links
 
-- **Self-host free:** `curl -fsSL https://raw.githubusercontent.com/us/crw/main/install.sh | sh` — works in 30 seconds
-- **Cloud:** [**Sign up free →**](https://fastcrw.com) — **500 free credits**, no credit card required
-- **Questions?** [Join our Discord](https://discord.gg/kkFh2SC8)
+- **Documentation:** [docs.fastcrw.com](https://docs.fastcrw.com)
+- **API reference:** [docs.fastcrw.com/#rest-api](https://docs.fastcrw.com/#rest-api)
+- **MCP setup guide:** [docs.fastcrw.com/#mcp](https://docs.fastcrw.com/#mcp)
+- **Playground:** [docs.fastcrw.com/playground/](https://docs.fastcrw.com/playground/)
+- **Benchmarks:** [fastcrw.com/benchmarks](https://fastcrw.com/benchmarks)
+- **Marketing site:** [fastcrw.com](https://fastcrw.com)
+- **Changelog:** [`CHANGELOG.md`](CHANGELOG.md)
+- **X / Twitter:** [@fastcrw](https://twitter.com/fastcrw)
+- **LinkedIn:** [fastcrw](https://www.linkedin.com/company/fastcrw)
+- **Discord:** [discord.gg/kkFh2SC8](https://discord.gg/kkFh2SC8)
+- **MCP Registry:** [registry.modelcontextprotocol.io](https://registry.modelcontextprotocol.io/?q=crw)
 
 ---
 
-**It is the sole responsibility of end users to respect websites' policies when scraping.** Users are advised to adhere to applicable privacy policies and terms of use. By default, CRW respects `robots.txt` directives.
-
-<p align="right">
-  <a href="#readme-top">↑ Back to Top ↑</a>
-</p>
+**It is the sole responsibility of end users to respect websites' policies
+when scraping.** Users are advised to adhere to applicable privacy
+policies and terms of use. By default, fastCRW respects `robots.txt`
+directives.
