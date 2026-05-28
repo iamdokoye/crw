@@ -532,20 +532,5 @@ const status = await fetch(`https://fastcrw.com/api/v1/crawl/${id}`, {
   <script type="module" src="/js/search.js"></script>
   <script type="module" src="/js/app.js"></script>
   <script>window.__INITIAL_SLUG__ = "sdk-examples";</script>
-  <!-- FAQ-INJECTED:sdk-examples -->
-  <section class="faq" id="faq-sdk-examples" aria-labelledby="faq-sdk-examples-heading">
-    <h2 id="faq-sdk-examples-heading">Frequently asked</h2>
-    <dl>
-    <dt>Is there an official CRW Python or TypeScript SDK?</dt>
-    <dd>No. CRW is HTTP-first and the documented examples use raw clients — requests in Python, fetch in TypeScript, net/http in Go. A typed Python package is published at pypi.org/project/crw, but the docs intentionally stay close to raw HTTP so the exact wire payload remains visible.</dd>
-    <dt>Can I reuse my existing Firecrawl client to call CRW?</dt>
-    <dd>Yes for the request shapes that CRW implements (scrape, crawl, map, search, and scrape-mode extract). The endpoints are Firecrawl-compatible at the HTTP level. Features Firecrawl has that CRW does not — like the actions DSL — are rejected with a clear error rather than silently ignored.</dd>
-    <dt>Which languages are shown in the SDK examples page?</dt>
-    <dd>TypeScript, Python, and Go, covering scrape, search, search-plus-scrape, and the crawl polling pattern. Any HTTP client in any language works — the examples are deliberately thin so you can port them directly into a backend service or queue worker.</dd>
-    <dt>Why do the examples not hide retries and rate-limit handling?</dt>
-    <dd>Operational clarity. The docs flag two common mistakes: treating response.ok as the full success signal (you still need to inspect warning and metadata.statusCode) and hardcoding retry timing instead of reading the Retry-After header. Raw HTTP keeps those signals visible; a thick SDK tends to hide them.</dd>
-    </dl>
-  </section>
-  <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Is there an official CRW Python or TypeScript SDK?","acceptedAnswer":{"@type":"Answer","text":"No. CRW is HTTP-first and the documented examples use raw clients — requests in Python, fetch in TypeScript, net/http in Go. A typed Python package is published at pypi.org/project/crw, but the docs intentionally stay close to raw HTTP so the exact wire payload remains visible."}},{"@type":"Question","name":"Can I reuse my existing Firecrawl client to call CRW?","acceptedAnswer":{"@type":"Answer","text":"Yes for the request shapes that CRW implements (scrape, crawl, map, search, and scrape-mode extract). The endpoints are Firecrawl-compatible at the HTTP level. Features Firecrawl has that CRW does not — like the actions DSL — are rejected with a clear error rather than silently ignored."}},{"@type":"Question","name":"Which languages are shown in the SDK examples page?","acceptedAnswer":{"@type":"Answer","text":"TypeScript, Python, and Go, covering scrape, search, search-plus-scrape, and the crawl polling pattern. Any HTTP client in any language works — the examples are deliberately thin so you can port them directly into a backend service or queue worker."}},{"@type":"Question","name":"Why do the examples not hide retries and rate-limit handling?","acceptedAnswer":{"@type":"Answer","text":"Operational clarity. The docs flag two common mistakes: treating response.ok as the full success signal (you still need to inspect warning and metadata.statusCode) and hardcoding retry timing instead of reading the Retry-After header. Raw HTTP keeps those signals visible; a thick SDK tends to hide them."}}]}</script>
 </body>
 </html>

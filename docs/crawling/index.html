@@ -616,20 +616,5 @@ console.log((await status.json()).status);
   <script type="module" src="/js/search.js"></script>
   <script type="module" src="/js/app.js"></script>
   <script>window.__INITIAL_SLUG__ = "crawling";</script>
-  <!-- FAQ-INJECTED:crawling -->
-  <section class="faq" id="faq-crawling" aria-labelledby="faq-crawling-heading">
-    <h2 id="faq-crawling-heading">Frequently asked</h2>
-    <dl>
-    <dt>How do crawl job IDs work in CRW?</dt>
-    <dd>POST /v1/crawl returns an id immediately and runs the job asynchronously. You then call GET /v1/crawl/{id} to read status (scraping, completed, or failed), totals, and the data array of completed pages. DELETE /v1/crawl/{id} cancels a running job.</dd>
-    <dt>What is the default maxPages limit on a crawl?</dt>
-    <dd>maxPages defaults to 100 and maxDepth defaults to 2. limit and max_pages are accepted as aliases for maxPages. On first contact with a new site, drop these much lower (the docs recommend maxPages:5, maxDepth:1) so a misconfigured selector or scope does not waste credits.</dd>
-    <dt>How often should I poll a crawl job?</dt>
-    <dd>Poll with backoff rather than hammering the same crawl id; the docs explicitly call out aggressive polling as a common mistake. Each poll only charges credits for newly materialized pages since the previous poll, so polling itself is cheap, but tight loops still load the server unnecessarily.</dd>
-    <dt>Does CRW crawl follow links across subdomains?</dt>
-    <dd>No — CRW crawl stays within the same origin and is meant to be a bounded, respectful site job, not an open-ended spider. If you need broader discovery first, run /v1/map to enumerate URLs and then crawl the subset you actually want.</dd>
-    </dl>
-  </section>
-  <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"How do crawl job IDs work in CRW?","acceptedAnswer":{"@type":"Answer","text":"POST /v1/crawl returns an id immediately and runs the job asynchronously. You then call GET /v1/crawl/{id} to read status (scraping, completed, or failed), totals, and the data array of completed pages. DELETE /v1/crawl/{id} cancels a running job."}},{"@type":"Question","name":"What is the default maxPages limit on a crawl?","acceptedAnswer":{"@type":"Answer","text":"maxPages defaults to 100 and maxDepth defaults to 2. limit and max_pages are accepted as aliases for maxPages. On first contact with a new site, drop these much lower (the docs recommend maxPages:5, maxDepth:1) so a misconfigured selector or scope does not waste credits."}},{"@type":"Question","name":"How often should I poll a crawl job?","acceptedAnswer":{"@type":"Answer","text":"Poll with backoff rather than hammering the same crawl id; the docs explicitly call out aggressive polling as a common mistake. Each poll only charges credits for newly materialized pages since the previous poll, so polling itself is cheap, but tight loops still load the server unnecessarily."}},{"@type":"Question","name":"Does CRW crawl follow links across subdomains?","acceptedAnswer":{"@type":"Answer","text":"No — CRW crawl stays within the same origin and is meant to be a bounded, respectful site job, not an open-ended spider. If you need broader discovery first, run /v1/map to enumerate URLs and then crawl the subset you actually want."}}]}</script>
 </body>
 </html>

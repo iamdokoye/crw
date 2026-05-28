@@ -528,18 +528,5 @@ console.log(body.data.links);
   <script type="module" src="/js/search.js"></script>
   <script type="module" src="/js/app.js"></script>
   <script>window.__INITIAL_SLUG__ = "map";</script>
-  <!-- FAQ-INJECTED:map -->
-  <section class="faq" id="faq-map" aria-labelledby="faq-map-heading">
-    <h2 id="faq-map-heading">Frequently asked</h2>
-    <dl>
-    <dt>How is /v1/map different from /v1/crawl?</dt>
-    <dd>Map discovers URLs only — the response is data.links, a list of reachable URLs, with no page bodies. Crawl actually fetches and converts each page. Run map first when you want to inspect a site&#39;s shape cheaply before paying for a multi-page crawl.</dd>
-    <dt>What is the default maxDepth for map?</dt>
-    <dd>maxDepth defaults to 2. The recommended first request keeps it at 1 with useSitemap:true so you get a cheap, focused view of the site&#39;s top-level structure before deciding what is worth crawling.</dd>
-    <dt>Does map use the site&#39;s sitemap.xml?</dt>
-    <dd>Yes — useSitemap defaults to true, which makes the first discovery pass faster and more complete on structured sites. Set useSitemap:false if you specifically want pure link-following without sitemap hints.</dd>
-    </dl>
-  </section>
-  <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"How is /v1/map different from /v1/crawl?","acceptedAnswer":{"@type":"Answer","text":"Map discovers URLs only — the response is data.links, a list of reachable URLs, with no page bodies. Crawl actually fetches and converts each page. Run map first when you want to inspect a site's shape cheaply before paying for a multi-page crawl."}},{"@type":"Question","name":"What is the default maxDepth for map?","acceptedAnswer":{"@type":"Answer","text":"maxDepth defaults to 2. The recommended first request keeps it at 1 with useSitemap:true so you get a cheap, focused view of the site's top-level structure before deciding what is worth crawling."}},{"@type":"Question","name":"Does map use the site's sitemap.xml?","acceptedAnswer":{"@type":"Answer","text":"Yes — useSitemap defaults to true, which makes the first discovery pass faster and more complete on structured sites. Set useSitemap:false if you specifically want pure link-following without sitemap hints."}}]}</script>
 </body>
 </html>

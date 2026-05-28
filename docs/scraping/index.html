@@ -713,20 +713,5 @@ console.log(body.data.markdown);
   <script type="module" src="/js/search.js"></script>
   <script type="module" src="/js/app.js"></script>
   <script>window.__INITIAL_SLUG__ = "scraping";</script>
-  <!-- FAQ-INJECTED:scraping -->
-  <section class="faq" id="faq-scraping" aria-labelledby="faq-scraping-heading">
-    <h2 id="faq-scraping-heading">Frequently asked</h2>
-    <dl>
-    <dt>Why does scrape return empty HTML or markdown for JavaScript-heavy pages?</dt>
-    <dd>By default CRW leaves renderJs at null, which keeps the request HTTP-only and skips the browser. Pages that paint their main content from JavaScript will look empty in that mode. Set renderJs:true (or pin renderer:lightpanda or renderer:chrome) to run the page through a headless browser before conversion.</dd>
-    <dt>When should I use renderer:lightpanda versus renderer:chrome?</dt>
-    <dd>LightPanda is the fast, lightweight CDP renderer and is the right pick for static-JS sites that just need a quick paint. Chrome is heavier but handles Cloudflare-protected SPAs and pages that LightPanda cannot render correctly. Pinning a non-auto renderer hard-pins the request — there is no fallback if that renderer fails.</dd>
-    <dt>What does the waitFor parameter actually do?</dt>
-    <dd>waitFor is the number of milliseconds CRW waits after JavaScript rendering finishes before snapshotting the DOM. It only takes effect when JS rendering is on. Use it for pages that fetch content asynchronously after first paint; leave it unset for static or HTTP-only requests.</dd>
-    <dt>Why is the actions field rejected with an error?</dt>
-    <dd>CRW does not implement Firecrawl&#39;s actions DSL (click, scroll, type). Sending an actions payload returns a clear error rather than silently ignoring it. Use cssSelector or xpath to narrow extraction, or run JS rendering with waitFor for async content.</dd>
-    </dl>
-  </section>
-  <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Why does scrape return empty HTML or markdown for JavaScript-heavy pages?","acceptedAnswer":{"@type":"Answer","text":"By default CRW leaves renderJs at null, which keeps the request HTTP-only and skips the browser. Pages that paint their main content from JavaScript will look empty in that mode. Set renderJs:true (or pin renderer:lightpanda or renderer:chrome) to run the page through a headless browser before conversion."}},{"@type":"Question","name":"When should I use renderer:lightpanda versus renderer:chrome?","acceptedAnswer":{"@type":"Answer","text":"LightPanda is the fast, lightweight CDP renderer and is the right pick for static-JS sites that just need a quick paint. Chrome is heavier but handles Cloudflare-protected SPAs and pages that LightPanda cannot render correctly. Pinning a non-auto renderer hard-pins the request — there is no fallback if that renderer fails."}},{"@type":"Question","name":"What does the waitFor parameter actually do?","acceptedAnswer":{"@type":"Answer","text":"waitFor is the number of milliseconds CRW waits after JavaScript rendering finishes before snapshotting the DOM. It only takes effect when JS rendering is on. Use it for pages that fetch content asynchronously after first paint; leave it unset for static or HTTP-only requests."}},{"@type":"Question","name":"Why is the actions field rejected with an error?","acceptedAnswer":{"@type":"Answer","text":"CRW does not implement Firecrawl's actions DSL (click, scroll, type). Sending an actions payload returns a clear error rather than silently ignoring it. Use cssSelector or xpath to narrow extraction, or run JS rendering with waitFor for async content."}}]}</script>
 </body>
 </html>

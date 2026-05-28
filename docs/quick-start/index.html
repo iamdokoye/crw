@@ -489,20 +489,5 @@ console.log(body.data.markdown);
   <script type="module" src="/js/search.js"></script>
   <script type="module" src="/js/app.js"></script>
   <script>window.__INITIAL_SLUG__ = "quick-start";</script>
-  <!-- FAQ-INJECTED:quick-start -->
-  <section class="faq" id="faq-quick-start" aria-labelledby="faq-quick-start-heading">
-    <h2 id="faq-quick-start-heading">Frequently asked</h2>
-    <dl>
-    <dt>Should I use the hosted API or self-host CRW?</dt>
-    <dd>The hosted API at https://api.fastcrw.com is the fastest path to a first successful response — sign up at fastcrw.com/register for an API key and 500 free credits. Self-hosting on http://localhost:3000 needs no auth header by default and is the right choice when you want full control of data flow or want to skip credit billing.</dd>
-    <dt>Where do I get an API key?</dt>
-    <dd>Create an account at https://fastcrw.com/register and the key appears in your dashboard. Send it as Authorization: Bearer YOUR_API_KEY on every hosted request. Self-hosted instances only require this header when auth.api_keys is explicitly configured.</dd>
-    <dt>Which endpoint should I call first?</dt>
-    <dd>Start with POST /v1/scrape against a known URL with formats:[&quot;markdown&quot;] and onlyMainContent:true. That is the smallest possible request that exercises auth, the response envelope, and content conversion in one shot — once that returns clean markdown, layer in JS rendering, schemas, or crawl jobs.</dd>
-    <dt>Do I need to install an SDK to call CRW?</dt>
-    <dd>No. CRW is HTTP-first, so cURL, fetch, or requests is enough. There is no required dedicated SDK package — examples in the docs use raw HTTP clients so the exact wire payload stays visible.</dd>
-    </dl>
-  </section>
-  <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Should I use the hosted API or self-host CRW?","acceptedAnswer":{"@type":"Answer","text":"The hosted API at https://api.fastcrw.com is the fastest path to a first successful response — sign up at fastcrw.com/register for an API key and 500 free credits. Self-hosting on http://localhost:3000 needs no auth header by default and is the right choice when you want full control of data flow or want to skip credit billing."}},{"@type":"Question","name":"Where do I get an API key?","acceptedAnswer":{"@type":"Answer","text":"Create an account at https://fastcrw.com/register and the key appears in your dashboard. Send it as Authorization: Bearer YOUR_API_KEY on every hosted request. Self-hosted instances only require this header when auth.api_keys is explicitly configured."}},{"@type":"Question","name":"Which endpoint should I call first?","acceptedAnswer":{"@type":"Answer","text":"Start with POST /v1/scrape against a known URL with formats:[\"markdown\"] and onlyMainContent:true. That is the smallest possible request that exercises auth, the response envelope, and content conversion in one shot — once that returns clean markdown, layer in JS rendering, schemas, or crawl jobs."}},{"@type":"Question","name":"Do I need to install an SDK to call CRW?","acceptedAnswer":{"@type":"Answer","text":"No. CRW is HTTP-first, so cURL, fetch, or requests is enough. There is no required dedicated SDK package — examples in the docs use raw HTTP clients so the exact wire payload stays visible."}}]}</script>
 </body>
 </html>
