@@ -302,6 +302,24 @@ pub struct LlmUsage {
     pub truncated: bool,
     #[serde(default = "one_u32", skip_serializing_if = "is_one_u32")]
     pub calls: u32,
+
+    // ── Wave 4 (R1) additions: SaaS billing correlation across legs ──
+    //
+    // The SaaS-side managed pricing path needs to know exactly how many
+    // summary calls executed AND whether the answer leg ran. The 5-branch
+    // fail-closed dispatch keys off these counters:
+    //   - executedSummaries > 0 OR answerExecuted ⇒ engine did work
+    //   - inputTokens == 0 AND outputTokens == 0 ⇒ no upstream cost
+    // Without the counters the SaaS cannot disambiguate "no work" from
+    // "work but missing telemetry" and would refund or charge wrong.
+    //
+    // Always serialized (no skip_serializing_if) so the always-present
+    // R1 invariant holds: when /v1/search returns llmUsage, both fields
+    // are explicitly visible.
+    #[serde(default)]
+    pub executed_summaries: u32,
+    #[serde(default)]
+    pub answer_executed: bool,
 }
 
 fn one_u32() -> u32 {
