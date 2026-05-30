@@ -295,6 +295,10 @@ pub(crate) async fn call_anthropic(
             cache_miss_input_tokens: cache_miss,
             truncated: false,
             calls: 1,
+            // R1 counters are aggregated in the /v1/search caller;
+            // single-call sites always emit defaults.
+            executed_summaries: 0,
+            answer_executed: false,
         }
     });
 
@@ -498,6 +502,10 @@ pub(crate) async fn call_openai(
             cache_miss_input_tokens: cache_miss,
             truncated: false,
             calls: 1,
+            // R1 counters are aggregated in the /v1/search caller;
+            // single-call sites always emit defaults.
+            executed_summaries: 0,
+            answer_executed: false,
         }
     });
 

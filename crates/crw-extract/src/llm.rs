@@ -418,6 +418,11 @@ fn parse_anthropic_usage(payload: &serde_json::Value, model: &str) -> Option<Llm
         cache_miss_input_tokens,
         truncated: false,
         calls: 1,
+        // R1 counters are scoped to /v1/search aggregation; single-call
+        // sites always emit defaults. Aggregation happens in the caller
+        // (crw-server::routes::search::search_inner).
+        executed_summaries: 0,
+        answer_executed: false,
     })
 }
 
@@ -474,6 +479,11 @@ fn parse_openai_usage(
         cache_miss_input_tokens,
         truncated: false,
         calls: 1,
+        // R1 counters are scoped to /v1/search aggregation; single-call
+        // sites always emit defaults. Aggregation happens in the caller
+        // (crw-server::routes::search::search_inner).
+        executed_summaries: 0,
+        answer_executed: false,
     })
 }
 

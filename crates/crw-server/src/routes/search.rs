@@ -5,7 +5,7 @@ use crw_core::Deadline;
 use crw_core::config::LlmConfig;
 use crw_core::error::CrwError;
 use crw_core::types::{
-    ApiResponse, OutputFormat, ScrapeData, ScrapeRequest, SearchData, SearchRequest,
+    ApiResponse, LlmUsage, OutputFormat, ScrapeData, ScrapeRequest, SearchData, SearchRequest,
     SearchResponse, SearchResponseData, SearchResult, SearchScrapeOptions,
 };
 use crw_crawl::single::scrape_url;
@@ -20,6 +20,14 @@ use tokio::task::JoinSet;
 const DEFAULT_ANSWER_TOP_N: u32 = 5;
 const MAX_ANSWER_TOP_N: u32 = 10;
 const DEFAULT_MAX_CHARS_PER_SOURCE: usize = 8192;
+
+/// Wave 4 (R2): hard cap on `max_tokens` per LLM leg (one summary call OR
+/// the answer call). Independent of the user's configured `cfg.max_tokens`
+/// because the SaaS-side `estimateMaxCreditCostForSearch` uses this number
+/// to pre-reserve credits; a per-leg cap higher than this would let real
+/// usage exceed the reservation. Mirror in
+/// `crw-saas/src/lib/llm-pricing.ts::legCost` (default 1024).
+const SEARCH_LLM_MAX_TOKENS_PER_LEG: u32 = 1024;
 
 use crate::error::AppError;
 use crate::state::AppState;
@@ -102,6 +110,43 @@ pub async fn search_inner(
 
     let wants_summaries = req.summarize_results.unwrap_or(false);
     let wants_answer = req.answer.unwrap_or(false);
+    // Wave 4 (R1): once we enter LLM mode the response MUST carry a
+    // non-null llmUsage object (the always-present invariant the SaaS
+    // 5-branch dispatch relies on). We aggregate summary + answer counts
+    // into this builder and emit it at every return path below.
+    let mut llm_attempted = false;
+    let mut agg_input_tokens: u32 = 0;
+    let mut agg_output_tokens: u32 = 0;
+    let mut agg_cache_hit: u32 = 0;
+    let mut agg_cache_miss: u32 = 0;
+    let mut agg_calls: u32 = 0;
+    let mut agg_executed_summaries: u32 = 0;
+    let mut agg_answer_executed = false;
+    let mut agg_provider: String = String::new();
+    let mut agg_model: String = String::new();
+    let mut agg_truncated = false;
+    let merge_usage = |agg_input_tokens: &mut u32,
+                       agg_output_tokens: &mut u32,
+                       agg_cache_hit: &mut u32,
+                       agg_cache_miss: &mut u32,
+                       agg_calls: &mut u32,
+                       agg_provider: &mut String,
+                       agg_model: &mut String,
+                       agg_truncated: &mut bool,
+                       u: &LlmUsage| {
+        *agg_input_tokens = agg_input_tokens.saturating_add(u.input_tokens);
+        *agg_output_tokens = agg_output_tokens.saturating_add(u.output_tokens);
+        *agg_cache_hit = agg_cache_hit.saturating_add(u.cache_hit_input_tokens.unwrap_or(0));
+        *agg_cache_miss = agg_cache_miss.saturating_add(u.cache_miss_input_tokens.unwrap_or(0));
+        *agg_calls = agg_calls.saturating_add(u.calls.max(1));
+        if agg_provider.is_empty() {
+            *agg_provider = u.provider.clone();
+        }
+        if agg_model.is_empty() {
+            *agg_model = u.model.clone();
+        }
+        *agg_truncated = *agg_truncated || u.truncated;
+    };
 
     if (wants_summaries || wants_answer) && req.scrape_options.is_none() {
         warnings.push(
@@ -115,15 +160,35 @@ pub async fn search_inner(
                     .into(),
             ),
             Some(llm) => {
+                llm_attempted = true;
+                // Wave 4 (R2): cap max_tokens at SEARCH_LLM_MAX_TOKENS_PER_LEG so
+                // a single leg can never exceed the SaaS pre-reservation in
+                // estimateMaxCreditCostForSearch.
+                let mut leg_cfg = llm.clone();
+                leg_cfg.max_tokens = leg_cfg.max_tokens.min(SEARCH_LLM_MAX_TOKENS_PER_LEG);
                 if wants_summaries {
-                    let count = attach_result_summaries(
+                    let (count, usages) = attach_result_summaries(
                         &mut data,
-                        llm,
-                        llm.max_concurrency,
+                        &leg_cfg,
+                        leg_cfg.max_concurrency,
                         req.summary_prompt.as_deref(),
                         req.max_content_chars,
                     )
                     .await;
+                    agg_executed_summaries = count.ok as u32;
+                    for u in usages.into_iter().flatten() {
+                        merge_usage(
+                            &mut agg_input_tokens,
+                            &mut agg_output_tokens,
+                            &mut agg_cache_hit,
+                            &mut agg_cache_miss,
+                            &mut agg_calls,
+                            &mut agg_provider,
+                            &mut agg_model,
+                            &mut agg_truncated,
+                            &u,
+                        );
+                    }
                     if count.failed > 0 {
                         warnings.push(format!(
                             "{} of {} per-result summaries failed",
@@ -133,14 +198,41 @@ pub async fn search_inner(
                     }
                 }
                 if wants_answer {
-                    match synthesize_answer(&req, &data, llm).await {
-                        Ok((ans, cites, usage, mut ans_warns)) => {
+                    match synthesize_answer(&req, &data, &leg_cfg).await {
+                        Ok((ans, cites, ans_usage, mut ans_warns)) => {
                             warnings.append(&mut ans_warns);
+                            agg_answer_executed = true;
+                            if let Some(ref u) = ans_usage {
+                                merge_usage(
+                                    &mut agg_input_tokens,
+                                    &mut agg_output_tokens,
+                                    &mut agg_cache_hit,
+                                    &mut agg_cache_miss,
+                                    &mut agg_calls,
+                                    &mut agg_provider,
+                                    &mut agg_model,
+                                    &mut agg_truncated,
+                                    u,
+                                );
+                            }
+                            let aggregated = build_aggregated_usage(
+                                agg_input_tokens,
+                                agg_output_tokens,
+                                agg_cache_hit,
+                                agg_cache_miss,
+                                agg_calls,
+                                agg_executed_summaries,
+                                agg_answer_executed,
+                                agg_provider.clone(),
+                                agg_model.clone(),
+                                agg_truncated,
+                                &leg_cfg,
+                            );
                             let wrapped = SearchResponseData {
                                 results: data,
                                 answer: Some(ans),
                                 citations: cites,
-                                llm_usage: usage,
+                                llm_usage: Some(aggregated),
                                 warnings,
                             };
                             let mut resp = ApiResponse::ok(wrapped);
@@ -157,16 +249,102 @@ pub async fn search_inner(
         }
     }
 
+    // R1 always-present invariant: if we attempted LLM work, emit the
+    // aggregated usage even when zero tokens were consumed (e.g. all
+    // summaries failed and no answer leg ran). The SaaS dispatch maps
+    // (executedSummaries == 0 && answerExecuted == false && tokens == 0)
+    // to Branch 1 (no-op refund); anything else routes correctly.
+    let final_usage = if llm_attempted {
+        Some(build_aggregated_usage(
+            agg_input_tokens,
+            agg_output_tokens,
+            agg_cache_hit,
+            agg_cache_miss,
+            agg_calls,
+            agg_executed_summaries,
+            agg_answer_executed,
+            if agg_provider.is_empty() {
+                effective_llm
+                    .map(|c| c.provider.clone())
+                    .unwrap_or_default()
+            } else {
+                agg_provider
+            },
+            if agg_model.is_empty() {
+                effective_llm.map(|c| c.model.clone()).unwrap_or_default()
+            } else {
+                agg_model
+            },
+            agg_truncated,
+            effective_llm
+                .map(|c| {
+                    let mut c = c.clone();
+                    c.max_tokens = c.max_tokens.min(SEARCH_LLM_MAX_TOKENS_PER_LEG);
+                    c
+                })
+                .as_ref()
+                .unwrap_or(&crw_core::config::LlmConfig::default()),
+        ))
+    } else {
+        None
+    };
+
     let wrapped = SearchResponseData {
         results: data,
         answer: None,
         citations: Vec::new(),
-        llm_usage: None,
+        llm_usage: final_usage,
         warnings,
     };
     let mut resp = ApiResponse::ok(wrapped);
     resp.warning = warning;
     Ok(resp)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_aggregated_usage(
+    input_tokens: u32,
+    output_tokens: u32,
+    cache_hit: u32,
+    cache_miss: u32,
+    calls: u32,
+    executed_summaries: u32,
+    answer_executed: bool,
+    provider: String,
+    model: String,
+    truncated: bool,
+    fallback_cfg: &crw_core::config::LlmConfig,
+) -> LlmUsage {
+    LlmUsage {
+        input_tokens,
+        output_tokens,
+        total_tokens: input_tokens.saturating_add(output_tokens),
+        estimated_cost_usd: None,
+        model: if model.is_empty() {
+            fallback_cfg.model.clone()
+        } else {
+            model
+        },
+        provider: if provider.is_empty() {
+            fallback_cfg.provider.clone()
+        } else {
+            provider
+        },
+        cache_hit_input_tokens: if cache_hit == 0 {
+            None
+        } else {
+            Some(cache_hit)
+        },
+        cache_miss_input_tokens: if cache_miss == 0 {
+            None
+        } else {
+            Some(cache_miss)
+        },
+        truncated,
+        calls: calls.max(1),
+        executed_summaries,
+        answer_executed,
+    }
 }
 
 #[derive(Default)]
@@ -177,18 +355,22 @@ struct SummaryFanoutCount {
 
 /// Fan-out summary calls across all results that have markdown. Bounded by
 /// `max_concurrency`. Pattern mirrors `crates/crw-crawl/src/sitemap.rs`.
+///
+/// Wave 4 (R1): returns the per-call `Option<LlmUsage>` for every job
+/// alongside the ok/failed count so the caller can aggregate token totals
+/// across summaries + answer.
 async fn attach_result_summaries(
     data: &mut SearchData,
     cfg: &LlmConfig,
     max_concurrency: usize,
     user_prompt: Option<&str>,
     max_content_chars: Option<usize>,
-) -> SummaryFanoutCount {
+) -> (SummaryFanoutCount, Vec<Option<LlmUsage>>) {
     let targets: &mut Vec<SearchResult> = match data {
         SearchData::Flat(v) => v,
         SearchData::Grouped(g) => match g.web.as_mut() {
             Some(v) if !v.is_empty() => v,
-            _ => return SummaryFanoutCount::default(),
+            _ => return (SummaryFanoutCount::default(), Vec::new()),
         },
     };
     // Capture markdown + index pairs first so we don't hold a borrow of
@@ -199,12 +381,13 @@ async fn attach_result_summaries(
         .filter_map(|(idx, r)| r.markdown.as_ref().map(|md| (idx, md.clone())))
         .collect();
     if jobs.is_empty() {
-        return SummaryFanoutCount::default();
+        return (SummaryFanoutCount::default(), Vec::new());
     }
     let cfg_owned = cfg.clone();
     let user_prompt_owned: Option<String> = user_prompt.map(str::to_owned);
     let concurrency = max_concurrency.max(1);
-    let results: Vec<(usize, Result<String, String>)> = stream::iter(jobs)
+    type SummaryOutcome = (usize, Result<(String, Option<LlmUsage>), String>);
+    let results: Vec<SummaryOutcome> = stream::iter(jobs)
         .map(|(idx, md)| {
             let cfg = cfg_owned.clone();
             let user_prompt = user_prompt_owned.clone();
@@ -212,7 +395,7 @@ async fn attach_result_summaries(
                 let outcome =
                     summary::summarize(&md, &cfg, user_prompt.as_deref(), max_content_chars)
                         .await
-                        .map(|r| r.content)
+                        .map(|r| (r.content, r.usage))
                         .map_err(|e| e.to_string());
                 (idx, outcome)
             }
@@ -222,18 +405,23 @@ async fn attach_result_summaries(
         .await;
 
     let mut count = SummaryFanoutCount::default();
+    let mut usages: Vec<Option<LlmUsage>> = Vec::with_capacity(results.len());
     for (idx, res) in results {
         match res {
-            Ok(text) => {
+            Ok((text, usage)) => {
                 if let Some(slot) = targets.get_mut(idx) {
                     slot.summary = Some(text);
                     count.ok += 1;
+                    usages.push(usage);
                 }
             }
-            Err(_) => count.failed += 1,
+            Err(_) => {
+                count.failed += 1;
+                usages.push(None);
+            }
         }
     }
-    count
+    (count, usages)
 }
 
 async fn synthesize_answer(
@@ -393,7 +581,10 @@ async fn enrich_with_scrape(
             Ok(u) => u,
             Err(_) => continue,
         };
-        if crw_core::url_safety::validate_safe_url(&parsed).is_err() {
+        if crw_core::url_safety::validate_safe_url_resolved(&parsed)
+            .await
+            .is_err()
+        {
             continue;
         }
         jobs.push((idx, r.url.clone()));
