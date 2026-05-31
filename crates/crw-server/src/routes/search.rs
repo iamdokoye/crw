@@ -11,7 +11,9 @@ use crw_core::types::{
 use crw_crawl::single::scrape_url;
 use crw_extract::answer;
 use crw_extract::summary;
-use crw_search::{SearchError, map_to_searxng_params, transform_flat, transform_grouped};
+use crw_search::{
+    SearchError, map_to_searxng_params, transform_flat, transform_flat_reranked, transform_grouped,
+};
 use futures::stream::{self, StreamExt};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -82,9 +84,16 @@ pub async fn search_inner(
         .map_err(|e| map_search_error(e, state.config.search.timeout_ms))?;
 
     let has_sources = req.sources.as_ref().is_some_and(|s| !s.is_empty());
+    // The LLM answer / summarize path feeds the top-N flat sources straight to
+    // the model, so it must receive a clean, query-relevant pool. Re-rank the
+    // flat pool on that path (unless disabled); the plain path keeps the raw
+    // SaaS byte-parity `transform_flat` sort.
+    let llm_path = req.answer.unwrap_or(false) || req.summarize_results.unwrap_or(false);
     let mut data = if has_sources {
         let sources = req.sources.clone().unwrap_or_default();
         SearchData::Grouped(transform_grouped(&response, &sources, limit))
+    } else if llm_path && state.config.search.rerank_enabled {
+        SearchData::Flat(transform_flat_reranked(&response, &req.query, limit))
     } else {
         SearchData::Flat(transform_flat(&response, limit))
     };

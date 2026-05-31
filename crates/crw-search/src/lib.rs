@@ -13,8 +13,10 @@
 
 pub mod client;
 pub mod params;
+pub mod rerank;
 pub mod transform;
 
 pub use client::{SearchError, SearxngClient, SearxngResponse, SearxngResult};
-pub use params::{SearxngParams, map_to_searxng_params};
-pub use transform::{transform_flat, transform_grouped};
+pub use params::{SearxngParams, clean_query, map_to_searxng_params};
+pub use rerank::rerank;
+pub use transform::{transform_flat, transform_flat_reranked, transform_grouped};
