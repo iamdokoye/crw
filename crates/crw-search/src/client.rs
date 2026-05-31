@@ -78,6 +78,16 @@ pub struct SearxngResult {
     /// Relevance score (higher is better). Missing on engines that don't rank.
     #[serde(default)]
     pub score: Option<f64>,
+    /// Per-engine identifiers that returned this row (SearXNG `format=json`
+    /// emits this when a result is found by more than one engine). Used by the
+    /// re-rank pipeline for engine-aware bookkeeping; harmless on the raw path.
+    #[serde(default)]
+    pub engines: Vec<String>,
+    /// Per-engine ranks for this row (one entry per engine in `engines`).
+    /// Drives Reciprocal Rank Fusion in the re-rank pipeline. Empty on the
+    /// rare engines that don't report a position.
+    #[serde(default)]
+    pub positions: Vec<u32>,
     /// Top-level category bucket reported by SearXNG (`general`, `news`,
     /// `images`, `videos`, ...).
     #[serde(default)]

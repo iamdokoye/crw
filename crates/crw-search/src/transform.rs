@@ -121,6 +121,33 @@ pub fn transform_flat(response: &SearxngResponse, limit: u32) -> Vec<SearchResul
         .collect()
 }
 
+/// Flat output for the LLM answer / summarize path: drop malformed rows, run
+/// the content-aware re-rank pipeline (RRF + junk/coverage/geo filter + BM25
+/// + domain dedupe), then slice to `limit`.
+///
+/// Unlike [`transform_flat`] (which preserves SaaS byte-parity by sorting on
+/// raw SearXNG score), this selects clean, query-relevant, geo-correct sources
+/// so the top-N feeding the LLM isn't dictionary / shopping / homonym junk.
+pub fn transform_flat_reranked(
+    response: &SearxngResponse,
+    query: &str,
+    limit: u32,
+) -> Vec<SearchResult> {
+    let results: Vec<SearxngResult> = response
+        .results
+        .iter()
+        .filter(|r| is_well_formed(r))
+        .take(MAX_UPSTREAM_ROWS)
+        .cloned()
+        .collect();
+    crate::rerank::rerank(&results, query)
+        .into_iter()
+        .take(limit as usize)
+        .enumerate()
+        .map(|(i, r)| to_search_result(r, (i + 1) as u32))
+        .collect()
+}
+
 /// Grouped output: filter by `sources`, then per-bucket sort/dedupe/slice.
 /// Limit applies **per source**, not in total — matches SaaS semantics.
 pub fn transform_grouped(
@@ -215,6 +242,8 @@ mod tests {
             engine: Some("test".into()),
             content: Some(content.into()),
             score: Some(score),
+            engines: Vec::new(),
+            positions: Vec::new(),
             category: Some("general".into()),
             template: None,
             published_date: None,
@@ -232,6 +261,8 @@ mod tests {
             engine: Some("test".into()),
             content: Some("snippet".into()),
             score: Some(score),
+            engines: Vec::new(),
+            positions: Vec::new(),
             category: Some("news".into()),
             template: None,
             published_date: Some("2026-05-01T00:00:00Z".into()),
@@ -249,6 +280,8 @@ mod tests {
             engine: Some("test".into()),
             content: Some(String::new()),
             score: Some(score),
+            engines: Vec::new(),
+            positions: Vec::new(),
             category: Some("images".into()),
             template: Some("images.html".into()),
             published_date: None,

@@ -34,8 +34,39 @@ pub struct SearxngParams {
 ///   hour granularity. (See `SearchTimeFilter::searxng_time_range`.)
 ///
 /// [`SearchRequest`]: crw_core::types::SearchRequest
+/// Leading filler tokens that SearXNG's `bing` engine keyword-matches into
+/// dictionary / shopping junk ("top"/"best"/...). Lowercased.
+const LEADING_FILLER: &[&str] = &["top", "best", "good", "greatest", "finest", "cheapest"];
+
+/// Strip a leading filler token ("best restaurants ..." → "restaurants ...")
+/// so SearXNG doesn't keyword-match the stopword into definition pages.
+///
+/// Only fires when ALL hold, to stay conservative:
+/// - the query has >= 3 whitespace-separated tokens (single phrases are left
+///   intact — "best buy" must not become "buy"),
+/// - the first token (lowercased) is in [`LEADING_FILLER`],
+/// - the query is not a quoted / operator query (a `"` or `:` anywhere, e.g.
+///   `"top gun" movie` or `site:imdb.com`) — those are intentional.
+///
+/// Returns the original string when no rule applies.
+pub fn clean_query(query: &str) -> String {
+    let trimmed = query.trim();
+    if trimmed.contains('"') || trimmed.contains(':') {
+        return query.to_string();
+    }
+    let tokens: Vec<&str> = trimmed.split_whitespace().collect();
+    if tokens.len() < 3 {
+        return query.to_string();
+    }
+    if LEADING_FILLER.contains(&tokens[0].to_lowercase().as_str()) {
+        tokens[1..].join(" ")
+    } else {
+        query.to_string()
+    }
+}
+
 pub fn map_to_searxng_params(req: &SearchRequest, config: &SearchConfig) -> SearxngParams {
-    let mut query = req.query.clone();
+    let mut query = clean_query(&req.query);
     let mut engines: Vec<String> = Vec::new();
 
     if let Some(cats) = &req.categories {
@@ -62,7 +93,13 @@ pub fn map_to_searxng_params(req: &SearchRequest, config: &SearchConfig) -> Sear
     });
 
     let time_range = req.tbs.map(|t| t.searxng_time_range().to_string());
-    let language = req.lang.clone().filter(|s| !s.is_empty());
+    // Pin language to "en" when the request omits it (or sends empty), so
+    // SearXNG doesn't fall back to a locale-mixed result set that pollutes the
+    // re-rank pool. An explicit per-request language is always honored.
+    let language = match req.lang.as_deref().map(str::trim) {
+        Some(l) if !l.is_empty() => Some(l.to_string()),
+        _ => Some("en".to_string()),
+    };
     let engines = if engines.is_empty() {
         None
     } else {
@@ -175,11 +212,73 @@ mod tests {
     }
 
     #[test]
-    fn empty_lang_drops_to_none() {
+    fn empty_lang_defaults_to_en() {
         let mut r = req("rust");
         r.lang = Some(String::new());
         let p = map_to_searxng_params(&r, &cfg());
-        assert!(p.language.is_none());
+        assert_eq!(p.language.as_deref(), Some("en"));
+    }
+
+    #[test]
+    fn missing_lang_defaults_to_en() {
+        let p = map_to_searxng_params(&req("rust"), &cfg());
+        assert_eq!(p.language.as_deref(), Some("en"));
+    }
+
+    #[test]
+    fn explicit_lang_is_honored() {
+        let mut r = req("rust");
+        r.lang = Some("de".into());
+        let p = map_to_searxng_params(&r, &cfg());
+        assert_eq!(p.language.as_deref(), Some("de"));
+    }
+
+    #[test]
+    fn clean_query_strips_leading_best() {
+        assert_eq!(
+            clean_query("best restaurants in belgrade"),
+            "restaurants in belgrade"
+        );
+    }
+
+    #[test]
+    fn clean_query_strips_leading_top() {
+        assert_eq!(clean_query("top museums in vienna"), "museums in vienna");
+    }
+
+    #[test]
+    fn clean_query_keeps_quoted_top_gun() {
+        // Quoted / phrase-intent queries must survive untouched.
+        assert_eq!(
+            clean_query("\"top gun\" movie review"),
+            "\"top gun\" movie review"
+        );
+    }
+
+    #[test]
+    fn clean_query_keeps_operator_query() {
+        assert_eq!(
+            clean_query("best site:imdb.com movie"),
+            "best site:imdb.com movie"
+        );
+    }
+
+    #[test]
+    fn clean_query_keeps_short_query() {
+        // < 3 tokens: "best buy" must not collapse to "buy".
+        assert_eq!(clean_query("best buy"), "best buy");
+        assert_eq!(clean_query("top gun"), "top gun");
+    }
+
+    #[test]
+    fn clean_query_leaves_non_filler_leading_token() {
+        assert_eq!(clean_query("python snake habitat"), "python snake habitat");
+    }
+
+    #[test]
+    fn clean_query_applied_in_params() {
+        let p = map_to_searxng_params(&req("best coffee shops in lisbon"), &cfg());
+        assert_eq!(p.q, "coffee shops in lisbon");
     }
 
     #[test]

@@ -137,6 +137,12 @@ pub struct SearchConfig {
     /// SearXNG engines invoked when the request includes `categories: ["github"]`.
     #[serde(default = "default_github_engines")]
     pub github_engines: Vec<String>,
+    /// Re-rank the flat result pool for the LLM answer / summarize path
+    /// (RRF + junk/coverage/geo filter + BM25 + domain dedupe) instead of the
+    /// raw SearXNG-score sort. Defaults to `true`. The plain (non-LLM) path is
+    /// unaffected and keeps SaaS byte-parity regardless of this flag.
+    #[serde(default = "default_true_search")]
+    pub rerank_enabled: bool,
 }
 
 impl Default for SearchConfig {
@@ -149,6 +155,7 @@ impl Default for SearchConfig {
             max_limit: default_search_max_limit(),
             research_engines: default_research_engines(),
             github_engines: default_github_engines(),
+            rerank_enabled: true,
         }
     }
 }
