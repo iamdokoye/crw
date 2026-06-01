@@ -1,22 +1,29 @@
-//! Content-aware re-ranking pipeline for the LLM "answer" / "summarize"
-//! search path.
+//! Re-ranking pipeline for the LLM "answer" / "summarize" search path.
 //!
-//! SearXNG's raw `.score` is rank-inverse and content-blind: a `bing`
-//! keyword match on a stopword ("top" / "best" / "fix") lets dictionary,
-//! shopping, and bot-check pages tie or outrank the real results. Sorting by
-//! that score feeds junk to the LLM. This module replaces the raw sort with a
-//! CPU-only pipeline that fuses per-engine ranks, drops junk, gates on query
-//! coverage, applies a geo signal, and dedupes by registrable domain.
+//! SearXNG's raw `.score` is rank-inverse and content-blind: a `bing` keyword
+//! match on a stopword ("top" / "best" / "fix") lets dictionary, shopping, and
+//! bot-check pages tie or outrank the real results, feeding junk to the LLM.
 //!
-//! Direct port of the proven Python reference in
-//! `tests/fixtures/bench/{rerank,score}.py` (`rank_full`). The only deliberate
-//! deviation: the graceful-degrade fallback keeps the junk filter applied
-//! (it only relaxes the coverage / geo guards) so junk can never re-enter the
-//! top-N — the reference's `cands = list(rows)` fallback could otherwise leak
-//! a dictionary page back in.
+//! The **default path is lexical-core**: drop junk (structural signatures +
+//! a host blocklist), gate on query-term coverage, drop competing-region rows,
+//! then order the survivors by SearXNG's raw score and dedupe by registrable
+//! domain. This is the only variant the frozen 56-query benchmark
+//! (`tests/fixtures/bench/{rerank,score}.py`) proves beats the raw-score
+//! baseline (CleanRel 0.471->0.536, Recall 0.314->0.318, nDCG-mean
+//! 0.227->0.231) with no junk regression.
 //!
-//! No network, no new heavy dependencies — `std` + the `url` crate already in
-//! the workspace.
+//! The composite RRF + BM25 + geo-score step was **removed from the default
+//! path**: it *regresses* the baseline (Recall -9%, nDCG 0.227->0.221) because
+//! our cross-engine overlap is near-zero (positions median = 1, so RRF is the
+//! single worst variant). The `rrf` / `bm25_lite` / `geo_score` helpers are
+//! retained (`#[allow(dead_code)]`) for a future config-gated experiment; the
+//! benchmark is the gate.
+//!
+//! The graceful-degrade fallback keeps the junk filter applied (it only relaxes
+//! the coverage / geo guards) so junk can never re-enter the top-N.
+//!
+//! No network, no heavy dependencies — `std` + the `url` crate already in the
+//! workspace.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
@@ -24,12 +31,12 @@ use std::sync::LazyLock;
 use crate::client::SearxngResult;
 
 // ---- tunable knobs (mirror rerank.py) ----
+// K_RRF / K1 / B feed the retained-but-disabled rrf/bm25 helpers. The composite
+// weights (W_RRF/W_REL/W_GEO) were removed with the composite scoring step — the
+// default path orders by raw score (see module docs).
 const K_RRF: f64 = 60.0;
 const K1: f64 = 1.2;
 const B: f64 = 0.5;
-const W_RRF: f64 = 1.0;
-const W_REL: f64 = 1.0;
-const W_GEO: f64 = 0.6;
 const MIN_COVERAGE: f64 = 0.5;
 
 /// Query stopwords. Leading filler ("top"/"best") plus connective tokens that
@@ -39,7 +46,10 @@ pub static STOPWORDS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     [
         "top", "best", "good", "greatest", "finest", "cheapest", "cheap", "the", "a", "an", "in",
         "of", "to", "for", "and", "or", "near", "how", "is", "are", "do", "does", "from", "with",
-        "you", "your", "should", "per", "what", "2026", "2025",
+        "you", "your", "should", "per",
+        "what",
+        // NOTE: year literals ("2025"/"2026") removed — corpus-specific and they
+        // rot annually. Kept in lockstep with score.py::STOPWORDS.
     ]
     .into_iter()
     .collect()
@@ -240,6 +250,10 @@ fn content_of(r: &SearxngResult) -> &str {
 }
 
 /// Reciprocal Rank Fusion contribution for one row. Mirrors `rerank.py::rrf`.
+/// Reciprocal-rank fusion of a row's per-engine positions. DISABLED in the
+/// default path (RRF regresses on our near-zero cross-engine overlap); retained
+/// for a future config-gated experiment.
+#[allow(dead_code)]
 fn rrf(r: &SearxngResult) -> f64 {
     if r.positions.is_empty() {
         1.0 / (K_RRF + 1.0) // single unknown-rank vote
@@ -249,7 +263,9 @@ fn rrf(r: &SearxngResult) -> f64 {
 }
 
 /// Build a min-max normalizer closure. Returns a constant 0.0 when the range
-/// collapses, matching `rerank.py::minmax`.
+/// collapses, matching `rerank.py::minmax`. DISABLED in the default path
+/// (only used by the retained RRF/BM25 scoring).
+#[allow(dead_code)]
 fn minmax(vals: &[f64]) -> impl Fn(f64) -> f64 {
     let lo = vals.iter().copied().fold(f64::INFINITY, f64::min);
     let hi = vals.iter().copied().fold(f64::NEG_INFINITY, f64::max);
@@ -258,7 +274,8 @@ fn minmax(vals: &[f64]) -> impl Fn(f64) -> f64 {
 }
 
 /// Title-weighted (2x) token multiset for a row. Mirrors the doc construction
-/// in `rerank.py::bm25_lite`.
+/// in `rerank.py::bm25_lite`. DISABLED in the default path.
+#[allow(dead_code)]
 fn doc_tokens(r: &SearxngResult) -> Vec<String> {
     let mut d = toks(title_of(r));
     d.extend(toks(title_of(r)));
@@ -267,7 +284,9 @@ fn doc_tokens(r: &SearxngResult) -> Vec<String> {
 }
 
 /// BM25-lite relevance over the candidate set (df / idf computed across
-/// candidates, k1/b fixed). Mirrors `rerank.py::bm25_lite`.
+/// candidates, k1/b fixed). Mirrors `rerank.py::bm25_lite`. DISABLED in the
+/// default path (BM25 did not beat the lexical core on the benchmark).
+#[allow(dead_code)]
 fn bm25_lite(rows: &[&SearxngResult], important: &HashSet<String>) -> Vec<f64> {
     let docs: Vec<Vec<String>> = rows.iter().map(|r| doc_tokens(r)).collect();
     let n = docs.len().max(1) as f64;
@@ -373,7 +392,9 @@ fn geo_competing(r: &SearxngResult, competing: &[&str]) -> bool {
 }
 
 /// Geo signal: +1 for an in-region token, -1 for a competing token.
-/// Mirrors `rerank.py::geo_score`.
+/// Mirrors `rerank.py::geo_score`. DISABLED in the default path (the geo
+/// *filter* `geo_competing` stays; only the geo *boost* is dropped).
+#[allow(dead_code)]
 fn geo_score(r: &SearxngResult, region: &[&str], competing: &[&str]) -> f64 {
     if region.is_empty() {
         return 0.0;
@@ -417,7 +438,9 @@ pub fn rerank<'a>(rows: &'a [SearxngResult], query: &str) -> Vec<&'a SearxngResu
         return Vec::new();
     }
     let important = important_terms(query);
-    let (region, competing) = geo_for(query);
+    // Only the competing-region *filter* runs in the default path; the geo
+    // *boost* (geo_score, which would use `region`) is disabled.
+    let (_region, competing) = geo_for(query);
 
     // STAGE2 junk filter is unconditional and survives the degrade fallback.
     let non_junk: Vec<&SearxngResult> = rows.iter().filter(|r| !is_junk(r)).collect();
@@ -441,38 +464,21 @@ pub fn rerank<'a>(rows: &'a [SearxngResult], query: &str) -> Vec<&'a SearxngResu
         };
     }
 
-    // STAGE1/3b composite scoring.
-    let rrf_vals: Vec<f64> = cands.iter().map(|r| rrf(r)).collect();
-    let rrf_norm = minmax(&rrf_vals);
-    let bm = bm25_lite(&cands, &important);
-    let distinct_bm = bm.iter().map(|v| v.to_bits()).collect::<HashSet<_>>().len() > 1;
-    let bm_norm = minmax(&bm);
-
-    let mut scored: Vec<(f64, usize, &SearxngResult)> = cands
-        .iter()
-        .enumerate()
-        .map(|(i, &r)| {
-            let mut comp = W_RRF * rrf_norm(rrf_vals[i]);
-            if distinct_bm {
-                comp += W_REL * bm_norm(bm[i]);
-            }
-            comp += W_GEO * geo_score(r, region, competing);
-            (comp, i, r)
-        })
-        .collect();
-
-    // STAGE4 sort by composite desc, tie-break on original candidate index
-    // (stable, mirrors the Python secondary key).
-    scored.sort_by(|a, b| {
-        b.0.partial_cmp(&a.0)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then(a.1.cmp(&b.1))
+    // LEXICAL-CORE ordering. The filters above already dropped junk /
+    // uncovered / competing-region rows; order the survivors by SearXNG's raw
+    // score (stable sort, so equal scores keep upstream order) and dedupe by
+    // registrable domain, keeping the highest-scored page per domain. The
+    // composite RRF/BM25/geo-score step was removed because it regresses the
+    // baseline on our data — see module docs.
+    cands.sort_by(|a, b| {
+        let sa = a.score.unwrap_or(0.0);
+        let sb = b.score.unwrap_or(0.0);
+        sb.partial_cmp(&sa).unwrap_or(std::cmp::Ordering::Equal)
     });
 
-    // STAGE4 dedupe by registrable domain, keep best per domain.
     let mut seen: HashSet<String> = HashSet::new();
-    let mut out: Vec<&SearxngResult> = Vec::with_capacity(scored.len());
-    for (_, _, r) in scored {
+    let mut out: Vec<&SearxngResult> = Vec::with_capacity(cands.len());
+    for r in cands {
         let rd = registrable(url_of(r));
         if !seen.insert(rd) {
             continue;
