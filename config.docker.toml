@@ -81,6 +81,12 @@ size = 4
 # which already uses it). See crw-saas docker-compose.prod.yml.
 [search]
 searxng_url = "http://searxng-internal:8080"
+# Multi-query expansion (cycle-2 of the answer-quality loop): the proven win.
+# On a 50-q SimpleQA+FRAMES sample it lifted overall 64%->76% and FRAMES
+# 56%->80% by unioning an entity-rewrite's results with the original. Baked on
+# here (code default is false/gated) so it survives container/compose churn.
+# passage_select stays OFF — cycle-3 over-filtered multi-hop (FRAMES 80%->8%).
+query_expand = true
 
 # /map URL filter — defaults on. Set `drop_action_urls = false` to revert
 # to legacy behaviour (action URLs surface in results).
