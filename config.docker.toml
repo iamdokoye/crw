@@ -87,6 +87,12 @@ searxng_url = "http://searxng-internal:8080"
 # here (code default is false/gated) so it survives container/compose churn.
 # passage_select stays OFF — cycle-3 over-filtered multi-hop (FRAMES 80%->8%).
 query_expand = true
+# Calibrated answer path (the proven over-abstention fix). On a 152-q
+# SimpleQA+NQ+TriviaQA+PopQA+TruthfulQA set it lifted overall 81.6%->~85% with
+# INCORRECT FLAT (the moat held — inverse of cycle-1), abstentions converting
+# 1:1 to correct. SimpleQA 76->92, TruthfulQA 72->80. Confirmed across two runs.
+# Baked on (code default false/gated) so it survives container/compose churn.
+answer_calibrated = true
 
 # /map URL filter — defaults on. Set `drop_action_urls = false` to revert
 # to legacy behaviour (action URLs surface in results).
