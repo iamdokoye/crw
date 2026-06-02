@@ -24,7 +24,7 @@ const DEFAULT_ANSWER_TOP_N: u32 = 5;
 /// Default top-N for the calibrated answer path (feeds more sources so the
 /// answer in result #6-8, or behind a failed top-5 scrape, still reaches the
 /// model). Bounded by `MAX_ANSWER_TOP_N`.
-const CALIBRATED_ANSWER_TOP_N: u32 = 8;
+const CALIBRATED_ANSWER_TOP_N: u32 = 5;
 const MAX_ANSWER_TOP_N: u32 = 10;
 const DEFAULT_MAX_CHARS_PER_SOURCE: usize = 8192;
 
