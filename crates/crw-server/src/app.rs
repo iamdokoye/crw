@@ -17,7 +17,7 @@ use tower_http::trace::TraceLayer;
 const MAX_BODY_SIZE: usize = 1024 * 1024;
 
 use crate::middleware::auth_middleware;
-use crate::routes;
+use crate::routes::{self, method_not_allowed};
 use crate::state::AppState;
 
 pub fn create_app(state: AppState) -> Router {
@@ -29,41 +29,13 @@ pub fn create_app(state: AppState) -> Router {
     let timeout = Duration::from_secs(state.config.effective_request_timeout_secs());
     let rate_limit_rps = state.config.server.rate_limit_rps;
 
-    let api_routes = Router::new()
-        .route(
-            "/v1/scrape",
-            post(routes::scrape::scrape).fallback(method_not_allowed),
-        )
-        .route(
-            "/v1/crawl",
-            post(routes::crawl::start_crawl).fallback(method_not_allowed),
-        )
-        .route(
-            "/v1/crawl/{id}",
-            get(routes::crawl::get_crawl)
-                .delete(routes::crawl::cancel_crawl)
-                .fallback(method_not_allowed),
-        )
-        .route(
-            "/v1/map",
-            post(routes::map::map).fallback(method_not_allowed),
-        )
-        .route(
-            "/v1/search",
-            post(routes::search::search).fallback(method_not_allowed),
-        )
-        .route(
-            "/v1/capabilities",
-            get(routes::capabilities::capabilities).fallback(method_not_allowed),
-        )
-        .route(
-            "/v1/change-tracking/diff",
-            post(routes::change_tracking::diff).fallback(method_not_allowed),
-        )
-        .route(
-            "/mcp",
-            post(routes::mcp::mcp_handler).fallback(method_not_allowed),
-        );
+    // v1 + v2 routers merged before the shared auth + rate-limit layers, so the
+    // /v2/* surface (issue #62) inherits auth, rate-limiting, body-limit and the
+    // timeout layer identically to v1. `/mcp` is version-less.
+    let api_routes = routes::v1::router().merge(routes::v2::router()).route(
+        "/mcp",
+        post(routes::mcp::mcp_handler).fallback(method_not_allowed),
+    );
 
     let api_routes = if api_keys.is_empty() {
         api_routes.with_state(state.clone())
@@ -132,16 +104,6 @@ pub fn create_app(state: AppState) -> Router {
         ))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
-}
-
-async fn method_not_allowed() -> impl IntoResponse {
-    (
-        StatusCode::METHOD_NOT_ALLOWED,
-        axum::Json(crw_core::types::ApiResponse::<()>::err_with_code(
-            "Method not allowed",
-            "method_not_allowed",
-        )),
-    )
 }
 
 /// Simple token-bucket rate limiter using atomic counters.

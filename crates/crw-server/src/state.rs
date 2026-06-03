@@ -1,12 +1,15 @@
+use crw_core::Deadline;
 use crw_core::config::AppConfig;
 use crw_core::error::{CrwError, CrwResult};
 use crw_core::types::{
-    CrawlRequest, CrawlState, CrawlStatus, RequestedRenderer, resolve_pinned_renderer,
-    resolve_render_js,
+    CrawlRequest, CrawlState, CrawlStatus, RequestedRenderer, ScrapeData, ScrapeRequest,
+    resolve_pinned_renderer, resolve_render_js,
 };
 use crw_crawl::crawl::{CrawlOptions, run_crawl};
+use crw_crawl::single::scrape_url;
 use crw_renderer::FallbackRenderer;
 use crw_search::SearxngClient;
+use futures::stream::StreamExt;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -79,12 +82,46 @@ const MAX_CONCURRENT_CRAWLS: usize = 10;
 /// Interval between expired crawl job cleanup runs.
 const JOB_CLEANUP_INTERVAL: Duration = Duration::from_secs(60);
 
+/// Lifecycle of an async `/v2/extract` job.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExtractStatus {
+    Processing,
+    Completed,
+    Failed,
+}
+
+impl ExtractStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ExtractStatus::Processing => "processing",
+            ExtractStatus::Completed => "completed",
+            ExtractStatus::Failed => "failed",
+        }
+    }
+}
+
+/// A `/v2/extract` job record. `data` is the single merged JSON object (the
+/// scrape's `json` field unioned across URLs), matching the live API's
+/// `GET /v2/extract/{id}` `data` shape (an object, not an array of documents).
+#[derive(Debug, Clone)]
+pub struct ExtractRecord {
+    pub status: ExtractStatus,
+    pub data: Option<serde_json::Value>,
+    pub tokens_used: u32,
+    pub credits_used: u32,
+    pub error: Option<String>,
+    pub created_at: Instant,
+}
+
 /// Shared application state.
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<AppConfig>,
     pub renderer: Arc<FallbackRenderer>,
     pub crawl_jobs: Arc<RwLock<HashMap<Uuid, CrawlJob>>>,
+    /// `/v2/extract` jobs. Separate from `crawl_jobs` because an extract result
+    /// is a single merged JSON object, not a `Vec<ScrapeData>`.
+    pub extract_jobs: Arc<RwLock<HashMap<Uuid, ExtractRecord>>>,
     pub crawl_semaphore: Arc<tokio::sync::Semaphore>,
     /// SearXNG client. `None` when `[search].searxng_url` is unset, in which
     /// case `/v1/search` returns a clear `search_disabled` error.
@@ -160,6 +197,7 @@ impl AppState {
             config: Arc::new(config),
             renderer: Arc::new(renderer),
             crawl_jobs: Arc::new(RwLock::new(HashMap::new())),
+            extract_jobs: Arc::new(RwLock::new(HashMap::new())),
             crawl_semaphore: Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_CRAWLS)),
             searxng,
             url_filter,
@@ -190,6 +228,14 @@ impl AppState {
                         "Cleaned up expired crawl jobs"
                     );
                 }
+                drop(jobs);
+
+                // Prune finished extract jobs past TTL (keep in-flight ones).
+                let mut ejobs = cleanup_state.extract_jobs.write().await;
+                ejobs.retain(|_id, rec| {
+                    matches!(rec.status, ExtractStatus::Processing)
+                        || rec.created_at.elapsed() < ttl
+                });
             }
         });
 
@@ -277,6 +323,229 @@ impl AppState {
                 job.abort_handle = Some(handle.abort_handle());
             }
         }
+
+        id
+    }
+
+    /// Start a `/v2/batch/scrape` job over an explicit URL list and return its
+    /// UUID. Reuses the crawl-job machinery (`crawl_jobs` + `CrawlState`) but
+    /// scrapes the given URLs directly — no link discovery, no same-origin
+    /// filtering, no dedup; input order is recoverable via `metadata.sourceURL`.
+    pub async fn start_batch_job(&self, urls: Vec<String>, template: ScrapeRequest) -> Uuid {
+        let id = Uuid::new_v4();
+        let total = urls.len() as u32;
+        let (tx, rx) = watch::channel(CrawlState {
+            id,
+            success: true,
+            status: CrawlStatus::InProgress,
+            total,
+            completed: 0,
+            data: vec![],
+            error: None,
+        });
+        {
+            let mut jobs = self.crawl_jobs.write().await;
+            jobs.insert(
+                id,
+                CrawlJob {
+                    rx,
+                    created_at: Instant::now(),
+                    abort_handle: None,
+                },
+            );
+        }
+
+        let renderer = self.renderer.clone();
+        let crawl_semaphore = self.crawl_semaphore.clone();
+        let config = self.config.clone();
+        let max_concurrency = config.crawler.max_concurrency.max(1);
+
+        let handle = tokio::spawn(async move {
+            let _permit = match crawl_semaphore.acquire().await {
+                Ok(p) => p,
+                Err(_) => {
+                    let _ = tx.send(CrawlState {
+                        id,
+                        success: false,
+                        status: CrawlStatus::Failed,
+                        total,
+                        completed: 0,
+                        data: vec![],
+                        error: Some("Server is overloaded, try again later".into()),
+                    });
+                    return;
+                }
+            };
+
+            if total == 0 {
+                let _ = tx.send(CrawlState {
+                    id,
+                    success: true,
+                    status: CrawlStatus::Completed,
+                    total: 0,
+                    completed: 0,
+                    data: vec![],
+                    error: None,
+                });
+                return;
+            }
+
+            let user_agent = config.crawler.user_agent.clone();
+            let default_stealth =
+                config.crawler.stealth.enabled && config.crawler.stealth.inject_headers;
+            let render_js_default = config.renderer.render_js_default;
+            let deadline_ms = config.effective_deadline_ms(template.deadline_ms, template.wait_for);
+
+            let reqs: Vec<ScrapeRequest> = urls
+                .into_iter()
+                .map(|u| {
+                    let mut r = template.clone();
+                    r.url = u;
+                    r
+                })
+                .collect();
+
+            let results = std::sync::Arc::new(tokio::sync::Mutex::new(Vec::<ScrapeData>::new()));
+            let completed = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+
+            futures::stream::iter(reqs)
+                .for_each_concurrent(max_concurrency, |req| {
+                    let renderer = renderer.clone();
+                    let config = config.clone();
+                    let user_agent = user_agent.clone();
+                    let tx = tx.clone();
+                    let results = results.clone();
+                    let completed = completed.clone();
+                    async move {
+                        let deadline = Deadline::from_request_ms(deadline_ms);
+                        let outcome = scrape_url(
+                            &req,
+                            &renderer,
+                            config.extraction.llm.as_ref(),
+                            &config.extraction,
+                            &user_agent,
+                            default_stealth,
+                            render_js_default,
+                            deadline,
+                        )
+                        .await;
+                        let mut guard = results.lock().await;
+                        if let Ok(d) = outcome {
+                            guard.push(d);
+                        }
+                        let done = completed.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                        let snapshot = guard.clone();
+                        let status = if done >= total {
+                            CrawlStatus::Completed
+                        } else {
+                            CrawlStatus::InProgress
+                        };
+                        let _ = tx.send(CrawlState {
+                            id,
+                            success: true,
+                            status,
+                            total,
+                            completed: done,
+                            data: snapshot,
+                            error: None,
+                        });
+                    }
+                })
+                .await;
+        });
+
+        {
+            let mut jobs = self.crawl_jobs.write().await;
+            if let Some(job) = jobs.get_mut(&id) {
+                job.abort_handle = Some(handle.abort_handle());
+            }
+        }
+
+        id
+    }
+
+    /// Start a `/v2/extract` job. Scrapes each URL with `formats:[json]` + the
+    /// shared schema (already set on `template`) and merges the per-URL `json`
+    /// objects into one — matching the live API's single-object `data` shape.
+    pub async fn start_extract_job(&self, urls: Vec<String>, template: ScrapeRequest) -> Uuid {
+        let id = Uuid::new_v4();
+        {
+            let mut jobs = self.extract_jobs.write().await;
+            jobs.insert(
+                id,
+                ExtractRecord {
+                    status: ExtractStatus::Processing,
+                    data: None,
+                    tokens_used: 0,
+                    credits_used: 0,
+                    error: None,
+                    created_at: Instant::now(),
+                },
+            );
+        }
+
+        let renderer = self.renderer.clone();
+        let config = self.config.clone();
+        let extract_jobs = self.extract_jobs.clone();
+
+        tokio::spawn(async move {
+            let user_agent = config.crawler.user_agent.clone();
+            let default_stealth =
+                config.crawler.stealth.enabled && config.crawler.stealth.inject_headers;
+            let render_js_default = config.renderer.render_js_default;
+            let deadline_ms = config.effective_deadline_ms(template.deadline_ms, template.wait_for);
+
+            let mut merged = serde_json::Map::new();
+            let mut tokens = 0u32;
+            let mut credits = 0u32;
+            let mut last_err: Option<String> = None;
+            let mut any_ok = false;
+
+            for u in urls {
+                let mut req = template.clone();
+                req.url = u;
+                let deadline = Deadline::from_request_ms(deadline_ms);
+                match scrape_url(
+                    &req,
+                    &renderer,
+                    config.extraction.llm.as_ref(),
+                    &config.extraction,
+                    &user_agent,
+                    default_stealth,
+                    render_js_default,
+                    deadline,
+                )
+                .await
+                {
+                    Ok(d) => {
+                        any_ok = true;
+                        if let Some(serde_json::Value::Object(obj)) = d.json {
+                            for (k, v) in obj {
+                                merged.insert(k, v);
+                            }
+                        }
+                        if let Some(usage) = d.llm_usage {
+                            tokens += usage.total_tokens;
+                        }
+                        credits += if d.credit_cost == 0 { 1 } else { d.credit_cost };
+                    }
+                    Err(e) => last_err = Some(e.to_string()),
+                }
+            }
+
+            let mut jobs = extract_jobs.write().await;
+            if let Some(rec) = jobs.get_mut(&id) {
+                if !any_ok && last_err.is_some() {
+                    rec.status = ExtractStatus::Failed;
+                    rec.error = last_err;
+                } else {
+                    rec.status = ExtractStatus::Completed;
+                    rec.data = Some(serde_json::Value::Object(merged));
+                }
+                rec.tokens_used = tokens;
+                rec.credits_used = credits.max(1);
+            }
+        });
 
         id
     }
