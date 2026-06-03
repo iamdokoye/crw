@@ -19,13 +19,15 @@ pub enum OutputFormat {
     ChangeTracking,
 }
 
-impl<'de> Deserialize<'de> for OutputFormat {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        match s.as_str() {
+impl OutputFormat {
+    /// Parse a single format token, accepting the Firecrawl-compatible aliases
+    /// (`extract`/`llm-extract` → `json`, `change-tracking` → `changeTracking`).
+    ///
+    /// Shared by the v1 string deserializer below and the v2 `FormatSpec`
+    /// parser (`routes/v2/formats.rs`) so the accepted token set and the error
+    /// wording stay byte-identical across API versions.
+    pub fn parse_loose(s: &str) -> Result<Self, String> {
+        match s {
             "markdown" => Ok(OutputFormat::Markdown),
             "html" => Ok(OutputFormat::Html),
             "rawHtml" => Ok(OutputFormat::RawHtml),
@@ -34,11 +36,21 @@ impl<'de> Deserialize<'de> for OutputFormat {
             "json" | "extract" | "llm-extract" => Ok(OutputFormat::Json),
             "summary" => Ok(OutputFormat::Summary),
             "changeTracking" | "change-tracking" => Ok(OutputFormat::ChangeTracking),
-            other => Err(serde::de::Error::custom(format!(
+            other => Err(format!(
                 "Unknown format '{other}'. Valid formats: markdown, html, rawHtml, plainText, links, json, summary, changeTracking \
                  (aliases: extract, llm-extract, change-tracking). Use formats: [\"json\"] with jsonSchema for structured extraction."
-            ))),
+            )),
         }
+    }
+}
+
+impl<'de> Deserialize<'de> for OutputFormat {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        OutputFormat::parse_loose(&s).map_err(serde::de::Error::custom)
     }
 }
 
@@ -259,6 +271,51 @@ pub struct ScrapeRequest {
 
 fn default_formats() -> Vec<OutputFormat> {
     vec![OutputFormat::Markdown]
+}
+
+impl Default for ScrapeRequest {
+    /// Matches the serde defaults exactly (`formats: ["markdown"]`,
+    /// `only_main_content: true`, everything else empty/None). Hand-written
+    /// rather than derived because `#[derive(Default)]` would give
+    /// `formats: vec![]` / `only_main_content: false`, contradicting the wire
+    /// defaults — the v2 adapters build `ScrapeRequest { .., ..Default::default() }`
+    /// and rely on these matching.
+    fn default() -> Self {
+        Self {
+            url: String::new(),
+            formats: default_formats(),
+            only_main_content: true,
+            render_js: None,
+            wait_for: None,
+            include_tags: Vec::new(),
+            exclude_tags: Vec::new(),
+            json_schema: None,
+            headers: HashMap::new(),
+            css_selector: None,
+            xpath: None,
+            chunk_strategy: None,
+            query: None,
+            filter_mode: None,
+            top_k: None,
+            proxy: None,
+            country: None,
+            stealth: None,
+            actions: None,
+            extract: None,
+            llm_api_key: None,
+            llm_provider: None,
+            llm_model: None,
+            base_url: None,
+            summary_prompt: None,
+            max_content_chars: None,
+            renderer: None,
+            deadline_ms: None,
+            debug: None,
+            change_tracking: None,
+            goal: None,
+            judge_enabled: None,
+        }
+    }
 }
 
 fn default_true() -> bool {
