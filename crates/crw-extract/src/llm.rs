@@ -129,30 +129,37 @@ pub async fn chat(
 /// increase. Returns an empty `Vec` on any failure or when the rewrite is
 /// trivial/identical — the caller then uses the original query alone, which
 /// means this can never reduce recall or break a search.
-pub async fn expand_query(cfg: &LlmConfig, query: &str) -> Vec<String> {
-    const SYS: &str = "You rewrite a user's search query into ONE alternative \
-        web-search query that maximizes the chance of finding the answer. Keep \
-        the key named entities; use precise keywords a relevant page would \
-        contain; drop filler words. Output ONLY the rewritten query on a single \
-        line — no quotes, no labels, no explanation.";
+pub async fn expand_query(cfg: &LlmConfig, query: &str, max_variants: usize) -> Vec<String> {
+    let n = max_variants.max(1);
+    let sys = format!(
+        "You rewrite a user's search query into up to {n} alternative \
+         web-search queries that maximize the chance of finding the answer. \
+         Rules: (1) EXPAND any abbreviation, acronym, or initialism to its full \
+         proper name. (2) Keep the key named entities; use precise keywords a \
+         relevant page would contain; drop filler words. (3) Make the \
+         alternatives DIVERSE — e.g. one focused on the full entity name, one on \
+         distinctive keywords. Output ONLY the rewritten queries, ONE per line: \
+         no quotes, no numbering, no labels. Output at most {n} line(s)."
+    );
     let mut leg = cfg.clone();
-    leg.max_tokens = leg.max_tokens.min(120);
-    match chat(&leg, SYS, query).await {
+    leg.max_tokens = leg.max_tokens.min(60 + 60 * n as u32);
+    match chat(&leg, &sys, query).await {
         Ok(r) => {
-            let v = r
-                .content
-                .trim()
-                .lines()
-                .next()
-                .unwrap_or("")
-                .trim()
-                .trim_matches('"')
-                .to_string();
-            if v.is_empty() || v.eq_ignore_ascii_case(query.trim()) {
-                Vec::new()
-            } else {
-                vec![v]
+            let mut out: Vec<String> = Vec::new();
+            for line in r.content.trim().lines() {
+                let v = line.trim().trim_matches('"').trim().to_string();
+                if v.is_empty() || v.eq_ignore_ascii_case(query.trim()) {
+                    continue;
+                }
+                if out.iter().any(|e| e.eq_ignore_ascii_case(&v)) {
+                    continue;
+                }
+                out.push(v);
+                if out.len() >= n {
+                    break;
+                }
             }
+            out
         }
         Err(_) => Vec::new(),
     }

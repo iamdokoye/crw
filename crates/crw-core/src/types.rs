@@ -961,6 +961,12 @@ pub struct SearchRequest {
     /// accuracy lever is distinguishable from sampling noise.
     #[serde(default, alias = "answer_temperature")]
     pub answer_temperature: Option<f32>,
+    /// Per-request override for `[search].query_expand_variants` — the number
+    /// of diverse query rewrites fetched + unioned when query expansion is on.
+    /// None uses the server config. The benchmark/eval harness sets this to A/B
+    /// recall (e.g. 1 vs 3) at a fixed answer temperature.
+    #[serde(default, alias = "query_expand_variants")]
+    pub query_expand_variants: Option<usize>,
     /// Maximum number of bytes of each per-result markdown sent to the LLM
     /// when `summarize_results` is enabled. Defaults to
     /// `[extraction.llm].max_html_bytes` (100 KB). Clamped to a 200 KB

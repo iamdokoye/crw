@@ -153,6 +153,15 @@ pub struct SearchConfig {
     /// answer layer are untouched, so precision/SaaS-parity are preserved.
     #[serde(default)]
     pub query_expand: bool,
+    /// Number of LLM-generated query rewrites to fetch + union when
+    /// `query_expand` is on. `1` reproduces the original single-variant
+    /// behavior. Higher values request more DIVERSE reformulations
+    /// (abbreviation/acronym-expanded, keyword-focused) and fetch their pools
+    /// in parallel, raising recall on retrieval-miss queries (e.g. an
+    /// unexpanded acronym whose page never surfaced) at the cost of one extra
+    /// SearXNG fetch each. Clamped to `MAX_QUERY_EXPAND_VARIANTS` in the route.
+    #[serde(default = "default_query_expand_variants")]
+    pub query_expand_variants: usize,
     /// Passage-level relevance gate for the LLM answer path: split each scraped
     /// source into passages and feed the answer LLM only the query-relevant
     /// ones (DeepSeek-scored, no new ML deps). Subtractive — removes noise, never
@@ -205,6 +214,7 @@ impl Default for SearchConfig {
             github_engines: default_github_engines(),
             rerank_enabled: true,
             query_expand: false,
+            query_expand_variants: default_query_expand_variants(),
             passage_select: false,
             page2_fallback: false,
             answer_calibrated: false,
@@ -213,6 +223,9 @@ impl Default for SearchConfig {
     }
 }
 
+fn default_query_expand_variants() -> usize {
+    1
+}
 fn default_true_search() -> bool {
     true
 }

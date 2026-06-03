@@ -26,6 +26,10 @@ const DEFAULT_ANSWER_TOP_N: u32 = 5;
 /// model). Bounded by `MAX_ANSWER_TOP_N`.
 const CALIBRATED_ANSWER_TOP_N: u32 = 5;
 const MAX_ANSWER_TOP_N: u32 = 10;
+/// Upper bound on query-expansion rewrites fetched + unioned per request, so a
+/// request-supplied `query_expand_variants` can't fan out unbounded SearXNG
+/// fetches. The extra pools are fetched concurrently in `fetch_expanded`.
+const MAX_QUERY_EXPAND_VARIANTS: usize = 5;
 const DEFAULT_MAX_CHARS_PER_SOURCE: usize = 8192;
 
 /// Wave 4 (R2): hard cap on `max_tokens` per LLM leg (one summary call OR
@@ -98,7 +102,13 @@ pub async fn search_inner(
         && llm_path
         && let Some(llm) = effective_llm
     {
-        fetch_expanded(&client, &req.query, &params, llm)
+        // Per-request override (eval A/B) wins over the server config; clamp so a
+        // hostile caller can't fan out unbounded SearXNG fetches.
+        let variants_n = req
+            .query_expand_variants
+            .unwrap_or(state.config.search.query_expand_variants)
+            .clamp(1, MAX_QUERY_EXPAND_VARIANTS);
+        fetch_expanded(&client, &req.query, &params, llm, variants_n)
             .await
             .map_err(|e| map_search_error(e, state.config.search.timeout_ms))?
     } else {
@@ -696,29 +706,40 @@ async fn fetch_expanded(
     query: &str,
     base_params: &SearxngParams,
     llm: &LlmConfig,
+    max_variants: usize,
 ) -> Result<SearxngResponse, SearchError> {
     let mut leg = llm.clone();
     leg.max_tokens = leg.max_tokens.min(SEARCH_LLM_MAX_TOKENS_PER_LEG);
-    let variants = crw_extract::llm::expand_query(&leg, query).await;
+    let variants = crw_extract::llm::expand_query(&leg, query, max_variants).await;
     let mut merged = client.fetch(base_params).await?;
     if variants.is_empty() {
         return Ok(merged);
     }
+    // Fetch all variant pools concurrently (bounded by the variant count) so N
+    // rewrites cost ~one extra fetch of wall-clock, not N sequential ones, then
+    // union by URL. A failed variant fetch is dropped (recall-only, never fatal).
+    let variant_responses: Vec<SearxngResponse> = stream::iter(variants)
+        .map(|v| {
+            let client = client.clone();
+            let mut vp = base_params.clone();
+            vp.q = v;
+            async move { client.fetch(&vp).await.ok() }
+        })
+        .buffer_unordered(max_variants.max(1))
+        .filter_map(|r| async move { r })
+        .collect()
+        .await;
     let mut seen: std::collections::HashSet<String> = merged
         .results
         .iter()
         .filter_map(|r| r.url.clone())
         .collect();
-    for v in variants {
-        let mut vp = base_params.clone();
-        vp.q = v;
-        if let Ok(r) = client.fetch(&vp).await {
-            for row in r.results {
-                if let Some(u) = row.url.clone()
-                    && seen.insert(u)
-                {
-                    merged.results.push(row);
-                }
+    for resp in variant_responses {
+        for row in resp.results {
+            if let Some(u) = row.url.clone()
+                && seen.insert(u)
+            {
+                merged.results.push(row);
             }
         }
     }
@@ -902,6 +923,7 @@ mod tests {
             summary_prompt: None,
             answer_prompt: None,
             answer_temperature: None,
+            query_expand_variants: None,
             max_content_chars: None,
         }
     }
