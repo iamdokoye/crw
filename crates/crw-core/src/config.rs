@@ -203,6 +203,17 @@ pub struct SearchConfig {
     /// no-source cases). Default false; A/B with an INCORRECT-guard before flip.
     #[serde(default)]
     pub answer_calibrated: bool,
+    /// Moat-hardening abstention (gated). Appends a clause making the answer
+    /// model (a) REJECT a false/unverifiable premise instead of answering as
+    /// though it were true, (b) report when sources CONFLICT rather than picking
+    /// one confidently, and (c) abstain when not confident. Targets the
+    /// adversarial failure SealQA Seal-0 exposed: 32% confident-WRONG
+    /// (hallucination) on conflicting-source / false-premise questions, where
+    /// the "use ONLY sources" rule alone is insufficient. Complements (does not
+    /// replace) `answer_calibrated`. Default false; A/B requires Seal-0
+    /// hallucination DOWN with SimpleQA accuracy NOT regressed before flip.
+    #[serde(default)]
+    pub answer_guarded: bool,
     /// Snippet fallback for the LLM answer path (gated): when a top-N result's
     /// scrape failed (empty `markdown`), the result is normally dropped from the
     /// answer pool — if it was the answer-bearing page, crw abstains though
@@ -231,6 +242,7 @@ impl Default for SearchConfig {
             passage_select: false,
             page2_fallback: false,
             answer_calibrated: false,
+            answer_guarded: false,
             snippet_fallback: false,
         }
     }

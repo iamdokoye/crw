@@ -367,6 +367,7 @@ pub async fn search_inner(
                         state.config.search.passage_select,
                         state.config.search.answer_calibrated,
                         state.config.search.snippet_fallback,
+                        state.config.search.answer_guarded,
                     )
                     .await
                     {
@@ -432,6 +433,7 @@ pub async fn search_inner(
                                             state.config.search.passage_select,
                                             state.config.search.answer_calibrated,
                                             state.config.search.snippet_fallback,
+                                            state.config.search.answer_guarded,
                                         )
                                         .await
                                     && !is_abstention(&ans2)
@@ -670,6 +672,7 @@ async fn synthesize_answer(
     passage_select: bool,
     calibrated: bool,
     snippet_fallback: bool,
+    guarded: bool,
 ) -> Result<
     (
         String,
@@ -740,6 +743,7 @@ async fn synthesize_answer(
             cap,
             req.answer_prompt.as_deref(),
             calibrated,
+            guarded,
         )
         .await
     } else {
@@ -750,6 +754,7 @@ async fn synthesize_answer(
             cap,
             req.answer_prompt.as_deref(),
             calibrated,
+            guarded,
         )
         .await
     }
