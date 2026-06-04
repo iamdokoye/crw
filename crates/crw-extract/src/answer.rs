@@ -54,14 +54,27 @@ const HEDGE_CLAUSE: &str =
 /// no-source cases and blew INCORRECT 2->17): here, no source still => abstain.
 const CALIBRATED_CLAUSE: &str = "- If the sources contain the answer — even stated indirectly, in different words, or requiring one obvious inference step (e.g. a year \"1933\" supports the decade \"the 1930s\") — give the direct answer confidently. Do NOT hedge, add disclaimers, or call the sources unclear when they in fact support an answer.\n- ONLY if the sources genuinely do not contain the information, say so plainly in one sentence. Never invent facts that are not in the sources.";
 
+/// Moat-hardening abstention clause (gated, APPENDED — complements both the
+/// hedge and calibrated rules). Targets SealQA Seal-0's adversarial failure
+/// mode: false/unverifiable premises and conflicting sources, where the plain
+/// "use ONLY sources" rule still let the model assert a confident wrong answer
+/// (32% hallucination at baseline). It only adds REASONS TO ABSTAIN, never a
+/// reason to invent, so it cannot worsen grounding.
+const GUARDED_CLAUSE: &str = "\n- If the query assumes a fact the sources do not support or that they contradict (a false or unverifiable premise), do NOT answer as though the premise were true: state plainly that the premise appears unsupported or false based on the sources.\n- If the sources conflict on the answer, say they conflict rather than confidently asserting one value.\n- When the sources are insufficient or you are not confident the answer is correct, abstain rather than guess.";
+
 /// Build the system prompt; `calibrated` swaps the abstention rule for the
-/// over-abstention-reducing variant (gated, default off).
-fn system_prompt(calibrated: bool) -> String {
-    if calibrated {
+/// over-abstention-reducing variant; `guarded` appends [`GUARDED_CLAUSE`].
+/// Both gated, default off.
+fn system_prompt(calibrated: bool, guarded: bool) -> String {
+    let mut s = if calibrated {
         SYSTEM_PROMPT.replace(HEDGE_CLAUSE, CALIBRATED_CLAUSE)
     } else {
         SYSTEM_PROMPT.to_string()
+    };
+    if guarded {
+        s.push_str(GUARDED_CLAUSE);
     }
+    s
 }
 
 pub struct AnswerResult {
@@ -105,6 +118,7 @@ pub async fn synthesize(
     max_chars_per_source: usize,
     user_prompt: Option<&str>,
     calibrated: bool,
+    guarded: bool,
 ) -> CrwResult<AnswerResult> {
     if sources.is_empty() {
         return Err(CrwError::InvalidRequest(
@@ -137,7 +151,7 @@ pub async fn synthesize(
     // non-trivial; the current shape — model emits a `===CITATIONS===`
     // line followed by JSON — gives us structured output with a single
     // provider-agnostic call. Fabricated source_ids are rejected below.
-    let sys = system_prompt(calibrated);
+    let sys = system_prompt(calibrated, guarded);
     let mut augmented_prompt = format!(
         "{sys}\n\nINSTEAD of calling a tool, append the citations after \
          your answer in this exact format:\n\n===CITATIONS===\n[{{\"source_id\": 0, \
@@ -295,6 +309,7 @@ pub async fn synthesize_selected(
     max_chars_per_source: usize,
     user_prompt: Option<&str>,
     calibrated: bool,
+    guarded: bool,
 ) -> CrwResult<AnswerResult> {
     let reduce_futs = sources.iter().map(|(url, title, md)| async move {
         let new_md = if md.len() >= PASSAGE_SELECT_MIN_CHARS {
@@ -314,6 +329,7 @@ pub async fn synthesize_selected(
         max_chars_per_source,
         user_prompt,
         calibrated,
+        guarded,
     )
     .await
 }
@@ -453,5 +469,21 @@ mod tests {
         let (_, cites, warns) = parse_answer_and_citations(raw, &sources);
         assert!(cites.is_empty());
         assert!(warns.iter().any(|w| w.contains("failed to parse")));
+    }
+
+    #[test]
+    fn guarded_clause_appends_only_when_enabled() {
+        let needle = "premise appears unsupported or false";
+        // Off (default) — byte-identical to the base prompt path.
+        assert!(!system_prompt(false, false).contains(needle));
+        assert!(!system_prompt(true, false).contains(needle));
+        // On — appends the false-premise / conflict / low-confidence clause.
+        let guarded = system_prompt(false, true);
+        assert!(guarded.contains(needle));
+        assert!(guarded.contains("conflict"));
+        // Composes with the calibrated swap without dropping it.
+        let both = system_prompt(true, true);
+        assert!(both.contains(needle));
+        assert!(both.contains("give the direct answer confidently"));
     }
 }
