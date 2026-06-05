@@ -305,7 +305,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     <a class="page-btn secondary" href="https://fastcrw.com/register" target="_blank" rel="noopener">Get API Key</a>
   </div>
 </div><p>:::note
-<strong>Self-hosted users</strong>: <code>docker compose up</code> boots a SearXNG sidecar automatically. <code>/v1/search</code> is live on <code>http://localhost:3000</code> with no extra setup. To point at an existing SearXNG instance instead, set <code>CRW_SEARCH__SEARXNG_URL=http://your-host:8080</code> and remove the <code>searxng</code> service from your compose file. To disable search entirely, set <code>[search].enabled = false</code> — the route returns a clear <code>search_disabled</code> error (HTTP 503).
+<strong>Self-hosted users</strong>: <code>docker compose up</code> boots a SearXNG sidecar automatically (reachable inside the Compose network as <code>searxng:8080</code>). <code>/v1/search</code> is live on <code>http://localhost:3000</code> with no extra setup. To point at an existing SearXNG instance instead, set <code>CRW_SEARCH__SEARXNG_URL=http://your-host:8080</code> and remove the <code>searxng</code> service from your compose file. To disable search entirely, set <code>[search].enabled = false</code> — the route returns a clear <code>search_disabled</code> error (HTTP 503). See the <a href="/docker">Docker → Search (SearXNG)</a> section for the full setup, the <code>SEARXNG_BASE_URL</code> vs <code>searxng_url</code> distinction, and cold-start timing.
 :::</p>
 <h2>Searching the web with CRW</h2>
 <h3>/v1/search</h3>

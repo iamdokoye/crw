@@ -25,7 +25,7 @@
 </div>
 
 :::note
-**Self-hosted users**: `docker compose up` boots a SearXNG sidecar automatically. `/v1/search` is live on `http://localhost:3000` with no extra setup. To point at an existing SearXNG instance instead, set `CRW_SEARCH__SEARXNG_URL=http://your-host:8080` and remove the `searxng` service from your compose file. To disable search entirely, set `[search].enabled = false` — the route returns a clear `search_disabled` error (HTTP 503).
+**Self-hosted users**: `docker compose up` boots a SearXNG sidecar automatically (reachable inside the Compose network as `searxng:8080`). `/v1/search` is live on `http://localhost:3000` with no extra setup. To point at an existing SearXNG instance instead, set `CRW_SEARCH__SEARXNG_URL=http://your-host:8080` and remove the `searxng` service from your compose file. To disable search entirely, set `[search].enabled = false` — the route returns a clear `search_disabled` error (HTTP 503). See the [Docker → Search (SearXNG)](/docker) section for the full setup, the `SEARXNG_BASE_URL` vs `searxng_url` distinction, and cold-start timing.
 :::
 
 ## Searching the web with CRW

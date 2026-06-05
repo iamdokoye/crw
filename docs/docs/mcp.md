@@ -11,7 +11,7 @@ CRW includes a built-in MCP (Model Context Protocol) server that gives any MCP-c
 | Mode | When | Tools | Description |
 |------|------|-------|-------------|
 | **Embedded** (default) | No `--api-url` / `CRW_API_URL` set | scrape, crawl, map | Self-contained. No server needed. The scraping engine runs inside the MCP process. |
-| **Proxy / Cloud** | `--api-url` / `CRW_API_URL` set | scrape, crawl, map + **search** | Forwards tool calls to a remote CRW server. Cloud mode ([fastcrw.com](https://fastcrw.com)) adds `crw_search` for web search. |
+| **Proxy / Server** | `--api-url` / `CRW_API_URL` set | scrape, crawl, map + **search** | Forwards tool calls to a remote CRW server — the [fastcrw.com](https://fastcrw.com) cloud **or your own self-hosted server**. `crw_search` works whenever that server has SearXNG configured (the Docker stack enables it by default). |
 
 ## Where to use what
 
@@ -150,7 +150,7 @@ cargo build -p crw-mcp --no-default-features --release
 | `crw_crawl` | Start async crawl → returns job ID | `POST /v1/crawl` | All modes |
 | `crw_check_crawl_status` | Poll crawl status and get results | `GET /v1/crawl/:id` | All modes |
 | `crw_map` | Discover all URLs on a site | `POST /v1/map` | All modes |
-| `crw_search` | Search the web → titles, URLs, descriptions | `POST /v1/search` | **Cloud only** |
+| `crw_search` | Search the web → titles, URLs, descriptions | `POST /v1/search` | **Server with SearXNG** (cloud or self-hosted) |
 
 ## Browser Automation (`crw-browse`)
 
@@ -232,9 +232,9 @@ For cloud mode and file-based configs, continue in [MCP Client Setup](#mcp-clien
 | `maxDepth` | integer | no | Discovery depth (default: 2) |
 | `useSitemap` | boolean | no | Read sitemap.xml (default: true) |
 
-### crw_search (cloud only)
+### crw_search (server-backed)
 
-Available only when connected to [fastcrw.com](https://fastcrw.com) via `CRW_API_URL`. Not available in embedded or self-hosted mode.
+Available when connected to a CRW **server** that has SearXNG configured — the [fastcrw.com](https://fastcrw.com) cloud, or your own self-hosted server (the Docker stack enables it by default; see [Docker → Search (SearXNG)](/docker)). Point the MCP at it with `--api-url` / `CRW_API_URL`. It is *not* available from the standalone embedded MCP binary, which has no search backend.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -248,7 +248,7 @@ Available only when connected to [fastcrw.com](https://fastcrw.com) via `CRW_API
 
 A clean MCP setup often assigns each CRW route a narrow purpose:
 
-- `search` for web discovery when you don't know the URL (cloud only),
+- `search` for web discovery when you don't know the URL (needs a search-enabled server),
 - `map` for site-specific URL discovery,
 - `scrape` for single-page extraction,
 - `crawl` for bounded recursive work.
