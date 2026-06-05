@@ -19,49 +19,56 @@ cd crw
 docker compose up
 ```
 
-This starts two services:
+The bundled `docker-compose.yml` starts these services:
 
-| Service | Port | Description |
-|---------|------|-------------|
-| **crw** | 3000 | API server with CDP enabled |
-| **lightpanda** | 9222 | Headless browser for JS rendering |
+| Service | Port | Default? | Description |
+|---------|------|----------|-------------|
+| **crw** | 3000 | ✅ | API server (loads `config.docker.toml`) |
+| **searxng** | 8080 | ✅ | SearXNG meta-search backend for `/v1/search` |
+| **lightpanda** | 9222 | ✅ | Lightweight headless browser for JS rendering |
+| **chrome** | 9222 | `--profile heavy` | Full Chromium fallback for complex SPAs |
+| **chrome-stealth** | 3000 | `--profile stealth` | Anti-fingerprint Chromium (browserless, SSPL-licensed) |
 
-### docker-compose.yml
+The `crw` service reads its configuration from the mounted `config.docker.toml` (via
+`CRW_CONFIG=config.docker`), which already points each renderer and the search backend at the matching
+service name on Compose's default bridge network (`lightpanda:9222`, `chrome:9222`, `searxng:8080`). You
+don't need to wire renderer URLs through environment variables — they're in the config file.
+
+The optional `chrome` / `chrome-stealth` tiers are opt-in so small hosts skip the ~500 MB Chromium image:
+
+```bash
+docker compose --profile heavy up -d      # add the vanilla Chromium fallback
+docker compose --profile stealth up -d    # add the anti-fingerprint tier (review the SSPL license first)
+```
+
+## Search (SearXNG)
+
+`/v1/search` (and the `crw_search` MCP tool) is backed by the bundled **searxng** service, reachable inside
+the Compose network as `searxng:8080`. This is configured by default in `config.docker.toml`:
+
+```toml
+[search]
+searxng_url = "http://searxng:8080"
+```
+
+To point CRW at an **external** SearXNG instead of the sidecar, override it without editing the file:
 
 ```yaml
 services:
   crw:
-    build: .
-    ports:
-      - "3000:3000"
-    depends_on:
-      - lightpanda
     environment:
-      - RUST_LOG=info
-      - CRW_RENDERER__LIGHTPANDA__WS_URL=ws://lightpanda:9222
-
-  lightpanda:
-    image: lightpanda/browser:latest
-    ports:
-      - "9222:9222"
+      - CRW_SEARCH__SEARXNG_URL=http://your-searxng-host:8080   # env wins over the config file
 ```
 
-### Add Playwright (optional)
+> **Two different URLs — don't confuse them.** `SEARXNG_BASE_URL` (set on the `searxng` service) is
+> SearXNG's *own* self-reference for the links it renders. `[search].searxng_url` /
+> `CRW_SEARCH__SEARXNG_URL` is the host **CRW** calls. They happen to share the value `searxng:8080` in the
+> bundled stack, but they serve different roles.
 
-```yaml
-  playwright:
-    image: mcr.microsoft.com/playwright:v1.49.0-noble
-    command: ["npx", "playwright", "run-server", "--port=9223"]
-    ports:
-      - "9223:9223"
-```
-
-Then add to the crw service:
-
-```yaml
-    environment:
-      - CRW_RENDERER__PLAYWRIGHT__WS_URL=ws://playwright:9223
-```
+> **Cold start.** `crw` waits for `searxng` to report healthy (`depends_on: condition: service_healthy`),
+> so the first search after `docker compose up` can take ~15–30 s once the images are present (longer on the
+> first pull). A `target_unreachable` or `timeout` error in the first few seconds usually just means SearXNG
+> hasn't finished booting yet — the server logs the configured search host at startup so you can confirm it.
 
 ## Dockerfile
 

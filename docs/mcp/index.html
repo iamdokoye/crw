@@ -305,10 +305,10 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <td>Self-contained. No server needed. The scraping engine runs inside the MCP process.</td>
 </tr>
 <tr>
-<td><strong>Proxy / Cloud</strong></td>
+<td><strong>Proxy / Server</strong></td>
 <td><code>--api-url</code> / <code>CRW_API_URL</code> set</td>
 <td>scrape, crawl, map + <strong>search</strong></td>
-<td>Forwards tool calls to a remote CRW server. Cloud mode (<a href="https://fastcrw.com">fastcrw.com</a>) adds <code>crw_search</code> for web search.</td>
+<td>Forwards tool calls to a remote CRW server — the <a href="https://fastcrw.com">fastcrw.com</a> cloud <strong>or your own self-hosted server</strong>. <code>crw_search</code> works whenever that server has SearXNG configured (the Docker stack enables it by default).</td>
 </tr>
 </tbody></table>
 <h2>Where to use what</h2>
@@ -493,7 +493,7 @@ claude mcp add \
 <td><code>crw_search</code></td>
 <td>Search the web → titles, URLs, descriptions</td>
 <td><code>POST /v1/search</code></td>
-<td><strong>Cloud only</strong></td>
+<td><strong>Server with SearXNG</strong> (cloud or self-hosted)</td>
 </tr>
 </tbody></table>
 <h2>Browser Automation (<code>crw-browse</code>)</h2>
@@ -656,8 +656,8 @@ codex mcp add crw -- npx crw-mcp
 <td>Read sitemap.xml (default: true)</td>
 </tr>
 </tbody></table>
-<h3>crw_search (cloud only)</h3>
-<p>Available only when connected to <a href="https://fastcrw.com">fastcrw.com</a> via <code>CRW_API_URL</code>. Not available in embedded or self-hosted mode.</p>
+<h3>crw_search (server-backed)</h3>
+<p>Available when connected to a CRW <strong>server</strong> that has SearXNG configured — the <a href="https://fastcrw.com">fastcrw.com</a> cloud, or your own self-hosted server (the Docker stack enables it by default; see <a href="/docker">Docker → Search (SearXNG)</a>). Point the MCP at it with <code>--api-url</code> / <code>CRW_API_URL</code>. It is <em>not</em> available from the standalone embedded MCP binary, which has no search backend.</p>
 <table>
 <thead>
 <tr>
@@ -701,7 +701,7 @@ codex mcp add crw -- npx crw-mcp
 <h2>Example Agent Tool Flow</h2>
 <p>A clean MCP setup often assigns each CRW route a narrow purpose:</p>
 <ul>
-<li><code>search</code> for web discovery when you don&#39;t know the URL (cloud only),</li>
+<li><code>search</code> for web discovery when you don&#39;t know the URL (needs a search-enabled server),</li>
 <li><code>map</code> for site-specific URL discovery,</li>
 <li><code>scrape</code> for single-page extraction,</li>
 <li><code>crawl</code> for bounded recursive work.</li>
