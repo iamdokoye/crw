@@ -964,6 +964,7 @@ dependencies = [
  "url",
  "uuid",
  "wiremock",
+ "yaml-rust2",
 ]
 
 [[package]]
