@@ -39,6 +39,14 @@ jobs:
       - name: Internal dependency versions match workspace version
         run: bash scripts/check-internal-dep-versions.sh
 
+      # Catches the config GAP at feature-PR time, independent of version state:
+      # a new internal dep pin that isn't tracked in release-please-config.json
+      # fails here long before it can go stale on a release bump. The
+      # release-please PR itself does not trigger this CI (bot GITHUB_TOKEN),
+      # so the gap must be caught on the human PR that introduces the dep.
+      - name: Audit release-please config completeness
+        run: python3 scripts/release/audit_release_please_config.py
+
       - name: Build
         run: cargo build --workspace --all-targets
 

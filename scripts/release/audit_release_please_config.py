@@ -53,6 +53,47 @@ def _json_jsonpath_lookup(data, jsonpath: str) -> bool:
     return bool(jsonpath_ng.parse(jsonpath).find(data))
 
 
+_DEP_TABLES = ("dependencies", "dev-dependencies", "build-dependencies")
+
+
+def _internal_version_pins() -> set[tuple[str, str, str]]:
+    """Every internal `crw-*` dependency that carries an explicit version pin.
+
+    Returns (cargo_path, table, dep_name) tuples for deps that have BOTH a
+    `path` (so they resolve to a workspace crate) and a `version` requirement.
+    Those version strings must be bumped in lockstep with the workspace version
+    on every release, which means each one needs a release-please-config
+    extra-files entry. A pin without an entry is the exact bug that broke the
+    0.12.0 release (crw-diff -> crw-core stayed at 0.11.0 after the bump).
+    """
+    pins: set[tuple[str, str, str]] = set()
+    for cargo in sorted(Path("crates").glob("*/Cargo.toml")):
+        data = tomllib.loads(cargo.read_text())
+        for table in _DEP_TABLES:
+            for name, spec in data.get(table, {}).items():
+                if not name.startswith("crw-"):
+                    continue
+                if isinstance(spec, dict) and "version" in spec and "path" in spec:
+                    pins.add((cargo.as_posix(), table, name))
+    return pins
+
+
+def _config_covered_pins(cfg: dict) -> set[tuple[str, str, str]]:
+    """(path, table, dep) covered by a `$.<table>.<dep>.version` extra-file."""
+    covered: set[tuple[str, str, str]] = set()
+    for pkg in cfg.get("packages", {}).values():
+        for ef in pkg.get("extra-files", []):
+            if not isinstance(ef, dict) or ef.get("type") != "toml":
+                continue
+            path_str, jsonpath = ef.get("path"), ef.get("jsonpath")
+            if not path_str or not jsonpath:
+                continue
+            parts = re.findall(r"[\w-]+", jsonpath)
+            if len(parts) == 3 and parts[0] in _DEP_TABLES and parts[2] == "version":
+                covered.add((path_str, parts[0], parts[1]))
+    return covered
+
+
 def main(config_path: Path = Path("release-please-config.json")) -> int:
     if not config_path.exists():
         print(f"::error::{config_path} not found", file=sys.stderr)
@@ -60,6 +101,19 @@ def main(config_path: Path = Path("release-please-config.json")) -> int:
     cfg = json.loads(config_path.read_text())
 
     errors: list[str] = []
+
+    # Completeness: every internal version pin must have an extra-files entry,
+    # so release-please keeps inter-crate version requirements in lockstep with
+    # the workspace version. Missing entries silently break the build on the
+    # first bump after a crate/dep is added.
+    covered = _config_covered_pins(cfg)
+    for path_str, table, dep in sorted(_internal_version_pins()):
+        if (path_str, table, dep) not in covered:
+            errors.append(
+                f"{path_str}::$.{table}.{dep}.version: internal version pin not "
+                f"tracked in release-please-config.json extra-files "
+                f"(would go stale on the next version bump)"
+            )
     for pkg_name, pkg in cfg.get("packages", {}).items():
         for ef in pkg.get("extra-files", []):
             # Bare string form: just a path, no jsonpath.
