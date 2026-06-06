@@ -42,7 +42,7 @@ else
   run_check "npm"       "$SCRIPT_DIR/verify_npm.sh"           "$v"
 fi
 run_check "Docker GHCR" "$SCRIPT_DIR/verify_docker.sh"        "$v"
-run_check "MCP registry""$SCRIPT_DIR/verify_mcp_registry.sh"  "$v"
+run_check "MCP registry" "$SCRIPT_DIR/verify_mcp_registry.sh" "$v"
 if [ -n "$corr" ]; then
   run_check "APT/Homebrew" "$SCRIPT_DIR/verify_apt_homebrew.sh" "$v" "$corr"
 else
