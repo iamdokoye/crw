@@ -18,6 +18,11 @@ while [ $# -gt 0 ]; do
 done
 
 mapfile -t crates < <(awk '
+  # Reset on every section header so [unpublished]/[npm]/... crate lists are
+  # NOT treated as tier crates. inblock was never cleared before, so
+  # crw-browse/crw-cli from [unpublished] leaked in and verify reported them
+  # as MISSING on crates.io.
+  /^\[/ { inblock=0 }
   /^\[\[tiers\]\]/ { inblock=1; next }
   inblock && /^crates/ {
     s=$0; sub(/^[^=]*=\s*\[/,"",s); sub(/\]\s*$/,"",s)

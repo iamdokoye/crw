@@ -456,7 +456,17 @@ jobs:
         run: mcp-publisher login github-oidc
 
       - name: Publish to MCP Registry
-        run: mcp-publisher publish
+        # The registry intermittently returns 5xx (504 seen on v0.13.2). Retry
+        # so a transient gateway error doesn't fail an otherwise-green release.
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4; do
+            if mcp-publisher publish; then exit 0; fi
+            echo "::warning::mcp-publisher publish attempt ${attempt}/4 failed (transient registry error); retrying in $((attempt * 20))s"
+            sleep "$((attempt * 20))"
+          done
+          echo "::error::mcp-publisher publish failed after 4 attempts"
+          exit 1
 
       - name: Verify
         shell: bash
