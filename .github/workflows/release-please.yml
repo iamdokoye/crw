@@ -28,30 +28,19 @@ jobs:
       # GH_DISPATCH_PAT is the existing dispatch PAT; prefer migrating to a
       # GitHub App installation token (actions/create-github-app-token) so the
       # author is a bot identity with no human seat and a scoped, rotating key.
+      #
+      # This token also creates the git tag, so the tag push triggers
+      # release.yml directly (`on: push: tags: v*`). There is deliberately NO
+      # separate dispatch job — when the tag was created by the default
+      # GITHUB_TOKEN it couldn't trigger workflows and a dispatch was needed,
+      # but a PAT-created tag triggers normally. A dispatch on top would
+      # double-run the entire publish pipeline (two concurrent crates.io/npm
+      # publishes racing). Manual recovery still uses release.yml's
+      # workflow_dispatch input.
       - uses: googleapis/release-please-action@v4
         id: release
         with:
           token: ${{ secrets.GH_DISPATCH_PAT }}
-
-  dispatch-release:
-    needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      # Triggers release.yml against the freshly-created tag. Uses a PAT
-      # (GH_DISPATCH_PAT) because the default GITHUB_TOKEN cannot dispatch
-      # workflows. If this fails (PAT expired/missing) the job is RED — the
-      # release.yml workflow won't run and operators see the failure
-      # immediately, instead of the prior silent-green pattern.
-      - name: Trigger release workflow
-        env:
-          GH_TOKEN: ${{ secrets.GH_DISPATCH_PAT }}
-        run: |
-          set -euo pipefail
-          gh workflow run release.yml \
-            -R "${{ github.repository }}" \
-            --ref "${{ needs.release-please.outputs.tag_name }}" \
-            -f tag="${{ needs.release-please.outputs.tag_name }}"
 
   docs-sync:
     needs: release-please
