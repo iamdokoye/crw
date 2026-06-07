@@ -1,0 +1,39 @@
+name: Docker Build
+
+# Validates the multi-arch container build (incl. the aarch64 cross-compile)
+# in CI, so a Dockerfile/toolchain break is caught on the PR instead of only
+# at release time. Builds both platforms but does NOT push.
+on:
+  pull_request:
+    paths:
+      - "Dockerfile"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "config.default.toml"
+      - "config.docker.toml"
+      - ".github/workflows/docker-build.yml"
+  push:
+    branches: [main]
+    paths:
+      - "Dockerfile"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/setup-qemu-action@v3
+
+      - name: Build multi-arch image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          platforms: linux/amd64,linux/arm64
+          outputs: type=cacheonly
