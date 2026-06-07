@@ -406,7 +406,7 @@ CRW_RENDERER__FORCE_JS=true
 <p>Hard-pinning a renderer means transient failures of that renderer surface as errors instead of silently falling back to HTTP. If you need maximum resilience, omit <code>renderer</code> (or set it to <code>auto</code>) so the auto-detect chain can fall back. If you need determinism — &quot;I know this site needs Chrome and a LightPanda success would be a wrong answer&quot; — pin it.</p>
 <p>For crawls, per-page failures of a pinned renderer are still logged and skipped; the rest of the crawl continues. Pages that fail will not appear in the results.</p>
 <h2>Per-request country (residential proxy tier)</h2>
-<p>When the operator configures a <code>chrome_proxy</code> tier backed by a residential proxy provider (e.g. DataImpulse), each request can route through a specific country by setting <code>country</code> in the request body:</p>
+<p>When the operator configures a <code>chrome_proxy</code> tier backed by a residential proxy provider you configure, each request can route through a specific country by setting <code>country</code> in the request body:</p>
 <pre><code class="language-json">{
   &quot;url&quot;: &quot;https://geo-restricted.example.com&quot;,
   &quot;country&quot;: &quot;us&quot;
