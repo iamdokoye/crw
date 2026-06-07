@@ -288,6 +288,43 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 The source of truth is the repository root changelog. Do not edit this docs page manually.
 :::</p>
 <p>All notable changes to CRW are documented here.</p>
+<h2><a href="https://github.com/us/crw/compare/v0.13.1...v0.13.2">0.13.2</a> (2026-06-06)</h2>
+<h3>Bug Fixes</h3>
+<ul>
+<li><strong>server:</strong> embed openapi spec inside the crate so it can publish (<a href="https://github.com/us/crw/commit/e606cb9303cec3716b7dbffd4d848164486368ea">e606cb9</a>)</li>
+</ul>
+<h2><a href="https://github.com/us/crw/compare/v0.13.0...v0.13.1">0.13.1</a> (2026-06-06)</h2>
+<h3>Bug Fixes</h3>
+<ul>
+<li><strong>release:</strong> correct publish tier ordering + guard topology (<a href="https://github.com/us/crw/commit/c84deedeeeb2698f50d94247b770560cd6f3d0df">c84deed</a>)</li>
+</ul>
+<h2><a href="https://github.com/us/crw/compare/v0.12.1...v0.13.0">0.13.0</a> (2026-06-06)</h2>
+<h3>Features</h3>
+<ul>
+<li><strong>search:</strong> deterministic Wikidata entity-relation lookup (W3) (<a href="https://github.com/us/crw/commit/aa96e3e182fad6d8e2caf03628461515ca5aab7f">aa96e3e</a>)</li>
+</ul>
+<h3>Bug Fixes</h3>
+<ul>
+<li><strong>release:</strong> sync Cargo.lock internal crate versions to 0.12.1 (<a href="https://github.com/us/crw/commit/b5fc8a5b988401bb2ecca6fdd3be328d1ccd683a">b5fc8a5</a>)</li>
+</ul>
+<h2><a href="https://github.com/us/crw/compare/v0.12.0...v0.12.1">0.12.1</a> (2026-06-05)</h2>
+<h3>Bug Fixes</h3>
+<ul>
+<li><strong>release:</strong> bump internal dep pins and track them in release config (<a href="https://github.com/us/crw/commit/0139ec247c7f328ef172646eac3de5e0f287c42a">0139ec2</a>)</li>
+<li><strong>release:</strong> sync Cargo.lock with bumped internal dep versions (<a href="https://github.com/us/crw/commit/5c89d6037e32435a49cfd4fbdf1c2ba05ad83ae8">5c89d60</a>)</li>
+</ul>
+<h2><a href="https://github.com/us/crw/compare/v0.11.0...v0.12.0">0.12.0</a> (2026-06-05)</h2>
+<h3>Features</h3>
+<ul>
+<li><strong>answer:</strong> gated moat-hardening abstention (answer_guarded) (<a href="https://github.com/us/crw/commit/7ef7f32c085f4e01429b4afa6794c52836cdd4e6">7ef7f32</a>)</li>
+<li><strong>mcp:</strong> emit structuredContent for crw_search; bump protocol to 2025-06-18 (<a href="https://github.com/us/crw/commit/0cd9a4fa0e338683b75c5719bc3c54cca3b2dba6">0cd9a4f</a>), closes <a href="https://github.com/us/crw/issues/89">#89</a></li>
+<li><strong>search:</strong> diagnose search config and name unreachable host (<a href="https://github.com/us/crw/issues/90">#90</a>) (<a href="https://github.com/us/crw/commit/25f94410869e24cb79a7835e2f05627d0eb07351">25f9441</a>)</li>
+<li><strong>search:</strong> pin SearXNG infoboxes/answers as structured sources (W0) (<a href="https://github.com/us/crw/commit/554f18ce4747057a04ec64f9f983faf46a48dee2">554f18c</a>)</li>
+</ul>
+<h3>Bug Fixes</h3>
+<ul>
+<li><strong>search:</strong> use resolvable searxng host in docker config (<a href="https://github.com/us/crw/issues/90">#90</a>) (<a href="https://github.com/us/crw/commit/d9660219d23bdd4364940c97c9911dd31e73567b">d966021</a>)</li>
+</ul>
 <h2><a href="https://github.com/us/crw/compare/v0.10.0...v0.11.0">0.11.0</a> (2026-06-03)</h2>
 <h3>Features</h3>
 <ul>

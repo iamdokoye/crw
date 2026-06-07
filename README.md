@@ -278,10 +278,12 @@ Single 1,000-URL run (N=1,000 crushes variance; the 150-URL subset
 oscillated ±0.83pp). The **63.74% denominator is 819 labeled/matchable
 URLs** — not 3,000 requests, not 1,000. Read the **87.7% scrape-success
 adjacent to "0 errors"**: 12.3% returned no usable content without
-throwing. fastCRW's **p50 beats Firecrawl**; its **p90 is the worst of
-the three** — the chrome-stealth fallback that recovers the URLs the
-others miss is also why the tail is worst. We publish the full
-distribution because the recall is worth the tail.
+throwing. fastCRW's **p50 is on par with Firecrawl (1914 vs 1916 ms)** —
+a 2 ms gap on a single run is well inside the variance documented above,
+so we report it as a tie, not a win; its **p90 is the worst of the
+three** — the chrome-stealth fallback that recovers the URLs the others
+miss is also why the tail is worst. We publish the full distribution
+because the recall is worth the tail.
 
 Full result of record:
 [`bench/server-runs/RESULT_3WAY_1000_FULL.md`](bench/server-runs/RESULT_3WAY_1000_FULL.md).

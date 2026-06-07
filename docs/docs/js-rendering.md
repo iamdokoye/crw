@@ -103,7 +103,7 @@ For crawls, per-page failures of a pinned renderer are still logged and skipped;
 
 ## Per-request country (residential proxy tier)
 
-When the operator configures a `chrome_proxy` tier backed by a residential proxy provider (e.g. DataImpulse), each request can route through a specific country by setting `country` in the request body:
+When the operator configures a `chrome_proxy` tier backed by a residential proxy provider you configure, each request can route through a specific country by setting `country` in the request body:
 
 ```json
 {
