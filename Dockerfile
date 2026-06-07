@@ -19,7 +19,10 @@ RUN set -eux; \
       amd64) RUST_TARGET=x86_64-unknown-linux-gnu ;; \
       arm64) RUST_TARGET=aarch64-unknown-linux-gnu; \
              apt-get update; \
-             apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu; \
+             # crossbuild-essential-arm64 = the aarch64 gcc/g++ AND the target
+             # libc dev headers (libc6-dev-arm64-cross). The bare cross gcc
+             # alone lacks sys/types.h etc., which broke aws-lc-sys's C build.
+             apt-get install -y --no-install-recommends crossbuild-essential-arm64; \
              rm -rf /var/lib/apt/lists/* ;; \
       *) echo "unsupported TARGETARCH=$TARGETARCH" >&2; exit 1 ;; \
     esac; \
