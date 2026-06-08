@@ -34,8 +34,10 @@ crates = ["crw-renderer"]
 
 [[tiers]]
 # crw-crawl depends on crw-renderer, crw-diff, crw-extract.
+# crw-browse depends only on crw-core + crw-renderer and is independent of
+# crw-crawl, so it shares this tier (required by crw-cli's `browse` feature).
 order = 4
-crates = ["crw-crawl"]
+crates = ["crw-crawl", "crw-browse"]
 
 [[tiers]]
 # crw-monitor depends on crw-crawl and is an optional dependency of crw-server,
@@ -51,10 +53,17 @@ crates = ["crw-server"]
 order = 7
 crates = ["crw-mcp"]
 
+[[tiers]]
+# crw-cli (the `crw` binary) depends on crw-server (tier 6) + crw-browse
+# (tier 4), so it publishes last. Distributed both via crates.io
+# (`cargo install crw-cli`) and prebuilt release binaries (install.sh).
+order = 8
+crates = ["crw-cli"]
+
 [unpublished]
-# Internal binaries that don't need crates.io distribution.
-# Each must have `publish = false` in its Cargo.toml.
-crates = ["crw-browse", "crw-cli"]
+# Every workspace crate now publishes to crates.io. Keep this key (preflight
+# asserts each crate is either tiered or listed here — no silent third state).
+crates = []
 
 [npm]
 main_package = "crw-mcp"
