@@ -10,7 +10,7 @@ Built in Rust because every millisecond of agent latency compounds.
 
 <p align="center">
   <a href="https://crates.io/crates/crw-server"><img src="https://img.shields.io/crates/v/crw-server.svg" alt="crates.io"></a>
-  <a href="https://github.com/us/crw/actions"><img src="https://github.com/us/crw/workflows/CI/badge.svg" alt="CI"></a>
+  <a href="https://github.com/us/crw/actions/workflows/ci.yml"><img src="https://github.com/us/crw/actions/workflows/ci.yml/badge.svg?branch=main&event=push" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="License"></a>
   <a href="https://github.com/us/crw/stargazers"><img src="https://img.shields.io/github/stars/us/crw?style=social" alt="GitHub Stars"></a>
   <a href="https://fastcrw.com"><img src="https://img.shields.io/badge/Managed%20Cloud-fastcrw.com-blueviolet" alt="fastcrw.com"></a>
