@@ -1,21 +1,14 @@
 name: Docker Build
 
-# Validates the multi-arch container build (incl. the aarch64 cross-compile)
-# in CI, so a Dockerfile/toolchain break is caught on the PR instead of only
-# at release time. Builds both platforms but does NOT push.
+# Validates the multi-arch container build (incl. the aarch64 cross-compile),
+# both platforms, no push. Runs only on releases (not PRs/pushes) — the heavy
+# QEMU cross-build is too slow to gate every PR on, and release.yml's
+# publish-docker job is the real build+push at tag time. `workflow_dispatch`
+# allows an on-demand sanity check.
 on:
-  pull_request:
-    paths:
-      - "Dockerfile"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "config.default.toml"
-      - "config.docker.toml"
-      - ".github/workflows/docker-build.yml"
-  push:
-    branches: [main]
-    paths:
-      - "Dockerfile"
+  release:
+    types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: read
