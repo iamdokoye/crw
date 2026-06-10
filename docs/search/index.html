@@ -435,7 +435,7 @@ under the SearXNG-native name. Pick whichever; both are emitted.</p>
 <td><code>categories</code></td>
 <td>string[]</td>
 <td>--</td>
-<td>Filters such as <code>&quot;github&quot;</code>, <code>&quot;research&quot;</code>, <code>&quot;pdf&quot;</code></td>
+<td>Curated filters (<code>&quot;github&quot;</code>, <code>&quot;research&quot;</code>, <code>&quot;pdf&quot;</code>) <strong>plus</strong> any native SearXNG category (<code>&quot;science&quot;</code>, <code>&quot;it&quot;</code>, <code>&quot;news&quot;</code>, <code>&quot;files&quot;</code>, …) passed straight through. Max 5 entries. See <a href="#curated-vs-passthrough-categories">Curated vs. passthrough categories</a></td>
 </tr>
 <tr>
 <td><code>scrapeOptions</code></td>
@@ -637,6 +637,95 @@ under the SearXNG-native name. Pick whichever; both are emitted.</p>
 <li>Use <code>categories</code> to narrow the query domain without rewriting the query itself.</li>
 </ul>
 <p>Good default: add one narrowing control at a time so you can see which one actually improved the results.</p>
+<h3>Curated vs. passthrough categories</h3>
+<p><code>categories</code> accepts two kinds of values, and you can mix them freely (up to 5 entries):</p>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Kind</th>
+<th>What CRW does</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>github</code></td>
+<td>curated</td>
+<td>Switches to the engines in <code>[search].github_engines</code> (default: <code>github</code>).</td>
+</tr>
+<tr>
+<td><code>research</code></td>
+<td>curated</td>
+<td>Switches to the engines in <code>[search].research_engines</code> (default: <code>arxiv</code>, <code>crossref</code>, <code>google scholar</code>, <code>semantic scholar</code>).</td>
+</tr>
+<tr>
+<td><code>pdf</code></td>
+<td>curated</td>
+<td>Appends <code> filetype:pdf</code> to the query (not an engine switch).</td>
+</tr>
+<tr>
+<td>anything else</td>
+<td>passthrough</td>
+<td>Forwarded verbatim to SearXNG&#39;s native <code>categories</code> parameter — <code>science</code>, <code>it</code>, <code>news</code>, <code>files</code>, <code>images</code>, <code>map</code>, <code>music</code>, <code>social media</code>, …</td>
+</tr>
+</tbody></table>
+<p>The curated names (<code>github</code>/<code>research</code>/<code>pdf</code>) are <strong>Firecrawl-compatible</strong> and behave exactly as before. Passthrough values are the additive part: CRW does not maintain its own engine list for them — it hands the category string to SearXNG, which already knows the engine→category routing from its own <code>settings.yml</code>. That means new categories work <strong>without any CRW code or config change</strong>, and your self-hosted SearXNG governs exactly which engines each category hits.</p>
+<pre><code class="language-json">{
+  &quot;query&quot;: &quot;crispr base editing&quot;,
+  &quot;categories&quot;: [&quot;science&quot;],
+  &quot;limit&quot;: 5
+}
+</code></pre>
+<pre><code class="language-json">{
+  &quot;query&quot;: &quot;rust async runtime&quot;,
+  &quot;categories&quot;: [&quot;research&quot;, &quot;it&quot;]
+}
+</code></pre>
+<p>In the second example, <code>research</code> still drives CRW&#39;s curated academic engines while <code>it</code> is forwarded to SearXNG as a native category — both apply to the same query.</p>
+<p>:::note
+Which passthrough categories actually return results depends on the engines your SearXNG instance enables. The bundled sidecar uses <code>use_default_settings: true</code> (see <code>config/searxng/settings.yml</code>), so all of upstream SearXNG&#39;s default categories are available. An unknown or disabled category is silently ignored by SearXNG (it falls back to <code>general</code>) rather than erroring. The list of categories a given instance exposes is documented under <a href="https://docs.searxng.org/user/configured_engines.html">SearXNG → Configured Engines</a>.
+:::</p>
+<h3>SearXNG query parameters CRW sends</h3>
+<p>For reference (and when debugging a self-hosted SearXNG directly), this is how the public request fields map onto the SearXNG <code>/search</code> query parameters CRW emits:</p>
+<table>
+<thead>
+<tr>
+<th>SearXNG param</th>
+<th>Sourced from</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>q</code></td>
+<td><code>query</code></td>
+<td>Cleaned (leading filler stripped); <code>pdf</code> category appends <code> filetype:pdf</code>.</td>
+</tr>
+<tr>
+<td><code>categories</code></td>
+<td><code>sources</code> + passthrough <code>categories</code></td>
+<td>Comma-joined union, de-duplicated. <code>web</code>→<code>general</code>, <code>news</code>→<code>news</code>, <code>images</code>→<code>images</code>, plus any passthrough value.</td>
+</tr>
+<tr>
+<td><code>engines</code></td>
+<td>curated <code>categories</code></td>
+<td>Comma-joined engines for <code>github</code>/<code>research</code> (from config). Omitted when no curated category is set.</td>
+</tr>
+<tr>
+<td><code>language</code></td>
+<td><code>lang</code></td>
+<td>Defaults to <code>en</code> when omitted/empty so results aren&#39;t locale-mixed.</td>
+</tr>
+<tr>
+<td><code>time_range</code></td>
+<td><code>tbs</code></td>
+<td><code>qdr:h</code>/<code>qdr:d</code>→<code>day</code>, <code>qdr:w</code>→<code>week</code>, <code>qdr:m</code>→<code>month</code>, <code>qdr:y</code>→<code>year</code>.</td>
+</tr>
+<tr>
+<td><code>format</code></td>
+<td>—</td>
+<td>Always <code>json</code> (the sidecar enables the JSON formatter; HTML stays on for debugging).</td>
+</tr>
+</tbody></table>
+<p><code>pageno</code> and <code>safesearch</code> are available on the low-level <code>crw search</code> CLI but are not exposed on <code>/v1/search</code>. Full upstream reference: <a href="https://docs.searxng.org/dev/search_api.html">SearXNG Search API</a>.</p>
 <h2>Self-hosting the SearXNG sidecar</h2>
 <p>The default <code>docker-compose.yml</code> ships a hardened SearXNG container:</p>
 <ul>

@@ -288,6 +288,20 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 The source of truth is the repository root changelog. Do not edit this docs page manually.
 :::</p>
 <p>All notable changes to CRW are documented here.</p>
+<h2><a href="https://github.com/us/crw/compare/v0.13.4...v0.14.0">0.14.0</a> (2026-06-08)</h2>
+<h3>Features</h3>
+<ul>
+<li><strong>onboarding:</strong> cloud-default messaging + api.fastcrw.com base URL (<a href="https://github.com/us/crw/commit/4ccc92c065027d900f0bd67e0273216bd76aa065">4ccc92c</a>)</li>
+<li><strong>pdf:</strong> PDF→markdown via pdf-inspector with Firecrawl-compatible parsers + /v2/parse (<a href="https://github.com/us/crw/commit/196b153db011807a80a2b19155ef0605a3ca692b">196b153</a>)</li>
+<li><strong>search:</strong> query-relevance rerank, list answers, multi-round latency guard (<a href="https://github.com/us/crw/commit/ebafe8358283260df75a0d9629c59c8a1fcdad4a">ebafe83</a>)</li>
+</ul>
+<h3>Bug Fixes</h3>
+<ul>
+<li>accept string env vars for auth.api_keys (<a href="https://github.com/us/crw/commit/534f9320653c37aaba79e0db43ef9400b74b749b">534f932</a>)</li>
+<li><strong>pdf:</strong> vendor test fixture into each crate (preflight: no cross-crate include) (<a href="https://github.com/us/crw/commit/2c7bfe93bbd38a384e84dab6daa5ae0fd2e55c65">2c7bfe9</a>)</li>
+<li><strong>release:</strong> scope out-of-crate include check to src/ only (<a href="https://github.com/us/crw/commit/cd61fbfd24046f6ef0a72e70e764189c39463fb6">cd61fbf</a>)</li>
+<li><strong>release:</strong> verify apt/homebrew by artifact, not flaky status-ack (<a href="https://github.com/us/crw/commit/7a572fd6e5b39117d316377919387e9e7ec8ad3b">7a572fd</a>)</li>
+</ul>
 <h2><a href="https://github.com/us/crw/compare/v0.13.3...v0.13.4">0.13.4</a> (2026-06-07)</h2>
 <h3>Bug Fixes</h3>
 <ul>
