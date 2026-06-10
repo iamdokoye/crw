@@ -12,9 +12,15 @@ source "$SCRIPT_DIR/lib.sh"
 v="${1:?version required}"
 pkg="crw-sdk" # single source: keep in sync with sdks/typescript/package.json "name"
 
-# 1. Existence
-actual=$(npm view "$pkg@$v" version 2>/dev/null || echo "MISSING")
-[ "$actual" = "$v" ] || die "$pkg@$v not on npm (got: $actual)"
+# 1. Existence — poll, since npm registry propagation can lag several seconds
+# after a fresh publish (otherwise this false-fails a successful release).
+actual="MISSING"
+for _ in 1 2 3 4 5 6; do
+  actual=$(npm view "$pkg@$v" version 2>/dev/null || echo "MISSING")
+  [ "$actual" = "$v" ] && break
+  sleep 10
+done
+[ "$actual" = "$v" ] || die "$pkg@$v not on npm after retries (got: $actual)"
 
 # 2. Install + dual-format import smoke
 tmp=$(mktemp -d)
