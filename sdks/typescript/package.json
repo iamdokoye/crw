@@ -24,7 +24,7 @@
   "engines": { "node": ">=18" },
   "scripts": {
     "build": "tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node scripts/postbuild.mjs",
-    "test": "npm run build && node --test test/*.test.ts",
+    "test": "npm run build && tsc -p tsconfig.test.json && node --test dist-test/*.test.js",
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {

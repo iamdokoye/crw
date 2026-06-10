@@ -13,6 +13,7 @@ package-lock.json
 # The TS SDK needs its lockfile committed (npm ci hard-fails without it).
 !sdks/typescript/package-lock.json
 sdks/typescript/dist/
+sdks/typescript/dist-test/
 docker-compose.override.yml
 config.local.toml
 .env
