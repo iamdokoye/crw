@@ -506,12 +506,58 @@ jobs:
             -f "client_payload[version]=${{ needs.release-context.outputs.version }}" \
             -f "client_payload[correlation_id]=${{ needs.release-context.outputs.correlation_id }}"
 
+  publish-npm-sdk:
+    needs: [release-context, asset-gate]
+    # Shares the SKIP_NPM gate with publish-npm (cleanly skipped, not failed).
+    if: ${{ vars.SKIP_NPM != 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release-context.outputs.source_ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Build + test
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd sdks/typescript
+          npm ci
+          npm run build
+          npm test
+
+      - name: Idempotent publish
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ needs.release-context.outputs.version }}
+        run: |
+          set -euo pipefail
+          pkg=$(node -p "require('./sdks/typescript/package.json').name")
+          current=$(npm view "${pkg}@${VERSION}" version 2>/dev/null || true)
+          if [ "$current" = "$VERSION" ]; then
+            echo "::notice::${pkg}@${VERSION} already on npm"
+          else
+            (cd sdks/typescript && npm publish --access public)
+          fi
+
+      - name: Verify
+        shell: bash
+        run: bash scripts/release/verify_npm_sdk.sh "${{ needs.release-context.outputs.version }}"
+
   verify-publish:
     needs:
       - release-context
       - publish-crates
       - publish-pypi
       - publish-npm
+      - publish-npm-sdk
       - publish-docker
       - publish-mcp-registry
       - update-apt
