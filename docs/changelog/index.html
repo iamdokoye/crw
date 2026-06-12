@@ -288,6 +288,38 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 The source of truth is the repository root changelog. Do not edit this docs page manually.
 :::</p>
 <p>All notable changes to CRW are documented here.</p>
+<h2><a href="https://github.com/us/crw/compare/v0.15.1...v0.15.2">0.15.2</a> (2026-06-12)</h2>
+<h3>Bug Fixes</h3>
+<ul>
+<li><strong>mcp:</strong> npm launcher downloads binary when platform pkg missing (<a href="https://github.com/us/crw/commit/4ae1aa684f93c4c6a36fe157ce013700c5a9e6ea">4ae1aa6</a>)</li>
+</ul>
+<h2><a href="https://github.com/us/crw/compare/v0.15.0...v0.15.1">0.15.1</a> (2026-06-11)</h2>
+<h3>Bug Fixes</h3>
+<ul>
+<li><strong>ci:</strong> poll npm in verify_npm_sdk + expose ./package.json export (<a href="https://github.com/us/crw/commit/ed185dd3fd34313e5babf1c9b71e08faab3918c5">ed185dd</a>)</li>
+</ul>
+<h2><a href="https://github.com/us/crw/compare/v0.14.0...v0.15.0">0.15.0</a> (2026-06-10)</h2>
+<h3>⚠ BREAKING CHANGES</h3>
+<ul>
+<li>CrwClient() with no API key now targets the cloud and raises if unauthenticated, instead of running locally. Set CRW_LOCAL=1 for the previous zero-config local behavior.</li>
+</ul>
+<h3>Features</h3>
+<ul>
+<li>add TypeScript SDK (crw-sdk) (<a href="https://github.com/us/crw/commit/1dd96f7037933f933773ef92d97b68af9134906a">1dd96f7</a>)</li>
+<li>cloud-first default + full client SDK parity (<a href="https://github.com/us/crw/commit/21e819ed8a863929bb67323c8b8c4b37ac5f712f">21e819e</a>)</li>
+<li>fold langchain/crewai adapters into crw.integrations extras (<a href="https://github.com/us/crw/commit/cd49120f957d23e06899d4628388e1aa8cd11842">cd49120</a>)</li>
+<li><strong>release:</strong> publish crw-cli (and crw-browse) to crates.io (<a href="https://github.com/us/crw/commit/b3d80046be72f1495985f6f21485c6fbdae4da7c">b3d8004</a>)</li>
+<li><strong>search:</strong> accept native SearXNG categories as passthrough (<a href="https://github.com/us/crw/commit/b3bcc5d439fb37f214b76b96e053053765714e39">b3bcc5d</a>)</li>
+</ul>
+<h3>Bug Fixes</h3>
+<ul>
+<li><strong>antibot:</strong> detect Google rate-limit/bot-wall pages served with HTTP 200 (<a href="https://github.com/us/crw/commit/08bb46e5e41d9933e1c9603239938dbd500323fe">08bb46e</a>)</li>
+<li><strong>ci:</strong> compile TS tests to JS so the SDK suite runs on Node 18/20 (<a href="https://github.com/us/crw/commit/e1b75469af88cad612f93c64333508850864a981">e1b7546</a>)</li>
+<li><strong>extract:</strong> avoid doubling chat/completions in structured base_url (<a href="https://github.com/us/crw/commit/3816bb6713dc0932d0b06179f2e37927dba95dfb">3816bb6</a>)</li>
+<li><strong>map:</strong> fold hyphen/underscore param spellings, add compare actions (<a href="https://github.com/us/crw/commit/f34ae12844082db68d052b132c524eb5a4a4c9c1">f34ae12</a>), closes <a href="https://github.com/us/crw/issues/128">#128</a></li>
+<li><strong>npm:</strong> declare node&gt;=18 engines on crw-mcp packages (<a href="https://github.com/us/crw/commit/3c953feaa3c01d18f0dc05f36be339cb68d31470">3c953fe</a>)</li>
+<li><strong>renderer:</strong> reap CDP target + context on PoolGuard cancellation drop (<a href="https://github.com/us/crw/commit/0eebadcb1a4360a0dad5b682301c181a0c328259">0eebadc</a>)</li>
+</ul>
 <h2><a href="https://github.com/us/crw/compare/v0.13.4...v0.14.0">0.14.0</a> (2026-06-08)</h2>
 <h3>Features</h3>
 <ul>
