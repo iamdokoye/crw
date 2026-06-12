@@ -2,7 +2,11 @@
   <img src="docs/logo-animation.gif" alt="fastCRW" width="220" />
 </p>
 
-# fastCRW — Self-hosted, Rust-native web crawler & scraper for AI agents
+<h1 align="center">fastCRW</h1>
+
+<p align="center">
+  Self-hosted, Rust-native web crawler &amp; scraper for AI agents
+</p>
 
 The open-source alternative to Firecrawl. One static binary, ~50 MB RAM idle,
 Firecrawl-compatible REST API (`/v1/scrape`, `/v1/crawl`, `/v1/extract`,
