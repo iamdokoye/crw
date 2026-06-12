@@ -284,7 +284,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     <main class="content" id="content">
       <article id="article" role="main"><div class="page-intro">
   <div class="page-kicker">Get Started</div>
-  <h1>API Overview</h1>
+  <h1 id="api-overview">API Overview</h1>
   <p class="page-subtitle">Use this page to pick the right CRW route quickly. The endpoint pages are the real usage guides; this page is the shortest map from your task to the right API surface.</p>
   <div class="page-capabilities">
     <div class="page-capability"><strong>Hosted base URL:</strong> <code>https://fastcrw.com/api</code></div>
@@ -295,13 +295,13 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     <a class="page-btn primary" href="/scraping">Open Scrape</a>
     <a class="page-btn secondary" href="/quick-start">Open Quick Start</a>
   </div>
-</div><h2>Authentication</h2>
+</div><h2 id="authentication">Authentication</h2>
 <ul>
 <li>Hosted API: always send <code>Authorization: Bearer YOUR_API_KEY</code></li>
 <li>Self-hosted API: auth is only required when <code>auth.api_keys</code> is configured</li>
 <li><code>/health</code> is always public</li>
 </ul>
-<h2>Pick the right endpoint</h2>
+<h2 id="pick-the-right-endpoint">Pick the right endpoint</h2>
 <p>:::cards
 ::card{icon=&quot;code&quot; title=&quot;Scrape&quot; href=&quot;#scraping&quot; description=&quot;One known URL in, clean content out. This is the default starting point.&quot;}
 ::card{icon=&quot;search&quot; title=&quot;Search&quot; href=&quot;#search&quot; description=&quot;Hosted discovery-first workflow when you do not know the URLs yet.&quot;}
@@ -310,7 +310,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 ::card{icon=&quot;zap&quot; title=&quot;Extract&quot; href=&quot;#extract&quot; description=&quot;Return structured JSON when downstream systems want fields, not prose.&quot;}
 ::card{icon=&quot;plug&quot; title=&quot;MCP&quot; href=&quot;#mcp&quot; description=&quot;Expose CRW as tools to Claude, Codex, Cursor, and other MCP hosts.&quot;}
 :::</p>
-<h2>Route summary</h2>
+<h2 id="route-summary">Route summary</h2>
 <table>
 <thead>
 <tr>
@@ -365,21 +365,21 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <td>Reports supported formats, LLM providers, whether a server-side key is configured</td>
 </tr>
 </tbody></table>
-<h2>Start with this request</h2>
+<h2 id="start-with-this-request">Start with this request</h2>
 <pre><code class="language-bash">curl -X POST https://fastcrw.com/api/v1/scrape \
   -H &quot;Authorization: Bearer YOUR_API_KEY&quot; \
   -H &quot;Content-Type: application/json&quot; \
   -d &#39;{&quot;url&quot;:&quot;https://example.com&quot;,&quot;formats&quot;:[&quot;markdown&quot;]}&#39;
 </code></pre>
 <p>If that request works, continue into <a href="/scraping">Scrape</a> and only then branch into search, map, crawl, or extraction.</p>
-<h2>Shared reference pages</h2>
+<h2 id="shared-reference-pages">Shared reference pages</h2>
 <ul>
 <li><a href="/response-shapes">Response Shapes</a> for common envelopes</li>
 <li><a href="/output-formats">Output Formats</a> for <code>markdown</code>, <code>html</code>, <code>rawHtml</code>, <code>plainText</code>, <code>links</code>, <code>json</code>, and <code>summary</code></li>
 <li><a href="/error-codes">Error Codes</a> for failure handling</li>
 <li><a href="/rate-limits">Rate Limits</a> and <a href="/credit-costs">Credit Costs</a> for hosted usage planning</li>
 </ul>
-<h2>What to read next</h2>
+<h2 id="what-to-read-next">What to read next</h2>
 <ul>
 <li><a href="/quick-start">Quick Start</a></li>
 <li><a href="/scraping">Scrape</a></li>

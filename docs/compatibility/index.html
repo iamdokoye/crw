@@ -282,10 +282,10 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     </aside>
 
     <main class="content" id="content">
-      <article id="article" role="main"><h1>Compatibility Matrix</h1>
-<h2>What &quot;Compatible&quot; Means Here</h2>
+      <article id="article" role="main"><h1 id="compatibility-matrix">Compatibility Matrix</h1>
+<h2 id="what-compatible-means-here">What &quot;Compatible&quot; Means Here</h2>
 <p>CRW is built around <strong>Firecrawl-compatible workflows</strong>, not a blanket &quot;drop-in replacement&quot; claim. The goal is to preserve the core request mental model so migrations are manageable, while still documenting the places where behavior differs.</p>
-<h2>Supported alignment</h2>
+<h2 id="supported-alignment">Supported alignment</h2>
 <table>
 <thead>
 <tr>
@@ -310,7 +310,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <td>Supported</td>
 </tr>
 </tbody></table>
-<h2>Known differences</h2>
+<h2 id="known-differences">Known differences</h2>
 <table>
 <thead>
 <tr>
@@ -340,7 +340,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 </tr>
 </tbody></table>
 <p>Treat this page as the source of truth during migrations.</p>
-<h2>Migration Checklist</h2>
+<h2 id="migration-checklist">Migration Checklist</h2>
 <p>If you are moving an existing Firecrawl-style integration:</p>
 <ol>
 <li>verify <code>scrape</code>, <code>crawl</code>, and <code>map</code> request bodies against real targets,</li>
@@ -349,7 +349,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <li>and compare output quality, not just endpoint shape.</li>
 </ol>
 <p>Compatibility at the request level is useful, but output semantics and operational behavior matter just as much.</p>
-<h2>Example Evaluation Workflow</h2>
+<h2 id="example-evaluation-workflow">Example Evaluation Workflow</h2>
 <p>A practical migration test usually looks like this:</p>
 <ol>
 <li>take one production URL that already works in the old integration,</li>
@@ -359,7 +359,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <li>only then update the calling code.</li>
 </ol>
 <p>That sequence catches the gap between request-shape compatibility and output-quality compatibility.</p>
-<h2>When Compatibility Is &quot;Good Enough&quot;</h2>
+<h2 id="when-compatibility-is-good-enough">When Compatibility Is &quot;Good Enough&quot;</h2>
 <p>Compatibility is good enough when your migration goal is:</p>
 <ul>
 <li>preserving the existing mental model,</li>
@@ -367,7 +367,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <li>and minimizing changes in the application layer.</li>
 </ul>
 <p>It is not good enough if your current system depends on features this page already marks as unsupported or behaviorally different.</p>
-<h2>Common Mistakes</h2>
+<h2 id="common-mistakes">Common Mistakes</h2>
 <ul>
 <li>Assuming route-name compatibility means output semantics are identical.</li>
 <li>Migrating a whole workload before testing <code>warning</code> handling and failure cases.</li>

@@ -30,7 +30,7 @@ Built in Rust because every millisecond of agent latency compounds.
   <a href="https://discord.gg/kkFh2SC8"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join our Discord" /></a>
 </p>
 
-Works with: [Claude Code](https://docs.fastcrw.com/mcp-clients/) · [Cursor](https://docs.fastcrw.com/mcp-clients/) · [Windsurf](https://docs.fastcrw.com/mcp-clients/) · [Cline](https://docs.fastcrw.com/mcp-clients/) · [Copilot](https://docs.fastcrw.com/mcp-clients/) · [Continue.dev](https://docs.fastcrw.com/mcp-clients/) · [Codex](https://docs.fastcrw.com/mcp-clients/) · [Gemini CLI](https://docs.fastcrw.com/mcp-clients/)
+Works with: [Claude Code](https://docs.fastcrw.com/mcp-clients/#claude-code) · [Cursor](https://docs.fastcrw.com/mcp-clients/#cursor) · [Windsurf](https://docs.fastcrw.com/mcp-clients/#windsurf) · [Cline](https://docs.fastcrw.com/mcp-clients/#cline) · [Copilot](https://docs.fastcrw.com/mcp-clients/#any-mcp-client) · [Continue.dev](https://docs.fastcrw.com/mcp-clients/#continue) · [Codex](https://docs.fastcrw.com/mcp-clients/#openai-codex-cli) · [Gemini CLI](https://docs.fastcrw.com/mcp-clients/#gemini-cli)
 
 ---
 

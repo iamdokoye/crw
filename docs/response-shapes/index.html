@@ -282,9 +282,9 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     </aside>
 
     <main class="content" id="content">
-      <article id="article" role="main"><h1>Response Shapes</h1>
+      <article id="article" role="main"><h1 id="response-shapes">Response Shapes</h1>
 <p>Use this page when you want the common CRW envelopes in one place. The endpoint pages stay the source of truth for behavior; this page is the quick shape reference.</p>
-<h2>Scrape</h2>
+<h2 id="scrape">Scrape</h2>
 <pre><code class="language-json">{
   &quot;success&quot;: true,
   &quot;data&quot;: {
@@ -322,13 +322,13 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
   }
 }
 </code></pre>
-<h2>Crawl Start</h2>
+<h2 id="crawl-start">Crawl Start</h2>
 <pre><code class="language-json">{
   &quot;success&quot;: true,
   &quot;id&quot;: &quot;550e8400-e29b-41d4-a716-446655440000&quot;
 }
 </code></pre>
-<h2>Crawl Status</h2>
+<h2 id="crawl-status">Crawl Status</h2>
 <pre><code class="language-json">{
   &quot;success&quot;: true,
   &quot;status&quot;: &quot;completed&quot;,
@@ -344,7 +344,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
   ]
 }
 </code></pre>
-<h2>Map</h2>
+<h2 id="map">Map</h2>
 <pre><code class="language-json">{
   &quot;success&quot;: true,
   &quot;data&quot;: {
@@ -355,7 +355,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
   }
 }
 </code></pre>
-<h2>Search</h2>
+<h2 id="search">Search</h2>
 <p><code>data</code> is a wrapper around the actual results. When you do not use any LLM feature, the wrapper still holds the results in <code>data.results</code> and the other fields stay empty/null.</p>
 <pre><code class="language-json">{
   &quot;success&quot;: true,
@@ -395,14 +395,14 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 }
 </code></pre>
 <p><code>answer</code>, <code>citations</code>, and the top-level <code>llmUsage</code> are populated only when <code>answer: true</code> was sent. Per-result <code>summary</code> is populated only when <code>summarizeResults: true</code> was sent.</p>
-<h2>Error Envelope</h2>
+<h2 id="error-envelope">Error Envelope</h2>
 <pre><code class="language-json">{
   &quot;success&quot;: false,
   &quot;error&quot;: &quot;Human-readable error message&quot;,
   &quot;error_code&quot;: &quot;machine_readable_code&quot;
 }
 </code></pre>
-<h2>What To Read Next</h2>
+<h2 id="what-to-read-next">What To Read Next</h2>
 <ul>
 <li><a href="/scraping">Scrape</a></li>
 <li><a href="/crawling">Crawl</a></li>

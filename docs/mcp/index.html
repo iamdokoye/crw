@@ -282,12 +282,12 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     </aside>
 
     <main class="content" id="content">
-      <article id="article" role="main"><h1>MCP Server for AI Agents</h1>
+      <article id="article" role="main"><h1 id="mcp-server-for-ai-agents">MCP Server for AI Agents</h1>
 <p>CRW includes a built-in MCP (Model Context Protocol) server that gives any MCP-compatible AI assistant — Claude Code, Claude Desktop, Cursor, Windsurf, Cline, Continue.dev, OpenAI Codex CLI — 4 web scraping tools. Turn any AI coding agent into a web scraper with a single command.</p>
 <blockquote>
 <p>Also available on the <a href="https://registry.modelcontextprotocol.io/?q=crw">MCP Registry</a></p>
 </blockquote>
-<h2>Two Modes</h2>
+<h2 id="two-modes">Two Modes</h2>
 <p><code>crw-mcp</code> supports two modes:</p>
 <table>
 <thead>
@@ -311,12 +311,12 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <td>Forwards tool calls to a remote CRW server — the <a href="https://fastcrw.com">fastcrw.com</a> cloud <strong>or your own self-hosted server</strong>. <code>crw_search</code> works whenever that server has SearXNG configured (the Docker stack enables it by default).</td>
 </tr>
 </tbody></table>
-<h2>Where to use what</h2>
+<h2 id="where-to-use-what">Where to use what</h2>
 <ul>
 <li>Use this page for the MCP model, tool list, and transport choices.</li>
 <li>Use <a href="/mcp-clients">MCP Client Setup</a> for Claude Code, Codex, Cursor, Windsurf, Cline, Continue, and similar host-specific config snippets.</li>
 </ul>
-<h2>When MCP Helps</h2>
+<h2 id="when-mcp-helps">When MCP Helps</h2>
 <p>MCP is useful when the agent host already expects tools to be registered through a standard interface. That reduces one layer of custom glue code between the agent and your scraping service.</p>
 <p>Typical fits:</p>
 <ul>
@@ -325,7 +325,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <li>multi-tool assistants that combine search, scrape, and synthesis,</li>
 <li>and developer environments such as Claude or Cursor where MCP is already the preferred integration path.</li>
 </ul>
-<h2>Quick Start (Embedded Mode)</h2>
+<h2 id="quick-start-embedded-mode">Quick Start (Embedded Mode)</h2>
 <p>No server to start, no setup. Install and add <code>crw-mcp</code>:</p>
 <pre><code class="language-bash"># One-line install (auto-detects OS &amp; arch):
 curl -fsSL https://raw.githubusercontent.com/us/crw/main/install.sh | sh
@@ -351,20 +351,20 @@ codex mcp add crw -- npx crw-mcp
 </code></pre>
 <p>That&#39;s it. The agent starts <code>crw-mcp</code>, which contains the full scraping engine. When the agent disconnects, the process dies.</p>
 <p>If you want host-by-host config files instead of one-liners, jump to <a href="/mcp-clients">MCP Client Setup</a>.</p>
-<h3>With CDP rendering (LightPanda/Chrome)</h3>
+<h3 id="with-cdp-rendering-lightpandachrome">With CDP rendering (LightPanda/Chrome)</h3>
 <p>If you have a CDP-compatible browser, pass it via env vars:</p>
 <pre><code class="language-bash">claude mcp add \
   -e CRW_RENDERER__LIGHTPANDA__WS_URL=ws://127.0.0.1:9222 \
   crw -- npx crw-mcp
 </code></pre>
 <p>Without a CDP browser, <code>crw-mcp</code> uses its HTTP-only renderer (no JavaScript rendering).</p>
-<h3>Embedded mode configuration</h3>
+<h3 id="embedded-mode-configuration">Embedded mode configuration</h3>
 <p>In embedded mode, <code>crw-mcp</code> loads config the same way as <code>crw-server</code>: <code>config.default.toml</code> → <code>config.local.toml</code> → env var overrides. Env vars use <code>CRW_</code> prefix with <code>__</code> separator:</p>
 <pre><code class="language-bash">CRW_CRAWLER__MAX_CONCURRENCY=5
 CRW_RENDERER__LIGHTPANDA__WS_URL=ws://127.0.0.1:9222
 CRW_CRAWLER__USER_AGENT=&quot;MyBot/1.0&quot;
 </code></pre>
-<h2>Proxy Mode (Remote Server)</h2>
+<h2 id="proxy-mode-remote-server">Proxy Mode (Remote Server)</h2>
 <p>Connect to <a href="https://fastcrw.com">fastcrw.com</a> or any remote CRW instance:</p>
 <pre><code class="language-bash"># Cloud server
 claude mcp add \
@@ -378,7 +378,7 @@ claude mcp add \
   crw -- npx crw-mcp
 </code></pre>
 <p>The same <code>CRW_API_URL</code> + <code>CRW_API_KEY</code> env block also works in Codex, Claude Desktop, Cursor, Windsurf, Cline, and Continue. See <a href="/mcp-clients">MCP Client Setup</a> for ready-to-paste config files.</p>
-<h2>Three Transport Options</h2>
+<h2 id="three-transport-options">Three Transport Options</h2>
 <table>
 <thead>
 <tr>
@@ -403,11 +403,11 @@ claude mcp add \
 <td><code>crw-server</code> running</td>
 </tr>
 </tbody></table>
-<h3>HTTP Transport</h3>
+<h3 id="http-transport">HTTP Transport</h3>
 <p>The <code>crw-server</code> has a built-in <code>/mcp</code> endpoint. No extra binary needed:</p>
 <pre><code class="language-bash">claude mcp add --transport http crw http://localhost:3000/mcp
 </code></pre>
-<h2>CLI Options</h2>
+<h2 id="cli-options">CLI Options</h2>
 <table>
 <thead>
 <tr>
@@ -437,7 +437,7 @@ claude mcp add \
 <td>Log level (default: <code>crw_mcp=info</code>, logs go to stderr)</td>
 </tr>
 </tbody></table>
-<h2>Feature Flags</h2>
+<h2 id="feature-flags">Feature Flags</h2>
 <table>
 <thead>
 <tr>
@@ -455,7 +455,7 @@ claude mcp add \
 <p>Build a slim proxy-only binary:</p>
 <pre><code class="language-bash">cargo build -p crw-mcp --no-default-features --release
 </code></pre>
-<h2>Available Tools</h2>
+<h2 id="available-tools">Available Tools</h2>
 <table>
 <thead>
 <tr>
@@ -496,7 +496,7 @@ claude mcp add \
 <td><strong>Server with SearXNG</strong> (cloud or self-hosted)</td>
 </tr>
 </tbody></table>
-<h2>Browser Automation (<code>crw-browse</code>)</h2>
+<h2 id="browser-automation-crw-browse">Browser Automation (<code>crw-browse</code>)</h2>
 <p><code>crw-browse</code> is a <strong>separate MCP server</strong> (since v0.4.0) that drives a real Chrome-family browser over CDP for stateful interaction. Use it when the agent needs to navigate multi-step flows, click, or read the DOM — cases where a one-shot scrape is not enough.</p>
 <table>
 <thead>
@@ -524,8 +524,8 @@ crw-browse
 # https://github.com/us/crw/releases/tag/v0.4.0
 </code></pre>
 <p>Wire it into your client the same way you do <code>crw-mcp</code> — it uses stdio transport and is a self-hosted binary (no cloud account required).</p>
-<h2>Best first setups</h2>
-<h3>Claude Code</h3>
+<h2 id="best-first-setups">Best first setups</h2>
+<h3 id="claude-code">Claude Code</h3>
 <pre><code class="language-bash"># Local embedded
 claude mcp add crw -- npx crw-mcp
 
@@ -535,12 +535,12 @@ claude mcp add \
   -e CRW_API_KEY=YOUR_API_KEY \
   crw -- npx crw-mcp
 </code></pre>
-<h3>OpenAI Codex CLI</h3>
+<h3 id="openai-codex-cli">OpenAI Codex CLI</h3>
 <pre><code class="language-bash"># Local embedded
 codex mcp add crw -- npx crw-mcp
 </code></pre>
 <p>For cloud mode and file-based configs, continue in <a href="/mcp-clients">MCP Client Setup</a>.</p>
-<h3>crw_scrape</h3>
+<h3 id="crw_scrape">crw_scrape</h3>
 <table>
 <thead>
 <tr>
@@ -581,7 +581,7 @@ codex mcp add crw -- npx crw-mcp
 <td>CSS selectors to remove</td>
 </tr>
 </tbody></table>
-<h3>crw_crawl</h3>
+<h3 id="crw_crawl">crw_crawl</h3>
 <table>
 <thead>
 <tr>
@@ -610,7 +610,7 @@ codex mcp add crw -- npx crw-mcp
 <td>Max pages (default: 10)</td>
 </tr>
 </tbody></table>
-<h3>crw_check_crawl_status</h3>
+<h3 id="crw_check_crawl_status">crw_check_crawl_status</h3>
 <table>
 <thead>
 <tr>
@@ -627,7 +627,7 @@ codex mcp add crw -- npx crw-mcp
 <td>Job ID from <code>crw_crawl</code></td>
 </tr>
 </tbody></table>
-<h3>crw_map</h3>
+<h3 id="crw_map">crw_map</h3>
 <table>
 <thead>
 <tr>
@@ -656,7 +656,7 @@ codex mcp add crw -- npx crw-mcp
 <td>Read sitemap.xml (default: true)</td>
 </tr>
 </tbody></table>
-<h3>crw_search (server-backed)</h3>
+<h3 id="crw_search-server-backed">crw_search (server-backed)</h3>
 <p>Available when connected to a CRW <strong>server</strong> that has SearXNG configured — the <a href="https://fastcrw.com">fastcrw.com</a> cloud, or your own self-hosted server (the Docker stack enables it by default; see <a href="/docker">Docker → Search (SearXNG)</a>). Point the MCP at it with <code>--api-url</code> / <code>CRW_API_URL</code>. It is <em>not</em> available from the standalone embedded MCP binary, which has no search backend.</p>
 <table>
 <thead>
@@ -698,7 +698,7 @@ codex mcp add crw -- npx crw-mcp
 <td>Scrape each result page (e.g. <code>{&quot;formats&quot;: [&quot;markdown&quot;]}</code>)</td>
 </tr>
 </tbody></table>
-<h2>Example Agent Tool Flow</h2>
+<h2 id="example-agent-tool-flow">Example Agent Tool Flow</h2>
 <p>A clean MCP setup often assigns each CRW route a narrow purpose:</p>
 <ul>
 <li><code>search</code> for web discovery when you don&#39;t know the URL (needs a search-enabled server),</li>
@@ -714,10 +714,10 @@ codex mcp add crw -- npx crw-mcp
 <li>CRW returns scrape, map, or crawl output.</li>
 <li>The agent decides whether to continue exploring or move into summarization, ranking, or retrieval.</li>
 </ol>
-<h2>When MCP Is Better Than Direct HTTP</h2>
+<h2 id="when-mcp-is-better-than-direct-http">When MCP Is Better Than Direct HTTP</h2>
 <p>Choose MCP when the host environment already expects tool discovery through a shared protocol, especially in local agent runtimes or IDE workflows. Choose direct HTTP when your application already owns orchestration and just needs API access from the backend.</p>
 <p>In other words, MCP is ideal when the caller is an agent platform. Direct HTTP is often simpler when the caller is your own service code.</p>
-<h2>Detailed host setup</h2>
+<h2 id="detailed-host-setup">Detailed host setup</h2>
 <p>Use <a href="/mcp-clients">MCP Client Setup</a> for:</p>
 <ul>
 <li>Claude Code one-liners and HTTP transport</li>
@@ -727,7 +727,7 @@ codex mcp add crw -- npx crw-mcp
 <li>Continue YAML examples</li>
 <li>local embedded and fastcrw.com cloud config variants side by side</li>
 </ul>
-<h2>Verify Installation</h2>
+<h2 id="verify-installation">Verify Installation</h2>
 <pre><code class="language-bash">echo &#39;{&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:1,&quot;method&quot;:&quot;initialize&quot;,&quot;params&quot;:{&quot;clientInfo&quot;:{&quot;name&quot;:&quot;test&quot;},&quot;protocolVersion&quot;:&quot;2025-06-18&quot;}}&#39; \
   | crw-mcp 2&gt;/dev/null
 </code></pre>
@@ -742,7 +742,7 @@ codex mcp add crw -- npx crw-mcp
   }
 }
 </code></pre>
-<h2>How It Works</h2>
+<h2 id="how-it-works">How It Works</h2>
 <p><strong>Embedded mode (default):</strong></p>
 <pre><code>AI Assistant → stdin (JSON-RPC 2.0) → crw-mcp [scraping engine] → Web pages
 </code></pre>
@@ -755,13 +755,13 @@ codex mcp add crw -- npx crw-mcp
 <p>In embedded mode, the scraping engine runs in-process with zero overhead. In proxy mode, tool calls are forwarded over HTTP. The HTTP transport calls <code>crw-server</code> functions directly.</p>
 <p>Protocol version: <code>2025-06-18</code></p>
 <p>The <code>crw_search</code> tool declares an <code>outputSchema</code> and therefore returns its result both as the usual text content block and as a spec-compliant <code>structuredContent</code> object (MCP 2025-06-18) shaped like <code>{ success, data: { results: [...] } }</code> — strict clients can validate it directly, while lenient clients keep reading the text block unchanged.</p>
-<h2>Operational Notes</h2>
+<h2 id="operational-notes">Operational Notes</h2>
 <ul>
 <li>Keep MCP tool descriptions tight so the agent knows when to use <code>map</code> versus <code>scrape</code>.</li>
 <li>Start with read-only scraping tools before exposing anything more complex in the same MCP server.</li>
 <li>Log tool usage separately from downstream agent reasoning so debugging stays tractable.</li>
 </ul>
-<h2>Common Mistakes</h2>
+<h2 id="common-mistakes">Common Mistakes</h2>
 <ul>
 <li>Registering ambiguous tool descriptions that do not explain when to use <code>map</code> versus <code>scrape</code>.</li>
 <li>Mixing operational secrets and agent prompts in the same configuration surface.</li>

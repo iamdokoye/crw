@@ -284,7 +284,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     <main class="content" id="content">
       <article id="article" role="main"><div class="page-intro">
   <div class="page-kicker">Get Started</div>
-  <h1>Quick Start</h1>
+  <h1 id="quick-start">Quick Start</h1>
   <p class="page-subtitle">Get one successful CRW response as fast as possible. The shortest path is the hosted API on <code>fastcrw.com</code>; MCP and self-hosting come right after that.</p>
   <div class="page-capabilities">
     <div class="page-capability"><strong>Goal:</strong> first success in under a minute</div>
@@ -295,18 +295,18 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     <a class="page-btn primary" href="https://fastcrw.com/register" target="_blank" rel="noopener">Get API key</a>
     <a class="page-btn secondary" href="https://fastcrw.com/playground" target="_blank" rel="noopener">Open Playground</a>
   </div>
-</div><h2>Start here</h2>
+</div><h2 id="start-here">Start here</h2>
 <ol>
 <li>Get an API key.</li>
 <li>Copy the request below.</li>
 <li>Confirm you got a markdown response back.</li>
 </ol>
 <p>If you reach step 3, you are unblocked for almost every other page in this docs set.</p>
-<h2>Authentication</h2>
+<h2 id="authentication">Authentication</h2>
 <p>Create an account at <a href="https://fastcrw.com/register">fastcrw.com/register</a>, then send the key in the <code>Authorization</code> header:</p>
 <pre><code class="language-http">Authorization: Bearer YOUR_API_KEY
 </code></pre>
-<h2>First request</h2>
+<h2 id="first-request">First request</h2>
 <pre><code class="language-bash">curl -X POST https://fastcrw.com/api/v1/scrape \
   -H &quot;Authorization: Bearer YOUR_API_KEY&quot; \
   -H &quot;Content-Type: application/json&quot; \
@@ -315,7 +315,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     &quot;formats&quot;: [&quot;markdown&quot;]
   }&#39;
 </code></pre>
-<h2>First response</h2>
+<h2 id="first-response">First response</h2>
 <pre><code class="language-json">{
   &quot;success&quot;: true,
   &quot;data&quot;: {
@@ -330,7 +330,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 }
 </code></pre>
 <p>That is the default CRW shape most users should start with: one URL, one markdown output, no extra knobs.</p>
-<h2>The same request in code</h2>
+<h2 id="the-same-request-in-code">The same request in code</h2>
 <p>:::tabs
 ::tab{title=&quot;cURL&quot;}</p>
 <pre><code class="language-bash">curl -X POST https://fastcrw.com/api/v1/scrape \
@@ -372,19 +372,19 @@ const body = await resp.json();
 console.log(body.data.markdown);
 </code></pre>
 <p>:::</p>
-<h2>Pick the next page</h2>
+<h2 id="pick-the-next-page">Pick the next page</h2>
 <p>:::cards
 ::card{icon=&quot;code&quot; title=&quot;Need a known URL?&quot; href=&quot;#scraping&quot; description=&quot;Stay with scrape and add formats, selectors, JS rendering, or extraction.&quot;}
 ::card{icon=&quot;search&quot; title=&quot;Need unknown URLs?&quot; href=&quot;#search&quot; description=&quot;Use search first, then scrape only the results you care about.&quot;}
 ::card{icon=&quot;map&quot; title=&quot;Need discovery on one site?&quot; href=&quot;#map&quot; description=&quot;Use map when you need reachability before you recurse.&quot;}
 ::card{icon=&quot;globe&quot; title=&quot;Need multiple pages?&quot; href=&quot;#crawling&quot; description=&quot;Use crawl for bounded recursion after you validate the target section.&quot;}
 :::</p>
-<h2>MCP path</h2>
+<h2 id="mcp-path">MCP path</h2>
 <p>If your real goal is to give an AI tool live web access, go straight to MCP:</p>
 <pre><code class="language-bash">claude mcp add crw -- npx crw-mcp
 </code></pre>
 <p>For Codex, Cursor, Windsurf, and others, continue in <a href="/mcp">MCP Server</a>.</p>
-<h2>Self-host path</h2>
+<h2 id="self-host-path">Self-host path</h2>
 <p>If you want a local or private deployment instead of the hosted API:</p>
 <pre><code class="language-bash">docker run -p 3000:3000 ghcr.io/us/crw
 </code></pre>
@@ -394,14 +394,14 @@ console.log(body.data.markdown);
   -d &#39;{&quot;url&quot;:&quot;https://example.com&quot;,&quot;formats&quot;:[&quot;markdown&quot;]}&#39;
 </code></pre>
 <p>Use <a href="/self-hosting">Self-Hosting</a> for the full deployment path and <a href="/installation">Installation</a> for package-level install options.</p>
-<h2>Common mistakes</h2>
+<h2 id="common-mistakes">Common mistakes</h2>
 <ul>
 <li>Using too many options in the first request. Start with <code>formats: [&quot;markdown&quot;]</code>.</li>
 <li>Turning on JS rendering before checking whether plain HTTP already works.</li>
 <li>Jumping into <code>crawl</code> before validating the target with <code>scrape</code>.</li>
 <li>Treating <code>search</code> as self-hosted. In these docs, <code>search</code> is the hosted/cloud path unless noted otherwise.</li>
 </ul>
-<h2>What to read next</h2>
+<h2 id="what-to-read-next">What to read next</h2>
 <ul>
 <li><a href="/scraping">Scrape</a> for the canonical single-page flow</li>
 <li><a href="/search">Search</a> for discovery-first workflows</li>

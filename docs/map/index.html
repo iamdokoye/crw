@@ -284,7 +284,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     <main class="content" id="content">
       <article id="article" role="main"><div class="page-intro">
   <div class="page-kicker">More API</div>
-  <h1>Map</h1>
+  <h1 id="map">Map</h1>
   <p class="page-subtitle">Discover the URLs a site exposes before you scrape or crawl it. Map is the lightest way to understand scope without paying the cost of a full multi-page extraction job.</p>
   <div class="page-capabilities">
     <div class="page-capability"><strong>Best for:</strong> site discovery</div>
@@ -303,8 +303,8 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     <a class="page-btn primary" href="https://fastcrw.com/playground" target="_blank" rel="noopener">Open Playground</a>
     <a class="page-btn secondary" href="/crawling">Jump to Crawl</a>
   </div>
-</div><h2>Mapping a site with CRW</h2>
-<h3>/v1/map</h3>
+</div><h2 id="mapping-a-site-with-crw">Mapping a site with CRW</h2>
+<h3 id="v1map">/v1/map</h3>
 <pre><code class="language-http">POST /v1/map
 </code></pre>
 <p>Authentication:</p>
@@ -312,9 +312,9 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <li>Hosted: send <code>Authorization: Bearer YOUR_API_KEY</code></li>
 <li>Self-hosted: only required when <code>auth.api_keys</code> is configured</li>
 </ul>
-<h3>Installation</h3>
+<h3 id="installation">Installation</h3>
 <p>Map is also a plain HTTP route. No dedicated SDK is required.</p>
-<h3>Basic usage</h3>
+<h3 id="basic-usage">Basic usage</h3>
 <p>Start with this request:</p>
 <pre><code class="language-json">{
   &quot;url&quot;: &quot;https://example.com&quot;,
@@ -366,7 +366,7 @@ console.log(body.data.links);
   }&#39;
 </code></pre>
 <p>:::</p>
-<h3>Response</h3>
+<h3 id="response">Response</h3>
 <pre><code class="language-json">{
   &quot;success&quot;: true,
   &quot;data&quot;: {
@@ -377,7 +377,7 @@ console.log(body.data.links);
   }
 }
 </code></pre>
-<h2>Parameters</h2>
+<h2 id="parameters">Parameters</h2>
 <table>
 <thead>
 <tr>
@@ -412,7 +412,7 @@ console.log(body.data.links);
 <td>Custom timeout in seconds</td>
 </tr>
 </tbody></table>
-<h2>Sitemap behavior</h2>
+<h2 id="sitemap-behavior">Sitemap behavior</h2>
 <p>With <code>useSitemap: true</code>, CRW uses sitemap hints when they are available. That usually makes the first discovery pass faster and more complete on structured sites.</p>
 <p>Good default:</p>
 <ul>
@@ -421,7 +421,7 @@ console.log(body.data.links);
 <li>inspect the discovered links,</li>
 <li>then decide whether crawl is worth it.</li>
 </ul>
-<h2>When map is better than crawl</h2>
+<h2 id="when-map-is-better-than-crawl">When map is better than crawl</h2>
 <p>Use map when:</p>
 <ul>
 <li>you need to understand a site&#39;s shape before extracting any content,</li>
@@ -429,19 +429,19 @@ console.log(body.data.links);
 <li>or you are deciding which section is worth crawling.</li>
 </ul>
 <p>Use crawl only after you already trust the section you want to recurse through.</p>
-<h2>Common production patterns</h2>
+<h2 id="common-production-patterns">Common production patterns</h2>
 <ul>
 <li>Run map before crawl when you do not yet trust the start URL scope.</li>
 <li>Keep <code>maxDepth</code> low first so you can inspect the discovered section.</li>
 <li>Use sitemap hints when you want a faster first pass over structured sites.</li>
 </ul>
-<h2>Common mistakes</h2>
+<h2 id="common-mistakes">Common mistakes</h2>
 <ul>
 <li>Using map when you already know the exact page and only need its content</li>
 <li>Expecting map to return page bodies; it only returns discovered links</li>
 <li>Letting depth grow before inspecting whether the discovered section is useful</li>
 </ul>
-<h2>When to use something else</h2>
+<h2 id="when-to-use-something-else">When to use something else</h2>
 <ul>
 <li>Use <a href="/scraping">Scrape</a> when you want the content of a known page</li>
 <li>Use <a href="/crawling">Crawl</a> when you are ready to recurse through a bounded section</li>

@@ -282,11 +282,11 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     </aside>
 
     <main class="content" id="content">
-      <article id="article" role="main"><h1>Rate Limits</h1>
-<h2>Window</h2>
+      <article id="article" role="main"><h1 id="rate-limits">Rate Limits</h1>
+<h2 id="window">Window</h2>
 <p>CRW uses a <strong>per 60-second sliding window</strong> for API-key rate limiting. The window slides continuously -- it counts requests in the last 60 seconds from the current moment, not fixed calendar minutes.</p>
 <p>That means a burst at <code>12:00:20</code> still affects what you can send at <code>12:01:00</code>. Think in rolling windows, not top-of-minute resets.</p>
-<h2>Current per-plan limits</h2>
+<h2 id="current-per-plan-limits">Current per-plan limits</h2>
 <p>:::note
 Cloud only (fastcrw.com) -- self-hosted instances can configure their own rate limits.
 :::</p>
@@ -318,7 +318,7 @@ Cloud only (fastcrw.com) -- self-hosted instances can configure their own rate l
 <td>600</td>
 </tr>
 </tbody></table>
-<h2>Example: Handling <code>429</code> Correctly</h2>
+<h2 id="example-handling-429-correctly">Example: Handling <code>429</code> Correctly</h2>
 <p>When the API limit is hit, the recovery path should be mechanical:</p>
 <pre><code class="language-ts">if (res.status === 429) {
   const retryAfter = Number(res.headers.get(&quot;Retry-After&quot;) ?? &quot;1&quot;);
@@ -327,14 +327,14 @@ Cloud only (fastcrw.com) -- self-hosted instances can configure their own rate l
 }
 </code></pre>
 <p>That is different from a target-site <code>429</code>. If the target site rate-limits you, the CRW request may still complete at the HTTP layer while reporting the target failure inside <code>metadata.statusCode</code> or <code>warning</code>.</p>
-<h2>Headers</h2>
+<h2 id="headers">Headers</h2>
 <ul>
 <li><code>Retry-After</code></li>
 <li><code>X-RateLimit-Limit</code></li>
 <li><code>X-RateLimit-Remaining</code></li>
 </ul>
 <p>When you receive a <code>429</code>, back off for the number of seconds specified in <code>Retry-After</code> before retrying. Sending requests during the backoff period will not reset the window but will be rejected.</p>
-<h2>Practical Client Behavior</h2>
+<h2 id="practical-client-behavior">Practical Client Behavior</h2>
 <p>A well-behaved client should:</p>
 <ul>
 <li>read <code>X-RateLimit-Remaining</code> on every response,</li>
@@ -342,7 +342,7 @@ Cloud only (fastcrw.com) -- self-hosted instances can configure their own rate l
 <li>and honor <code>Retry-After</code> exactly when a <code>429</code> arrives.</li>
 </ul>
 <p>If you are running many workers in parallel, centralize throttling instead of letting each worker discover the limit independently.</p>
-<h2>When To Add Client-Side Throttling</h2>
+<h2 id="when-to-add-client-side-throttling">When To Add Client-Side Throttling</h2>
 <p>Add a shared limiter before production when:</p>
 <ul>
 <li>multiple workers share one API key,</li>
@@ -350,14 +350,14 @@ Cloud only (fastcrw.com) -- self-hosted instances can configure their own rate l
 <li>or you are likely to burst after a queue drain or deploy.</li>
 </ul>
 <p>The problem with per-worker retry logic is that it reacts too late. A central limiter prevents the avoidable <code>429</code>s in the first place.</p>
-<h2>Rate Limits vs Target Limits</h2>
+<h2 id="rate-limits-vs-target-limits">Rate Limits vs Target Limits</h2>
 <p>The CRW API rate limit is separate from the target website&#39;s own rate limit.</p>
 <ul>
 <li>CRW may return <code>429</code> because your API key exceeded plan limits,</li>
 <li>or the target site may return <code>429</code>, which appears in <code>metadata.statusCode</code> or as a warning.</li>
 </ul>
 <p>Those are different problems and should be handled differently.</p>
-<h2>Common Mistakes</h2>
+<h2 id="common-mistakes">Common Mistakes</h2>
 <ul>
 <li>Assuming the window resets exactly at the top of the minute.</li>
 <li>Retrying immediately after a <code>429</code> instead of honoring <code>Retry-After</code>.</li>

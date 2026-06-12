@@ -282,17 +282,17 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     </aside>
 
     <main class="content" id="content">
-      <article id="article" role="main"><h1>Agent Onboarding Guide</h1>
-<h2>Overview</h2>
+      <article id="article" role="main"><h1 id="agent-onboarding-guide">Agent Onboarding Guide</h1>
+<h2 id="overview">Overview</h2>
 <p>This guide is written for AI agents and the systems that orchestrate them. It covers the minimum you need to start making API calls, the most common patterns, and how to handle errors gracefully.</p>
-<h2>Authentication</h2>
+<h2 id="authentication">Authentication</h2>
 <p>Every request requires an API key in the <code>Authorization</code> header:</p>
 <pre><code>Authorization: Bearer YOUR_API_KEY
 </code></pre>
 <p>:::note
 On self-hosted instances, authentication is configured via your server settings. Cloud only (fastcrw.com) provides a dashboard for key management.
 :::</p>
-<h2>Available Endpoints</h2>
+<h2 id="available-endpoints">Available Endpoints</h2>
 <table>
 <thead>
 <tr>
@@ -322,7 +322,7 @@ On self-hosted instances, authentication is configured via your server settings.
 <td>Search the web and return results with content</td>
 </tr>
 </tbody></table>
-<h2>Quick Start Pattern</h2>
+<h2 id="quick-start-pattern">Quick Start Pattern</h2>
 <p>For most agent workflows, start with this sequence:</p>
 <ol>
 <li><strong>Discover</strong> what pages exist on a target domain:</li>
@@ -348,7 +348,7 @@ On self-hosted instances, authentication is configured via your server settings.
   -H &quot;Content-Type: application/json&quot; \
   -d &#39;{&quot;query&quot;: &quot;your search query&quot;, &quot;limit&quot;: 5}&#39;
 </code></pre>
-<h2>Response Format</h2>
+<h2 id="response-format">Response Format</h2>
 <p>All endpoints return JSON with a consistent structure:</p>
 <pre><code class="language-json">{
   &quot;success&quot;: true,
@@ -361,7 +361,7 @@ On self-hosted instances, authentication is configured via your server settings.
   &quot;error&quot;: &quot;description of what went wrong&quot;
 }
 </code></pre>
-<h2>Error Handling for Agents</h2>
+<h2 id="error-handling-for-agents">Error Handling for Agents</h2>
 <p>Agents should handle these common scenarios:</p>
 <table>
 <thead>
@@ -397,19 +397,19 @@ On self-hosted instances, authentication is configured via your server settings.
 <td>Retry with exponential backoff</td>
 </tr>
 </tbody></table>
-<h2>Common Agent Patterns</h2>
-<h3>Research Loop</h3>
+<h2 id="common-agent-patterns">Common Agent Patterns</h2>
+<h3 id="research-loop">Research Loop</h3>
 <pre><code>search(topic) -&gt; scrape(top results) -&gt; analyze -&gt; search(refined query) -&gt; repeat
 </code></pre>
-<h3>Site Exploration</h3>
+<h3 id="site-exploration">Site Exploration</h3>
 <pre><code>map(domain) -&gt; filter URLs -&gt; scrape(relevant pages) -&gt; synthesize
 </code></pre>
-<h3>Monitoring</h3>
+<h3 id="monitoring">Monitoring</h3>
 <pre><code>scrape(url) -&gt; store result -&gt; wait -&gt; scrape(url) -&gt; compare with previous
 </code></pre>
-<h2>Rate Limits</h2>
+<h2 id="rate-limits">Rate Limits</h2>
 <p>Check the <a href="/docs/rate-limits">rate limits documentation</a> for current limits. Agents should respect <code>Retry-After</code> headers and implement exponential backoff.</p>
-<h2>MCP Integration</h2>
+<h2 id="mcp-integration">MCP Integration</h2>
 <p>If your agent runtime supports MCP, see the <a href="/docs/mcp">MCP guide</a> for a simpler integration path that avoids direct HTTP calls.</p>
 </article>
     </main>

@@ -282,8 +282,8 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     </aside>
 
     <main class="content" id="content">
-      <article id="article" role="main"><h1>Architecture</h1>
-<h2>Crate Structure</h2>
+      <article id="article" role="main"><h1 id="architecture">Architecture</h1>
+<h2 id="crate-structure">Crate Structure</h2>
 <p>crw is a Rust workspace with 6 crates, each with a focused responsibility:</p>
 <pre><code>crw-server (Axum HTTP API — main binary)
 ├── crw-crawl (BFS crawler, single-page scraper)
@@ -295,8 +295,8 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 
 crw-mcp (Stdio MCP proxy — standalone binary)
 </code></pre>
-<h2>Request Flow</h2>
-<h3>Scrape request</h3>
+<h2 id="request-flow">Request Flow</h2>
+<h3 id="scrape-request">Scrape request</h3>
 <pre><code>Client → POST /v1/scrape
   → Auth middleware (Bearer token check)
   → scrape handler
@@ -318,7 +318,7 @@ crw-mcp (Stdio MCP proxy — standalone binary)
       → title, description, og:*, canonical, lang
   → JSON response
 </code></pre>
-<h3>Crawl request</h3>
+<h3 id="crawl-request">Crawl request</h3>
 <pre><code>Client → POST /v1/crawl
   → Create crawl job (UUID)
   → Spawn async BFS task
@@ -340,7 +340,7 @@ Client → GET /v1/crawl/{id}
   → Read crawl state via watch::Receiver
   → Return progress + results
 </code></pre>
-<h2>Middleware Stack</h2>
+<h2 id="middleware-stack">Middleware Stack</h2>
 <p>The Axum server applies middleware in this order:</p>
 <ol>
 <li><strong>CORS</strong> — <code>CorsLayer::permissive()</code></li>
@@ -349,7 +349,7 @@ Client → GET /v1/crawl/{id}
 <li><strong>Timeout</strong> — Configurable request timeout</li>
 <li><strong>Auth</strong> — Bearer token validation (if <code>auth.api_keys</code> is set)</li>
 </ol>
-<h2>Feature Flags</h2>
+<h2 id="feature-flags">Feature Flags</h2>
 <table>
 <thead>
 <tr>
@@ -374,7 +374,7 @@ Client → GET /v1/crawl/{id}
 <td>Exposes internal functions for testing</td>
 </tr>
 </tbody></table>
-<h2>Key Dependencies</h2>
+<h2 id="key-dependencies">Key Dependencies</h2>
 <table>
 <thead>
 <tr>

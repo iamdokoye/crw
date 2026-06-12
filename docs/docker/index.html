@@ -282,14 +282,14 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     </aside>
 
     <main class="content" id="content">
-      <article id="article" role="main"><h1>Docker</h1>
+      <article id="article" role="main"><h1 id="docker">Docker</h1>
 <p>Run crw with Docker Compose for the easiest setup with JS rendering included.</p>
-<h2>Pre-built Image</h2>
+<h2 id="pre-built-image">Pre-built Image</h2>
 <pre><code class="language-bash">docker pull ghcr.io/us/crw:latest
 docker run -p 3000:3000 ghcr.io/us/crw:latest
 </code></pre>
 <p>Available tags: <code>latest</code>, <code>0.0.1</code>, <code>0.0</code></p>
-<h2>Docker Compose</h2>
+<h2 id="docker-compose">Docker Compose</h2>
 <pre><code class="language-bash">git clone https://github.com/us/crw.git
 cd crw
 docker compose up
@@ -352,7 +352,7 @@ don&#39;t need to wire renderer URLs through environment variables — they&#39;
 <pre><code class="language-bash">docker compose --profile heavy up -d      # add the vanilla Chromium fallback
 docker compose --profile stealth up -d    # add the anti-fingerprint tier (review the SSPL license first)
 </code></pre>
-<h2>Search (SearXNG)</h2>
+<h2 id="search-searxng">Search (SearXNG)</h2>
 <p><code>/v1/search</code> (and the <code>crw_search</code> MCP tool) is backed by the bundled <strong>searxng</strong> service, reachable inside
 the Compose network as <code>searxng:8080</code>. This is configured by default in <code>config.docker.toml</code>:</p>
 <pre><code class="language-toml">[search]
@@ -376,7 +376,7 @@ so the first search after <code>docker compose up</code> can take ~15–30 s onc
 first pull). A <code>target_unreachable</code> or <code>timeout</code> error in the first few seconds usually just means SearXNG
 hasn&#39;t finished booting yet — the server logs the configured search host at startup so you can confirm it.</p>
 </blockquote>
-<h2>Dockerfile</h2>
+<h2 id="dockerfile">Dockerfile</h2>
 <p>Multi-stage build for minimal image size:</p>
 <pre><code class="language-dockerfile">FROM rust:1.93-bookworm AS builder
 WORKDIR /app
@@ -391,7 +391,7 @@ WORKDIR /app
 EXPOSE 3000
 CMD [&quot;crw-server&quot;]
 </code></pre>
-<h2>Custom Configuration</h2>
+<h2 id="custom-configuration">Custom Configuration</h2>
 <p>Override settings via environment variables:</p>
 <pre><code class="language-yaml">services:
   crw:
@@ -406,8 +406,8 @@ CMD [&quot;crw-server&quot;]
       - CRW_AUTH__API_KEYS=[&quot;sk-production-key&quot;]
       - CRW_RENDERER__LIGHTPANDA__WS_URL=ws://lightpanda:9222
 </code></pre>
-<h2>Production Tips</h2>
-<h3>Resource Limits</h3>
+<h2 id="production-tips">Production Tips</h2>
+<h3 id="resource-limits">Resource Limits</h3>
 <pre><code class="language-yaml">services:
   crw:
     deploy:
@@ -417,7 +417,7 @@ CMD [&quot;crw-server&quot;]
           cpus: &quot;1.0&quot;
 </code></pre>
 <p>crw uses ~3 MB idle and ~66 MB under heavy load (50 concurrent requests), so 256 MB is generous.</p>
-<h3>Health Check</h3>
+<h3 id="health-check">Health Check</h3>
 <pre><code class="language-yaml">services:
   crw:
     healthcheck:
@@ -426,13 +426,13 @@ CMD [&quot;crw-server&quot;]
       timeout: 5s
       retries: 3
 </code></pre>
-<h3>Persistent Config</h3>
+<h3 id="persistent-config">Persistent Config</h3>
 <pre><code class="language-yaml">services:
   crw:
     volumes:
       - ./my-config.toml:/app/config.default.toml:ro
 </code></pre>
-<h3>Logging</h3>
+<h3 id="logging">Logging</h3>
 <pre><code class="language-yaml">services:
   crw:
     environment:

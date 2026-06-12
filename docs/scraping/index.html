@@ -284,7 +284,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     <main class="content" id="content">
       <article id="article" role="main"><div class="page-intro">
   <div class="page-kicker">Core Endpoint</div>
-  <h1>Scrape</h1>
+  <h1 id="scrape">Scrape</h1>
   <p class="page-subtitle">Turn any known URL into clean markdown, HTML, links, or structured JSON in one request. This is the default CRW workflow and the fastest path to a first successful integration.</p>
   <div class="page-capabilities">
     <div class="page-capability"><strong>Best for:</strong> one known page</div>
@@ -303,8 +303,8 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     <a class="page-btn primary" href="https://fastcrw.com/playground" target="_blank" rel="noopener">Open Playground</a>
     <a class="page-btn secondary" href="/extract">Jump to Extract</a>
   </div>
-</div><h2>Scraping a URL with CRW</h2>
-<h3>/v1/scrape</h3>
+</div><h2 id="scraping-a-url-with-crw">Scraping a URL with CRW</h2>
+<h3 id="v1scrape">/v1/scrape</h3>
 <pre><code class="language-http">POST /v1/scrape
 </code></pre>
 <p>Authentication:</p>
@@ -312,9 +312,9 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <li>Hosted: send <code>Authorization: Bearer YOUR_API_KEY</code></li>
 <li>Self-hosted: only required when <code>auth.api_keys</code> is configured</li>
 </ul>
-<h3>Installation</h3>
+<h3 id="installation">Installation</h3>
 <p>CRW is HTTP-first. You can start with cURL immediately and then move to your existing Python or Node.js HTTP client without installing a dedicated SDK.</p>
-<h3>Basic usage</h3>
+<h3 id="basic-usage">Basic usage</h3>
 <p>Start with this request:</p>
 <pre><code class="language-json">{
   &quot;url&quot;: &quot;https://example.com&quot;,
@@ -370,7 +370,7 @@ console.log(body.data.markdown);
   }&#39;
 </code></pre>
 <p>:::</p>
-<h3>Response</h3>
+<h3 id="response">Response</h3>
 <pre><code class="language-json">{
   &quot;success&quot;: true,
   &quot;data&quot;: {
@@ -385,7 +385,7 @@ console.log(body.data.markdown);
 }
 </code></pre>
 <p>That is the default CRW success shape: requested content plus a compact metadata envelope.</p>
-<h2>Parameters</h2>
+<h2 id="parameters">Parameters</h2>
 <table>
 <thead>
 <tr>
@@ -558,7 +558,7 @@ console.log(body.data.markdown);
 <td>Rejected with a clear error; use <code>cssSelector</code> or <code>xpath</code> instead</td>
 </tr>
 </tbody></table>
-<h2>Formats</h2>
+<h2 id="formats">Formats</h2>
 <p>Use the smallest output shape that solves the job:</p>
 <ul>
 <li><code>markdown</code> is the default and best first request for most pipelines.</li>
@@ -568,7 +568,7 @@ console.log(body.data.markdown);
 <li><code>json</code> is the extraction path and should be paired with <code>jsonSchema</code>.</li>
 </ul>
 <p>If you ask for multiple formats, only those formats are populated in the response.</p>
-<h2>Structured extraction</h2>
+<h2 id="structured-extraction">Structured extraction</h2>
 <p>Extraction is part of <code>scrape</code>, not a separate route. When you want fields instead of prose, request <code>formats: [&quot;json&quot;]</code> and provide a schema.</p>
 <pre><code class="language-json">{
   &quot;url&quot;: &quot;https://example.com/product/123&quot;,
@@ -584,7 +584,7 @@ console.log(body.data.markdown);
 }
 </code></pre>
 <p>Use <a href="/extract">Extract</a> for the schema-first version of this flow.</p>
-<h2>LLM summary</h2>
+<h2 id="llm-summary">LLM summary</h2>
 <p>Add <code>summary</code> to <code>formats</code> to get a short prose digest of the page in <code>data.summary</code>. Token usage and best-effort cost are returned in <code>data.llmUsage</code>.</p>
 <pre><code class="language-json">{
   &quot;url&quot;: &quot;https://example.com/post&quot;,
@@ -602,7 +602,7 @@ console.log(body.data.markdown);
 <li><code>maxContentChars</code> caps how many bytes of scraped content are sent to the LLM. The default comes from <code>[extraction.llm].max_html_bytes</code> (100 KB out of the box) and the per-request value is clamped to a 200 KB server-side ceiling. Truncation, when it happens, is reported in <code>data.warnings</code>.</li>
 <li>If <code>markdown</code> is not also requested, crw computes it internally and strips it from the response.</li>
 </ul>
-<h2>JS rendering and targeting</h2>
+<h2 id="js-rendering-and-targeting">JS rendering and targeting</h2>
 <p>Keep the first request simple:</p>
 <ul>
 <li>Leave <code>renderJs</code> at <code>null</code> until the plain HTTP path clearly fails.</li>
@@ -610,14 +610,14 @@ console.log(body.data.markdown);
 <li>Add <code>includeTags</code> and <code>excludeTags</code> after you confirm the raw markdown is noisy.</li>
 </ul>
 <p>If you turn on every targeting knob at once, debugging gets harder immediately.</p>
-<h2>Common production patterns</h2>
+<h2 id="common-production-patterns">Common production patterns</h2>
 <ul>
 <li>Start with <code>markdown</code>, then add <code>links</code> or <code>json</code> only when downstream logic needs them.</li>
 <li>Validate extraction with markdown first, then add <code>jsonSchema</code>.</li>
 <li>Keep browser rendering as a fallback, not the default.</li>
 <li>Use narrow selectors only when the default main-content extraction is not enough.</li>
 </ul>
-<h2>Common mistakes</h2>
+<h2 id="common-mistakes">Common mistakes</h2>
 <ul>
 <li>Turning on JS rendering before testing the plain HTTP path</li>
 <li>Requesting too many formats at once in production</li>
@@ -625,7 +625,7 @@ console.log(body.data.markdown);
 <li>Sending <code>formats: [&quot;json&quot;]</code> without a <code>jsonSchema</code></li>
 <li>Assuming <code>actions</code> is supported because Firecrawl accepts it</li>
 </ul>
-<h2>When to use something else</h2>
+<h2 id="when-to-use-something-else">When to use something else</h2>
 <ul>
 <li>Use <a href="/search">Search</a> when you do not know the URL yet</li>
 <li>Use <a href="/map">Map</a> when you want URL discovery before scraping</li>

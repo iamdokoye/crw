@@ -284,7 +284,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     <main class="content" id="content">
       <article id="article" role="main"><div class="page-intro">
   <div class="page-kicker">Get Started</div>
-  <h1>CRW Docs</h1>
+  <h1 id="crw-docs">CRW Docs</h1>
   <p class="page-subtitle">Turn websites into usable data with one API. Start with a single <code>scrape</code> request, then move into <code>search</code>, <code>map</code>, <code>crawl</code>, <code>extract</code>, <code>browse</code> (interactive browser automation), or MCP only when your workflow actually needs them.</p>
   <div class="page-capabilities">
     <div class="page-capability"><strong>Fastest first win:</strong> one URL, one markdown response</div>
@@ -320,20 +320,20 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
   }
 }
 </code></pre>
-<h2>Start here</h2>
+<h2 id="start-here">Start here</h2>
 <p>:::cards
 ::card{icon=&quot;code&quot; title=&quot;Scrape a page&quot; href=&quot;#scraping&quot; description=&quot;Use one URL and get markdown, HTML, links, or JSON back.&quot;}
 ::card{icon=&quot;search&quot; title=&quot;Search the web&quot; href=&quot;#search&quot; description=&quot;Find URLs first, then scrape only the results you care about.&quot;}
 ::card{icon=&quot;cursor&quot; title=&quot;Browse interactively&quot; href=&quot;#mcp&quot; description=&quot;Drive a real browser from your agent — multi-step flows, clicks, stateful sessions (v0.4.0).&quot;}
 ::card{icon=&quot;plug&quot; title=&quot;Add MCP tools&quot; href=&quot;#mcp&quot; description=&quot;Give Claude, Cursor, Codex, and other hosts live web access.&quot;}
 :::</p>
-<h2>Choose your path</h2>
+<h2 id="choose-your-path">Choose your path</h2>
 <p>:::cards
 ::card{icon=&quot;rocket&quot; title=&quot;Cloud API&quot; href=&quot;#quick-start&quot; description=&quot;The fastest first run: get a key, copy one request, and move.&quot;}
 ::card{icon=&quot;plug&quot; title=&quot;MCP&quot; href=&quot;#mcp&quot; description=&quot;Best when your agent runtime already expects MCP tools.&quot;}
 ::card{icon=&quot;box&quot; title=&quot;Self-host&quot; href=&quot;#self-hosting&quot; description=&quot;Best when you want your own infrastructure, auth, and deployment controls.&quot;}
 :::</p>
-<h2>Why teams switch to CRW</h2>
+<h2 id="why-teams-switch-to-crw">Why teams switch to CRW</h2>
 <p>CRW is meant to feel easy on day one without closing off the more serious use cases:</p>
 <ul>
 <li>one API surface for single-page scrape, discovery, bounded crawl, and extraction,</li>
@@ -341,7 +341,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <li>low-ops self-hosting when you need infra control,</li>
 <li>and a built-in MCP server for agent workflows.</li>
 </ul>
-<h2>Benchmarks</h2>
+<h2 id="benchmarks">Benchmarks</h2>
 <p>Public 3-way run on <a href="https://huggingface.co/datasets/firecrawl/scrape-content-dataset-v1">Firecrawl scrape-content-dataset-v1</a>, full 1000 URL, canonical <code>diagnose_3way.py</code> harness (concurrency 5 / timeout 120s):</p>
 <table>
 <thead>
@@ -390,7 +390,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 </tr>
 </tbody></table>
 <p>The 63.74% denominator is <strong>819 labeled/matchable URLs</strong> — not 3,000 requests, not 1,000. The <strong>87.7% scrape-success</strong> is stated next to &quot;0 errors&quot; deliberately. crw&#39;s p50 beats Firecrawl; its p90 is the disclosed worst-of-three (the recovery fallback that lifts recall is also why the tail is worst). Full result: <a href="https://github.com/us/crw/blob/main/bench/server-runs/RESULT_3WAY_1000_FULL.md"><code>bench/server-runs/RESULT_3WAY_1000_FULL.md</code></a>.</p>
-<h2>What to read next</h2>
+<h2 id="what-to-read-next">What to read next</h2>
 <ul>
 <li><a href="/quick-start">Quick Start</a> for the fastest first request</li>
 <li><a href="/rest-api">API Overview</a> for the endpoint map</li>

@@ -282,8 +282,8 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     </aside>
 
     <main class="content" id="content">
-      <article id="article" role="main"><h1>Self-Hosting Hardening</h1>
-<h2>Minimum hardening baseline</h2>
+      <article id="article" role="main"><h1 id="self-hosting-hardening">Self-Hosting Hardening</h1>
+<h2 id="minimum-hardening-baseline">Minimum hardening baseline</h2>
 <ul>
 <li>Terminate TLS in front of the API.</li>
 <li>Run the service as a non-root user.</li>
@@ -291,27 +291,27 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <li>Isolate renderer sidecars from unnecessary network paths.</li>
 </ul>
 <p>That baseline is the starting point, not the finish line. A self-hosted scraper talks to untrusted public pages and can sit close to valuable internal systems, so it deserves the same discipline as any other internet-facing API.</p>
-<h2>Network and Access Control</h2>
+<h2 id="network-and-access-control">Network and Access Control</h2>
 <ul>
 <li>Put a reverse proxy or gateway in front of the service.</li>
 <li>Restrict who can reach the API by network, identity, or both.</li>
 <li>Avoid exposing internal health or admin surfaces to the public internet.</li>
 <li>If browser rendering is enabled, isolate the renderer from internal systems it does not need to reach.</li>
 </ul>
-<h2>Runtime Isolation</h2>
+<h2 id="runtime-isolation">Runtime Isolation</h2>
 <p>Treat page fetching and browser rendering as higher-risk components than your application logic.</p>
 <ul>
 <li>run them with the least privilege possible,</li>
 <li>keep filesystem access narrow,</li>
 <li>and isolate sidecars so a renderer problem does not automatically become a broader platform problem.</li>
 </ul>
-<h2>Secrets and Keys</h2>
+<h2 id="secrets-and-keys">Secrets and Keys</h2>
 <ul>
 <li>Keep API keys, proxy credentials, and LLM keys out of image builds.</li>
 <li>Inject secrets at runtime through your platform&#39;s secret store.</li>
 <li>Rotate keys during environment changes or incident response, not only on a fixed calendar.</li>
 </ul>
-<h2>LLM features and trust boundary</h2>
+<h2 id="llm-features-and-trust-boundary">LLM features and trust boundary</h2>
 <p>CRW&#39;s <code>summary</code> format and <code>/v1/search</code> answer/summarize features need an LLM key. There are two deployment shapes; pick one and lock it down with the runtime guards listed below.</p>
 <p><strong>Solo / self-hosted (key in server config):</strong></p>
 <pre><code class="language-toml">[extraction.llm]
@@ -334,14 +334,14 @@ model    = &quot;gpt-4o-mini&quot;
 <li><code>summaryPrompt</code> and <code>answerPrompt</code> are truncated at 500 chars and cannot override the safety wrapper.</li>
 <li>The citation list is capped at 20 entries; fabricated <code>source_id</code>s are dropped.</li>
 </ul>
-<h2>Operational guidance</h2>
+<h2 id="operational-guidance">Operational guidance</h2>
 <ul>
 <li>Rotate API keys during deployment cutovers.</li>
 <li>Keep browser-rendering dependencies on the smallest possible surface area.</li>
 <li>Expose <code>/health</code> only where your load balancer or monitoring needs it.</li>
 <li>Review warning-heavy targets separately; they often indicate anti-bot defenses rather than renderer bugs.</li>
 </ul>
-<h2>Monitoring and Auditability</h2>
+<h2 id="monitoring-and-auditability">Monitoring and Auditability</h2>
 <p>At minimum, watch:</p>
 <ul>
 <li>API error rate,</li>
@@ -356,7 +356,7 @@ model    = &quot;gpt-4o-mini&quot;
 <li>whether it was an engine problem or a target-site problem,</li>
 <li>and what data, if any, was still returned.</li>
 </ol>
-<h2>Example Hardening Sequence</h2>
+<h2 id="example-hardening-sequence">Example Hardening Sequence</h2>
 <p>If you are moving from a dev VM to a real environment, the order should usually be:</p>
 <ol>
 <li>put a reverse proxy and TLS in front,</li>
@@ -366,7 +366,7 @@ model    = &quot;gpt-4o-mini&quot;
 <li>then enable monitoring and alerting on warnings, failures, and resource spikes.</li>
 </ol>
 <p>That order keeps the riskiest exposure points under control early instead of treating hardening as a final cleanup step.</p>
-<h2>When To Isolate the Renderer More Aggressively</h2>
+<h2 id="when-to-isolate-the-renderer-more-aggressively">When To Isolate the Renderer More Aggressively</h2>
 <p>Stronger isolation is worth it when:</p>
 <ul>
 <li>your targets are highly dynamic and require frequent JS rendering,</li>
@@ -374,7 +374,7 @@ model    = &quot;gpt-4o-mini&quot;
 <li>or many tenants or workloads share the same cluster.</li>
 </ul>
 <p>In those cases, a renderer problem should not become an easy pivot into the rest of your infrastructure.</p>
-<h2>Common Mistakes</h2>
+<h2 id="common-mistakes">Common Mistakes</h2>
 <ul>
 <li>Leaving <code>/health</code> broadly exposed when only an internal load balancer needs it.</li>
 <li>Running the service with broader filesystem or network access than the scraping workload requires.</li>

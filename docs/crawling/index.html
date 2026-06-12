@@ -284,7 +284,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     <main class="content" id="content">
       <article id="article" role="main"><div class="page-intro">
   <div class="page-kicker">More API</div>
-  <h1>Crawl</h1>
+  <h1 id="crawl">Crawl</h1>
   <p class="page-subtitle">Recursively crawl a site when one page is not enough. CRW crawl is asynchronous by design: start a job, poll it, and widen scope only after the first batch looks correct.</p>
   <div class="page-capabilities">
     <div class="page-capability"><strong>Best for:</strong> many pages from one site</div>
@@ -303,8 +303,8 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     <a class="page-btn primary" href="https://fastcrw.com/playground" target="_blank" rel="noopener">Open Playground</a>
     <a class="page-btn secondary" href="/quick-start">Open Quick Start</a>
   </div>
-</div><h2>Crawling a site with CRW</h2>
-<h3>/v1/crawl</h3>
+</div><h2 id="crawling-a-site-with-crw">Crawling a site with CRW</h2>
+<h3 id="v1crawl">/v1/crawl</h3>
 <pre><code class="language-http">POST /v1/crawl
 GET /v1/crawl/{id}
 DELETE /v1/crawl/{id}
@@ -314,9 +314,9 @@ DELETE /v1/crawl/{id}
 <li>Hosted: send <code>Authorization: Bearer YOUR_API_KEY</code></li>
 <li>Self-hosted: only required when <code>auth.api_keys</code> is configured</li>
 </ul>
-<h3>Installation</h3>
+<h3 id="installation">Installation</h3>
 <p>CRW crawl is also plain HTTP. You start the job with one request and check its status with another.</p>
-<h3>Basic usage</h3>
+<h3 id="basic-usage">Basic usage</h3>
 <p>Start with this request:</p>
 <pre><code class="language-json">{
   &quot;url&quot;: &quot;https://docs.example.com&quot;,
@@ -387,7 +387,7 @@ console.log((await status.json()).status);
   }&#39;
 </code></pre>
 <p>:::</p>
-<h3>Response</h3>
+<h3 id="response">Response</h3>
 <p>Start response:</p>
 <pre><code class="language-json">{
   &quot;success&quot;: true,
@@ -403,7 +403,7 @@ console.log((await status.json()).status);
   &quot;data&quot;: []
 }
 </code></pre>
-<h2>Parameters</h2>
+<h2 id="parameters">Parameters</h2>
 <table>
 <thead>
 <tr>
@@ -480,7 +480,7 @@ console.log((await status.json()).status);
 <td>Pin every crawled page to a specific renderer: <code>auto</code>, <code>lightpanda</code>, <code>chrome</code>, or <code>playwright</code>. Non-<code>auto</code> values hard-pin (no fallback) and imply <code>renderJs:true</code> unless <code>renderJs:false</code> is set. Validation runs once at crawl start — invalid combinations return HTTP 400 before the job is queued. Per-page failures of a pinned renderer are logged and skipped, so failed pages may be missing from results — see <a href="/js-rendering">JS rendering</a> for the resilience tradeoff</td>
 </tr>
 </tbody></table>
-<h2>Scrape options and extraction</h2>
+<h2 id="scrape-options-and-extraction">Scrape options and extraction</h2>
 <p>Crawl inherits the same content-format logic as scrape:</p>
 <ul>
 <li>Start with <code>formats: [&quot;markdown&quot;]</code></li>
@@ -488,7 +488,7 @@ console.log((await status.json()).status);
 <li>Keep <code>onlyMainContent: true</code> unless you explicitly need full-page noise</li>
 </ul>
 <p>If you need to debug one problematic page, go back to <a href="/scraping">Scrape</a> and validate that page in isolation first.</p>
-<h2>Checking job status</h2>
+<h2 id="checking-job-status">Checking job status</h2>
 <p>Poll the crawl ID until you reach <code>completed</code> or <code>failed</code>:</p>
 <pre><code class="language-bash">curl -H &quot;Authorization: Bearer YOUR_API_KEY&quot; \
   https://fastcrw.com/api/v1/crawl/CRAWL_ID
@@ -510,26 +510,26 @@ console.log((await status.json()).status);
   &quot;error&quot;: &quot;optional error&quot;
 }
 </code></pre>
-<h2>Cancellation and limits</h2>
+<h2 id="cancellation-and-limits">Cancellation and limits</h2>
 <p>Cancel a running job with:</p>
 <pre><code class="language-http">DELETE /v1/crawl/{id}
 </code></pre>
 <p>CRW crawl stays within the same origin and should be treated as a bounded, respectful site job, not an open-ended spider.</p>
-<h2>Common production patterns</h2>
+<h2 id="common-production-patterns">Common production patterns</h2>
 <ul>
 <li>Run <a href="/map">Map</a> first when you are unsure about the reachable section.</li>
 <li>Keep <code>maxPages</code> very low on first contact with a new site.</li>
 <li>Poll with backoff instead of hammering the same crawl ID.</li>
 <li>Use extraction only after the markdown output of the first crawl batch looks correct.</li>
 </ul>
-<h2>Common mistakes</h2>
+<h2 id="common-mistakes">Common mistakes</h2>
 <ul>
 <li>Starting with <code>maxPages: 500</code> before validating the target</li>
 <li>Treating <code>crawl</code> like a synchronous route</li>
 <li>Assuming crawl crosses origins</li>
 <li>Ignoring <code>robots.txt</code> and target-side rate behavior</li>
 </ul>
-<h2>When to use something else</h2>
+<h2 id="when-to-use-something-else">When to use something else</h2>
 <ul>
 <li>Use <a href="/map">Map</a> when you need URL discovery before crawling</li>
 <li>Use <a href="/scraping">Scrape</a> when you only need one known page</li>

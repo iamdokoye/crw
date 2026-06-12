@@ -282,8 +282,8 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     </aside>
 
     <main class="content" id="content">
-      <article id="article" role="main"><h1>Errors and Warnings</h1>
-<h2>Response semantics</h2>
+      <article id="article" role="main"><h1 id="errors-and-warnings">Errors and Warnings</h1>
+<h2 id="response-semantics">Response semantics</h2>
 <ul>
 <li><code>success: true</code> means the pipeline produced usable page content.</li>
 <li><code>success: false</code> means the request failed -- either an engine error or the target returned an error status (4xx/5xx) with minimal content.</li>
@@ -298,7 +298,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <li>and the target site&#39;s own status exposed through <code>metadata.statusCode</code>.</li>
 </ul>
 <p>You need both to debug real scraping failures.</p>
-<h2>HTTP status codes returned by the API</h2>
+<h2 id="http-status-codes-returned-by-the-api">HTTP status codes returned by the API</h2>
 <table>
 <thead>
 <tr>
@@ -343,7 +343,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <td>Request timed out</td>
 </tr>
 </tbody></table>
-<h2>How To Read Common Cases</h2>
+<h2 id="how-to-read-common-cases">How To Read Common Cases</h2>
 <table>
 <thead>
 <tr>
@@ -378,7 +378,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <td>Retry with backoff</td>
 </tr>
 </tbody></table>
-<h2>Common engine errors</h2>
+<h2 id="common-engine-errors">Common engine errors</h2>
 <table>
 <thead>
 <tr>
@@ -427,7 +427,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <td><code>renderJs: true</code> but no CDP browser is configured</td>
 </tr>
 </tbody></table>
-<h2>Common warnings</h2>
+<h2 id="common-warnings">Common warnings</h2>
 <table>
 <thead>
 <tr>
@@ -468,7 +468,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <td>Some but not all per-result summaries failed in <code>/v1/search</code></td>
 </tr>
 </tbody></table>
-<h2>Retry Guidance</h2>
+<h2 id="retry-guidance">Retry Guidance</h2>
 <p>Retrying helps only for some classes of failure:</p>
 <ul>
 <li>retry <code>429</code>, <code>502</code>, and <code>504</code> with backoff,</li>

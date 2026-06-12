@@ -284,7 +284,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     <main class="content" id="content">
       <article id="article" role="main"><div class="page-intro">
   <div class="page-kicker">More API</div>
-  <h1>Extract</h1>
+  <h1 id="extract">Extract</h1>
   <p class="page-subtitle">Return structured JSON from a known page. In CRW, extraction is a scrape mode: use <code>formats: ["json"]</code> and provide a schema that describes the fields you want back.</p>
   <div class="page-capabilities">
     <div class="page-capability"><strong>Best for:</strong> schema-first output</div>
@@ -303,8 +303,8 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     <a class="page-btn primary" href="https://fastcrw.com/playground" target="_blank" rel="noopener">Open Playground</a>
     <a class="page-btn secondary" href="/quick-start">Open Quick Start</a>
   </div>
-</div><h2>Extracting structured data with CRW</h2>
-<h3>/v1/scrape</h3>
+</div><h2 id="extracting-structured-data-with-crw">Extracting structured data with CRW</h2>
+<h3 id="v1scrape">/v1/scrape</h3>
 <pre><code class="language-http">POST /v1/scrape
 </code></pre>
 <p>Authentication:</p>
@@ -312,9 +312,9 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <li>Hosted: send <code>Authorization: Bearer YOUR_API_KEY</code></li>
 <li>Self-hosted: only required when <code>auth.api_keys</code> is configured</li>
 </ul>
-<h3>Installation</h3>
+<h3 id="installation">Installation</h3>
 <p>Extraction uses the same HTTP route as scrape, so you can use the same client code and only change the payload.</p>
-<h3>Basic usage</h3>
+<h3 id="basic-usage">Basic usage</h3>
 <p>Start with this request:</p>
 <pre><code class="language-json">{
   &quot;url&quot;: &quot;https://example.com/product/123&quot;,
@@ -398,7 +398,7 @@ console.log(body.data.json);
   }&#39;
 </code></pre>
 <p>:::</p>
-<h3>Response</h3>
+<h3 id="response">Response</h3>
 <pre><code class="language-json">{
   &quot;success&quot;: true,
   &quot;data&quot;: {
@@ -415,7 +415,7 @@ console.log(body.data.json);
   }
 }
 </code></pre>
-<h2>Parameters</h2>
+<h2 id="parameters">Parameters</h2>
 <table>
 <thead>
 <tr>
@@ -492,7 +492,7 @@ Firecrawl-compatible aliases <code>formats: [&quot;extract&quot;]</code> and <co
 <p>:::warning
 On self-hosted deployments, JSON extraction requires either <code>[extraction.llm]</code> in <code>config.toml</code> or a per-request <code>llmApiKey</code>. Without one of those, CRW returns an extraction error instead of guessed output.
 :::</p>
-<h2>Schema design</h2>
+<h2 id="schema-design">Schema design</h2>
 <p>The easiest extraction schema is a small one:</p>
 <ul>
 <li>ask for the fields you actually need,</li>
@@ -500,7 +500,7 @@ On self-hosted deployments, JSON extraction requires either <code>[extraction.ll
 <li>avoid optional fields until the required ones are stable.</li>
 </ul>
 <p>Large schemas are harder to debug because you cannot tell whether the issue is the page, the schema, or both.</p>
-<h2>Extraction quality</h2>
+<h2 id="extraction-quality">Extraction quality</h2>
 <p>Use this workflow:</p>
 <ol>
 <li>scrape the page as markdown,</li>
@@ -509,23 +509,23 @@ On self-hosted deployments, JSON extraction requires either <code>[extraction.ll
 <li>expand the schema only after the first JSON result looks right.</li>
 </ol>
 <p>If the underlying page scrape is weak, the JSON extraction will also be weak.</p>
-<h2>BYOK and provider control</h2>
+<h2 id="byok-and-provider-control">BYOK and provider control</h2>
 <p>Use <code>llmApiKey</code>, <code>llmProvider</code>, and <code>llmModel</code> only when you need per-request control. For most users, server defaults are the right starting point once <code>[extraction.llm]</code> is configured.</p>
-<h2>Common production patterns</h2>
+<h2 id="common-production-patterns">Common production patterns</h2>
 <ul>
 <li>Validate the target with markdown first, then add extraction.</li>
 <li>Keep the schema as small as possible on the first pass.</li>
 <li>Narrow the page with <code>cssSelector</code> only when the default extraction is too noisy.</li>
 <li>Use BYOK only when you need per-request provider separation.</li>
 </ul>
-<h2>Common mistakes</h2>
+<h2 id="common-mistakes">Common mistakes</h2>
 <ul>
 <li>Sending <code>formats: [&quot;json&quot;]</code> without a schema</li>
 <li>Designing a schema that assumes more structure than the page really contains</li>
 <li>Debugging extraction before confirming the underlying scrape succeeded</li>
 <li>Treating extraction as a separate route instead of a scrape mode</li>
 </ul>
-<h2>When to use something else</h2>
+<h2 id="when-to-use-something-else">When to use something else</h2>
 <ul>
 <li>Use <a href="/scraping">Scrape</a> when prose or markdown is enough</li>
 <li>Use <a href="/map">Map</a> when you need discovery before extraction</li>

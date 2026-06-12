@@ -284,7 +284,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     <main class="content" id="content">
       <article id="article" role="main"><div class="page-intro">
   <div class="page-kicker">More APIs</div>
-  <h1>Monitoring</h1>
+  <h1 id="monitoring">Monitoring</h1>
   <p class="page-subtitle">Schedule recurring scrapes or crawls, detect when a page actually changes, and notify your agent by signed webhook or email — with a structured diff and an optional LLM judge that filters out noise. A self-hostable, Firecrawl-compatible alternative to <code>/monitor</code>.</p>
   <div class="page-capabilities">
     <div class="page-capability"><strong>Best for:</strong> change detection on pages you rely on</div>
@@ -296,13 +296,13 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     <a class="page-btn primary" href="https://fastcrw.com/register" target="_blank" rel="noopener">Get API Key</a>
     <a class="page-btn secondary" href="/crawling">View Crawl</a>
   </div>
-</div><h2>What this is for</h2>
+</div><h2 id="what-this-is-for">What this is for</h2>
 <p>Use monitoring when you need to know the moment a page changes and only care about the changes that matter — competitor pricing, product catalogs, job listings, docs, changelogs, research papers, or government filings. A monitor runs scheduled scrapes or crawls, diffs each result against the last retained snapshot, classifies every page (<code>same</code>, <code>new</code>, <code>changed</code>, <code>removed</code>, or <code>error</code>), and delivers a structured diff. The output is just the change, so your agent ingests far fewer tokens than re-scraping everything.</p>
 <p>Reach for <code>monitoring</code> instead of polling <code>/v1/scrape</code> yourself when you want the schedule, snapshot storage, diffing, retries, and noise filtering handled for you.</p>
 <p>:::note
 <strong>Self-hosted users</strong>: the full scheduler + notification control plane is part of the hosted product. The open-core engine ships the <strong>stateless <code>changeTracking</code> primitive</strong> (diff one scrape against a snapshot you supply) plus an optional, feature-gated <strong><code>monitor</code> mode</strong> (SQLite scheduler, default OFF). See <a href="/monitoring">self-hosting monitoring</a> below.
 :::</p>
-<h2>Endpoints</h2>
+<h2 id="endpoints">Endpoints</h2>
 <p>All monitor endpoints require a Bearer API key on the hosted API.</p>
 <pre><code class="language-http">POST   /v1/monitor                          # create
 GET    /v1/monitor                          # list
@@ -314,7 +314,7 @@ GET    /v1/monitor/{id}/checks               # list checks
 GET    /v1/monitor/{id}/checks/{checkId}     # get one check + its pages
 </code></pre>
 <p>Base URL: <code>https://fastcrw.com/api</code> (hosted).</p>
-<h2>Create a monitor</h2>
+<h2 id="create-a-monitor">Create a monitor</h2>
 <p>Describe what to watch and how often. A <code>goal</code> enables the LLM judge so you are only alerted on meaningful changes.</p>
 <p>:::tabs</p>
 <pre><code class="language-bash">curl -s -X POST &quot;https://fastcrw.com/api/v1/monitor&quot; \
@@ -395,27 +395,27 @@ print(res.json()[&quot;data&quot;][&quot;id&quot;])
   }
 }
 </code></pre>
-<h2>Schedules</h2>
+<h2 id="schedules">Schedules</h2>
 <p>Provide a schedule as cron <strong>or</strong> as natural-language <code>text</code>. The minimum interval is 15 minutes; responses always return the normalized cron. <code>timezone</code> is an IANA zone (DST-correct — &quot;daily at 9am&quot; tracks 9:00 wall-clock across transitions). Text schedules are spread by monitor id so many monitors don&#39;t all fire at the same instant.</p>
 <p>Supported natural-language forms: <code>every 30 minutes</code>, <code>every 15 minutes starting at :07</code>, <code>hourly</code>, <code>every 2 hours</code>, <code>daily</code>, <code>daily at 9:00</code>, <code>daily at 9am</code>, <code>daily at 5:30 PM</code>, <code>weekly</code>.</p>
-<h2>Targets</h2>
+<h2 id="targets">Targets</h2>
 <p>Each monitor takes 1–50 targets:</p>
 <ul>
 <li><strong><code>scrape</code></strong> — runs one scrape per URL in <code>urls</code> (≤50 distinct URLs across all targets).</li>
 <li><strong><code>crawl</code></strong> — runs a full crawl for <code>url</code> on each check, then diffs every discovered page. Use <code>maxPages</code> to bound cost.</li>
 </ul>
 <p><code>scrapeOptions</code> / <code>crawlOptions</code> pass through to the underlying jobs. Monitor scrapes always fetch fresh.</p>
-<h2>Goals and judging</h2>
+<h2 id="goals-and-judging">Goals and judging</h2>
 <p>Add a plain-language <code>goal</code> to be alerted only on meaningful changes. When <code>goal</code> is set and <code>judgeEnabled</code> is omitted, judging is enabled automatically. The judge runs only on <strong>changed</strong> pages and returns a judgment with <code>meaningful</code>, <code>confidence</code> (<code>low</code> / <code>medium</code> / <code>high</code>), <code>reason</code>, and <code>meaningfulChanges</code>. Set <code>judgeEnabled: false</code> to store a goal without judging.</p>
-<h2>Change tracking modes</h2>
+<h2 id="change-tracking-modes">Change tracking modes</h2>
 <p>By default each page&#39;s markdown is diffed and reported as <code>same</code> / <code>changed</code> / <code>new</code> / <code>removed</code> / <code>error</code>. To track specific structured fields, set a <code>changeMode</code> on the target:</p>
 <ul>
 <li><strong><code>markdown</code></strong> (default) — a unified text diff plus a parse-diff-style AST.</li>
 <li><strong><code>json</code></strong> — supply a <code>jsonSchema</code>; CRW extracts those fields each check and emits a per-field diff keyed by JSON path (<code>plans[0].price → {previous, current}</code>) plus a full <code>snapshot</code>.</li>
 <li><strong><code>mixed</code></strong> — both surfaces; a page is <code>changed</code> if <strong>either</strong> the markdown or a tracked field changed.</li>
 </ul>
-<h2>Notifications</h2>
-<h3>Webhooks</h3>
+<h2 id="notifications">Notifications</h2>
+<h3 id="webhooks">Webhooks</h3>
 <p>Configure a <code>webhook</code> to receive two events:</p>
 <ul>
 <li><strong><code>monitor.page</code></strong> — sent as each monitored page finishes; includes <code>isMeaningful</code> + <code>judgment</code> when judging ran.</li>
@@ -431,14 +431,14 @@ print(res.json()[&quot;data&quot;][&quot;id&quot;])
   }
 }
 </code></pre>
-<h3>Email</h3>
+<h3 id="email">Email</h3>
 <p>Email summaries are sent only when a check has <code>changed</code> / <code>new</code> / <code>removed</code> / <code>error</code> pages. With a goal + judging, noise-only checks are suppressed. New recipients receive a confirmation link (double opt-in) before any alert; up to 25 confirmed recipients per monitor. Set <code>includeDiffs: true</code> to embed the diff in the message.</p>
-<h2>Check results</h2>
+<h2 id="check-results">Check results</h2>
 <p>List checks with <code>GET /v1/monitor/{id}/checks</code> (filter by <code>status</code>: <code>queued</code>, <code>running</code>, <code>completed</code>, <code>failed</code>, <code>partial</code>, <code>skipped_overlap</code>) and inspect one with <code>GET /v1/monitor/{id}/checks/{checkId}</code>. Both auto-paginate via an opaque <code>next</code> cursor. A check detail returns <code>estimatedCredits</code>, <code>actualCredits</code>, summary counts, and a paginated <code>pages[]</code> array; each changed page carries inline <code>diff</code> data and (json mode) a <code>snapshot</code>.</p>
 <pre><code class="language-bash">curl &quot;https://fastcrw.com/api/v1/monitor/$MONITOR_ID/checks/$CHECK_ID?status=changed&quot; \
   -H &quot;Authorization: Bearer $CRW_API_KEY&quot;
 </code></pre>
-<h2>Parameters</h2>
+<h2 id="parameters">Parameters</h2>
 <table>
 <thead>
 <tr>
@@ -545,7 +545,7 @@ print(res.json()[&quot;data&quot;][&quot;id&quot;])
 <td>Snapshot/check retention (1–365)</td>
 </tr>
 </tbody></table>
-<h2>Pricing</h2>
+<h2 id="pricing">Pricing</h2>
 <p>Monitors have no per-monitor fee. Each check pays for the scrapes or crawl it performs, plus an optional judge credit per changed page.</p>
 <table>
 <thead>
@@ -568,7 +568,7 @@ print(res.json()[&quot;data&quot;][&quot;id&quot;])
 </tr>
 </tbody></table>
 <p>Checks with no changed pages use no judge credits. When a monitor runs out of credits its checks pause (<code>paused_no_credits</code>) and resume automatically once the balance recovers.</p>
-<h2>Self-hosting monitoring</h2>
+<h2 id="self-hosting-monitoring">Self-hosting monitoring</h2>
 <p>The open-core engine gives self-hosters the building blocks:</p>
 <ul>
 <li><strong><code>changeTracking</code> scrape format</strong> — add it to <code>/v1/scrape</code> <code>formats</code> with the diff <code>modes</code> and a <code>previous</code> snapshot you persist between checks. opencore is stateless: it returns the diff + the new snapshot for you to store.</li>
@@ -587,14 +587,14 @@ curl -s -X POST &quot;http://localhost:3000/v1/change-tracking/diff&quot; \
 <p>:::note
 The <code>monitor</code> feature pulls in SQLite/HMAC dependencies only when enabled — the default engine build stays dependency-light. Self-host monitoring uses UTC schedules and your own LLM key (BYOK) for judging.
 :::</p>
-<h2>Common mistakes</h2>
+<h2 id="common-mistakes">Common mistakes</h2>
 <ul>
 <li><strong>Passing <code>changeTracking</code> as an object in <code>formats</code></strong> — on the engine it is the plain string <code>&quot;changeTracking&quot;</code>; the options ride on the sibling <code>changeTracking</code> field.</li>
 <li><strong>Expecting <code>removed</code> from a scrape target</strong> — <code>new</code> / <code>removed</code> are set-level states for <strong>crawl</strong> targets; a fixed <code>urls[]</code> entry that fails is <code>error</code>, never <code>removed</code>.</li>
 <li><strong>Intervals under 15 minutes</strong> — rejected. Use <code>every 15 minutes</code> or longer.</li>
 <li><strong>Forgetting the webhook secret</strong> — it is shown once on create; store it to verify the <code>X-CRW-Signature</code> header.</li>
 </ul>
-<h2>What to read next</h2>
+<h2 id="what-to-read-next">What to read next</h2>
 <ul>
 <li><a href="/scraping">Scrape</a> — the single-page primitive monitors run under the hood.</li>
 <li><a href="/crawling">Crawl</a> — multi-page discovery for crawl targets.</li>

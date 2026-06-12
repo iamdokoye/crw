@@ -86,6 +86,35 @@ function extractDescription(mdContent) {
   return `${config.description || "CRW documentation"}.`;
 }
 
+/** GitHub-style slug for a heading's (possibly HTML) inner text */
+function slugifyHeading(inner) {
+  return inner
+    .replace(/<[^>]+>/g, "") // strip inline tags (e.g. <code>)
+    .replace(/&[a-z0-9#]+;/gi, "") // drop HTML entities (&amp; etc.)
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, "") // drop punctuation
+    .replace(/\s+/g, "-") // spaces → dashes
+    .replace(/-+/g, "-") // collapse dashes
+    .replace(/^-|-$/g, ""); // trim leading/trailing dashes
+}
+
+/** Add stable id="" anchors to headings (marked v18 emits none), so docs pages
+ *  are deep-linkable per section. Headings that already carry an id are left
+ *  untouched; duplicate slugs are disambiguated with a numeric suffix. */
+function addHeadingIds(html) {
+  const used = new Set();
+  return html.replace(/<(h[1-6])>([\s\S]*?)<\/\1>/g, (match, tag, inner) => {
+    let id = slugifyHeading(inner);
+    if (!id) return match;
+    const base = id;
+    let n = 1;
+    while (used.has(id)) id = `${base}-${n++}`;
+    used.add(id);
+    return `<${tag} id="${id}">${inner}</${tag}>`;
+  });
+}
+
 /** Rewrite internal #slug links to /slug in rendered HTML */
 function rewriteInternalLinks(html) {
   // href="#slug" → href="/slug" for known slugs
@@ -178,8 +207,8 @@ for (const { slug, title } of slugMeta) {
   // Convert markdown → HTML (marked passes raw HTML blocks through unchanged)
   const rawHtml = marked.parse(mdContent);
 
-  // Rewrite #slug → /slug for internal cross-references
-  const content = rewriteInternalLinks(rawHtml);
+  // Add per-heading id anchors, then rewrite #slug → /slug cross-references
+  const content = rewriteInternalLinks(addHeadingIds(rawHtml));
 
   const pageHtml = buildPage(slug, title, description, content);
 

@@ -282,9 +282,9 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     </aside>
 
     <main class="content" id="content">
-      <article id="article" role="main"><h1>JS Rendering</h1>
+      <article id="article" role="main"><h1 id="js-rendering">JS Rendering</h1>
 <p>crw supports JavaScript rendering for single-page applications (SPAs) and JS-heavy sites via the Chrome DevTools Protocol (CDP).</p>
-<h2>Rendering Modes</h2>
+<h2 id="rendering-modes">Rendering Modes</h2>
 <p>Set the rendering mode in your config:</p>
 <pre><code class="language-toml">[renderer]
 mode = &quot;auto&quot;          # auto | lightpanda | playwright | chrome | none
@@ -319,7 +319,7 @@ pool_size = 4
 <td>HTTP only, never render JS</td>
 </tr>
 </tbody></table>
-<h2>Per-request control</h2>
+<h2 id="per-request-control">Per-request control</h2>
 <p>Override the rendering mode per request using <code>renderJs</code>:</p>
 <pre><code class="language-json">{
   &quot;url&quot;: &quot;https://spa-app.com&quot;,
@@ -347,7 +347,7 @@ pool_size = 4
 <td>HTTP only</td>
 </tr>
 </tbody></table>
-<h2>Global default</h2>
+<h2 id="global-default">Global default</h2>
 <p>To force JS rendering for every request that doesn&#39;t specify <code>renderJs</code> explicitly, set <code>render_js_default</code> in your config:</p>
 <pre><code class="language-toml">[renderer]
 mode = &quot;chrome&quot;
@@ -360,7 +360,7 @@ CRW_RENDERER__RENDER_JS_DEFAULT=true
 CRW_RENDERER__FORCE_JS=true
 </code></pre>
 <p>Precedence: a per-request <code>renderJs</code> always wins over the global default. Unset (<code>null</code>) on the request falls back to the default; if the default is also unset, the auto-detection heuristics below apply.</p>
-<h2>Per-request renderer override</h2>
+<h2 id="per-request-renderer-override">Per-request renderer override</h2>
 <p>When <code>mode = &quot;auto&quot;</code> and you have multiple renderers configured (e.g., LightPanda + Chrome), the auto-detect chain decides which one to use. Sometimes you already know that a specific site needs Chrome (Cloudflare-protected SPAs) or LightPanda (fast static-JS sites). Pin the renderer per request with the <code>renderer</code> field:</p>
 <pre><code class="language-json">{
   &quot;url&quot;: &quot;https://x.com/elonmusk&quot;,
@@ -391,9 +391,9 @@ CRW_RENDERER__FORCE_JS=true
 <td>Hard-pin to Playwright — no fallback</td>
 </tr>
 </tbody></table>
-<h3>Pinned implies JS</h3>
+<h3 id="pinned-implies-js">Pinned implies JS</h3>
 <p>A non-<code>auto</code> <code>renderer</code> value implies <code>renderJs:true</code>. If you set <code>renderJs:false</code> explicitly, the request stays HTTP-only and the pin is silently ignored — <code>renderJs:false</code> always wins. This means the availability check is also skipped when <code>renderJs:false</code> is set, so combinations like <code>{&quot;mode&quot;:&quot;none&quot;,&quot;renderJs&quot;:false,&quot;renderer&quot;:&quot;chrome&quot;}</code> are accepted.</p>
-<h3>Errors and validation</h3>
+<h3 id="errors-and-validation">Errors and validation</h3>
 <p>If the named renderer isn&#39;t available in the server&#39;s pool, the request returns HTTP 400 immediately with <code>errorCode: &quot;invalid_request&quot;</code> and a message listing the configured renderers:</p>
 <pre><code class="language-json">{
   &quot;success&quot;: false,
@@ -402,10 +402,10 @@ CRW_RENDERER__FORCE_JS=true
 }
 </code></pre>
 <p>For <code>/v1/crawl</code>, this validation runs <strong>once at job acceptance</strong> — bad combinations return 400 before the job is queued.</p>
-<h3>Pinning reduces resilience</h3>
+<h3 id="pinning-reduces-resilience">Pinning reduces resilience</h3>
 <p>Hard-pinning a renderer means transient failures of that renderer surface as errors instead of silently falling back to HTTP. If you need maximum resilience, omit <code>renderer</code> (or set it to <code>auto</code>) so the auto-detect chain can fall back. If you need determinism — &quot;I know this site needs Chrome and a LightPanda success would be a wrong answer&quot; — pin it.</p>
 <p>For crawls, per-page failures of a pinned renderer are still logged and skipped; the rest of the crawl continues. Pages that fail will not appear in the results.</p>
-<h2>Per-request country (residential proxy tier)</h2>
+<h2 id="per-request-country-residential-proxy-tier">Per-request country (residential proxy tier)</h2>
 <p>When the operator configures a <code>chrome_proxy</code> tier backed by a residential proxy provider you configure, each request can route through a specific country by setting <code>country</code> in the request body:</p>
 <pre><code class="language-json">{
   &quot;url&quot;: &quot;https://geo-restricted.example.com&quot;,
@@ -435,7 +435,7 @@ CRW_RENDERER__FORCE_JS=true
 <p>The country selector is composed at request time and supplied to Chrome via the CDP <code>Fetch.authRequired</code> event — no per-country container restart needed, and concurrent requests can target different countries without cross-contamination.</p>
 <p>This field has no effect when the <code>chrome_proxy</code> tier is not configured. It is a renderer-tier routing hint, not a content filter — the engine does not translate or localize the response.</p>
 <p>See <a href="/configuration">Configuration — Residential proxy tier</a> for the operator-side env vars (<code>CRW_RENDERER__PROXY_BASE_USER</code>, <code>CRW_RENDERER__PROXY_BASE_PASS</code>, <code>CRW_RENDERER__PROXY_DEFAULT_COUNTRY</code>).</p>
-<h2>When To Turn It On</h2>
+<h2 id="when-to-turn-it-on">When To Turn It On</h2>
 <p>Enable JS rendering when the page content is not present in the initial HTML response. Typical examples:</p>
 <ul>
 <li>single-page applications,</li>
@@ -443,7 +443,7 @@ CRW_RENDERER__FORCE_JS=true
 <li>and sites where the meaningful body is assembled client-side.</li>
 </ul>
 <p>Do not enable it blindly for every request. HTTP-only fetches are faster and cheaper.</p>
-<h2>Choosing a <code>waitFor</code> Value</h2>
+<h2 id="choosing-a-waitfor-value">Choosing a <code>waitFor</code> Value</h2>
 <p>Start with the smallest value that works:</p>
 <ul>
 <li><code>500</code> to <code>1000</code> for lightly hydrated pages,</li>
@@ -453,7 +453,7 @@ CRW_RENDERER__FORCE_JS=true
 <p>:::warning
 Long waits are not automatically safer. They increase latency and can hide the fact that the page is blocked rather than merely slow.
 :::</p>
-<h2>Auto-detection</h2>
+<h2 id="auto-detection">Auto-detection</h2>
 <p>When <code>renderJs</code> is <code>null</code>, crw fetches the page via HTTP first, then checks for SPA signals:</p>
 <p><strong>Triggered when body text &lt; 200 chars and:</strong></p>
 <ul>
@@ -466,8 +466,8 @@ Long waits are not automatically safer. They increase latency and can hide the f
 <li><code>&lt;noscript&gt;</code> contains &quot;enable javascript&quot;</li>
 <li>Body text &lt; 500 chars and URL matches Framer, Webflow, Wix, or Squarespace domains</li>
 </ul>
-<h2>CDP Backends</h2>
-<h3>LightPanda (Recommended)</h3>
+<h2 id="cdp-backends">CDP Backends</h2>
+<h3 id="lightpanda-recommended">LightPanda (Recommended)</h3>
 <p>Fastest option. Lightweight browser engine purpose-built for scraping.</p>
 <pre><code class="language-bash"># Auto-install
 crw-server setup
@@ -478,15 +478,15 @@ lightpanda serve --host 127.0.0.1 --port 9222 &amp;
 <pre><code class="language-toml">[renderer.lightpanda]
 ws_url = &quot;ws://127.0.0.1:9222/&quot;
 </code></pre>
-<h3>Playwright</h3>
+<h3 id="playwright">Playwright</h3>
 <pre><code class="language-toml">[renderer.playwright]
 ws_url = &quot;ws://playwright:9222&quot;
 </code></pre>
-<h3>Chrome / Chromium</h3>
+<h3 id="chrome-chromium">Chrome / Chromium</h3>
 <pre><code class="language-toml">[renderer.chrome]
 ws_url = &quot;ws://chrome:9222&quot;
 </code></pre>
-<h2>How CDP rendering works</h2>
+<h2 id="how-cdp-rendering-works">How CDP rendering works</h2>
 <ol>
 <li>Open a new browser tab via <code>Target.createTarget</code></li>
 <li>Navigate to the URL</li>
@@ -495,26 +495,26 @@ ws_url = &quot;ws://chrome:9222&quot;
 <li>Execute <code>Runtime.evaluate(&quot;document.documentElement.outerHTML&quot;)</code> to get rendered HTML</li>
 <li>Close the tab via <code>Target.closeTarget</code></li>
 </ol>
-<h2>Cloud vs Self-hosted</h2>
+<h2 id="cloud-vs-self-hosted">Cloud vs Self-hosted</h2>
 <ul>
 <li><strong>Cloud</strong>: JS rendering is always available. The managed infrastructure runs a LightPanda sidecar alongside the engine. Available on <a href="https://fastcrw.com">fastcrw.com</a> (cloud).</li>
 <li><strong>Self-hosted</strong>: You must run <code>crw-server setup</code> or configure a CDP browser (LightPanda, Chrome, or Playwright) in your <code>config.toml</code> under <code>[renderer]</code>. If no JS renderer is configured, requests with <code>renderJs: true</code> will fall back to HTTP-only fetching and include a warning.</li>
 </ul>
-<h2>What To Inspect in the Response</h2>
+<h2 id="what-to-inspect-in-the-response">What To Inspect in the Response</h2>
 <p>When rendered output looks wrong, check:</p>
 <ul>
 <li><code>metadata.renderedWith</code> to verify a browser was actually used,</li>
 <li><code>metadata.elapsedMs</code> to understand the cost of the request,</li>
 <li>and <code>warning</code> to catch anti-bot or fallback situations.</li>
 </ul>
-<h2>Troubleshooting</h2>
+<h2 id="troubleshooting">Troubleshooting</h2>
 <ul>
 <li><strong>Empty content from JS-heavy sites</strong>: Increase <code>waitFor</code> (e.g., <code>3000</code>-<code>5000</code>). Some SPAs need extra time to hydrate.</li>
 <li><strong><code>renderedWith: &quot;http_only_fallback&quot;</code> in metadata</strong>: JS rendering was requested but no renderer is available. Check your deployment configuration.</li>
 <li><strong>Internal error on <code>renderJs: true</code></strong>: Verify the LightPanda sidecar is running and reachable. Check <code>/health</code> for renderer status.</li>
 <li><strong>Still poor output after increasing <code>waitFor</code></strong>: The issue may be anti-bot protection or authentication flow, not rendering delay.</li>
 </ul>
-<h2>Docker Compose</h2>
+<h2 id="docker-compose">Docker Compose</h2>
 <p>The included <code>docker-compose.yml</code> runs crw with a LightPanda sidecar:</p>
 <pre><code class="language-yaml">services:
   crw:

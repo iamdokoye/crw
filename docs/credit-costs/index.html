@@ -282,11 +282,11 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     </aside>
 
     <main class="content" id="content">
-      <article id="article" role="main"><h1>Credit Costs</h1>
+      <article id="article" role="main"><h1 id="credit-costs">Credit Costs</h1>
 <p>:::note
 Cloud only (fastcrw.com) -- self-hosted instances do not have credit-based billing.
 :::</p>
-<h2>Current billing rules</h2>
+<h2 id="current-billing-rules">Current billing rules</h2>
 <table>
 <thead>
 <tr>
@@ -323,10 +323,10 @@ Cloud only (fastcrw.com) -- self-hosted instances do not have credit-based billi
 <td>1 credit (planned cloud rate; the self-hosted <code>crw-browse</code> binary is free)</td>
 </tr>
 </tbody></table>
-<h2>Why crawl billing looks different</h2>
+<h2 id="why-crawl-billing-looks-different">Why crawl billing looks different</h2>
 <p>The crawl start reserves the job. Subsequent polls charge only for newly materialized pages, not for the total accumulated page count each time.</p>
 <p>That prevents the same already-seen pages from being charged again and again just because you are checking progress.</p>
-<h2>Simple Examples</h2>
+<h2 id="simple-examples">Simple Examples</h2>
 <table>
 <thead>
 <tr>
@@ -367,12 +367,12 @@ Cloud only (fastcrw.com) -- self-hosted instances do not have credit-based billi
 <td>1 + 2 = 3 credits (failed scrape refunded)</td>
 </tr>
 </tbody></table>
-<h2>What Usually Does Not Consume Permanent Credits</h2>
+<h2 id="what-usually-does-not-consume-permanent-credits">What Usually Does Not Consume Permanent Credits</h2>
 <p>The billing logic is designed to avoid charging you for requests that never become real usable work. Validation failures and certain upstream failures are refunded rather than treated like successful paid execution.</p>
 <p>The safest way to confirm actual consumption is still the balance endpoint before and after a test.</p>
-<h2>Balance check</h2>
+<h2 id="balance-check">Balance check</h2>
 <p>Use <code>GET /api/v1/account/balance</code> (cloud only — fastcrw.com) with your API key to inspect included credits, purchased balance, and total available credits.</p>
-<h2>Example Monitoring Pattern</h2>
+<h2 id="example-monitoring-pattern">Example Monitoring Pattern</h2>
 <p>A simple integration-safe pattern is:</p>
 <ol>
 <li>read balance before a new workflow rollout,</li>
@@ -381,7 +381,7 @@ Cloud only (fastcrw.com) -- self-hosted instances do not have credit-based billi
 <li>compare expected consumption with actual consumption.</li>
 </ol>
 <p>That is especially useful for crawl jobs because the start request and the page-materialization charges happen at different times.</p>
-<h2>When To Watch Credits Closely</h2>
+<h2 id="when-to-watch-credits-closely">When To Watch Credits Closely</h2>
 <p>Watch credits closely when:</p>
 <ul>
 <li>you are polling crawl jobs at high frequency,</li>
@@ -389,13 +389,13 @@ Cloud only (fastcrw.com) -- self-hosted instances do not have credit-based billi
 <li>or you are benchmarking output quality across multiple target sites.</li>
 </ul>
 <p>If request rate is the only thing you monitor, you can still be surprised by crawl-heavy usage. Pair billing checks with <a href="/docs/rate-limits">rate limits</a> so throughput and credit consumption are interpreted together.</p>
-<h2>Operational Advice</h2>
+<h2 id="operational-advice">Operational Advice</h2>
 <ul>
 <li>Use small test batches before large crawls.</li>
 <li>Check balance before and after integration changes.</li>
 <li>Separate &quot;request volume&quot; monitoring from &quot;credit consumption&quot; monitoring; they are related but not identical.</li>
 </ul>
-<h2>Common Mistakes</h2>
+<h2 id="common-mistakes">Common Mistakes</h2>
 <ul>
 <li>Assuming every crawl poll re-bills the full job instead of only newly materialized pages.</li>
 <li>Launching large crawls before validating cost on a much smaller limit.</li>

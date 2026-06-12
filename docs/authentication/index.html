@@ -282,9 +282,9 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     </aside>
 
     <main class="content" id="content">
-      <article id="article" role="main"><h1>Authentication</h1>
+      <article id="article" role="main"><h1 id="authentication">Authentication</h1>
 <p>CRW keeps auth simple: use a Bearer token on the hosted API, and enable the same pattern on self-hosted deployments only when you need it.</p>
-<h2>Hosted API</h2>
+<h2 id="hosted-api">Hosted API</h2>
 <p>Every authenticated request to the hosted API uses:</p>
 <pre><code class="language-http">Authorization: Bearer YOUR_API_KEY
 </code></pre>
@@ -294,20 +294,20 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
   -H &quot;Content-Type: application/json&quot; \
   -d &#39;{&quot;url&quot;:&quot;https://example.com&quot;,&quot;formats&quot;:[&quot;markdown&quot;]}&#39;
 </code></pre>
-<h2>Self-Hosted API</h2>
+<h2 id="self-hosted-api">Self-Hosted API</h2>
 <p>Self-hosted CRW does not require auth unless you configure API keys.</p>
 <p>Set one or more keys in config:</p>
 <pre><code class="language-toml">[auth]
 api_keys = [&quot;fc-key-1234&quot;, &quot;fc-key-5678&quot;]
 </code></pre>
 <p>Once keys are configured, every route under <code>/v1/*</code> and <code>/mcp</code> requires the same Bearer header.</p>
-<h2>Behavior</h2>
+<h2 id="behavior">Behavior</h2>
 <ul>
 <li>No keys configured: self-hosted API routes are open</li>
 <li>Keys configured: <code>/v1/*</code> and <code>/mcp</code> require <code>Authorization: Bearer ...</code></li>
 <li><code>/health</code> always stays public</li>
 </ul>
-<h2>Error Cases</h2>
+<h2 id="error-cases">Error Cases</h2>
 <pre><code class="language-json">{
   &quot;success&quot;: false,
   &quot;error&quot;: &quot;Missing Authorization header&quot;
@@ -318,13 +318,13 @@ api_keys = [&quot;fc-key-1234&quot;, &quot;fc-key-5678&quot;]
   &quot;error&quot;: &quot;Invalid API key&quot;
 }
 </code></pre>
-<h2>Common Mistakes</h2>
+<h2 id="common-mistakes">Common Mistakes</h2>
 <ul>
 <li>Forgetting the <code>Bearer </code> prefix</li>
 <li>Mixing a hosted key with a self-hosted deployment</li>
 <li>Turning on auth locally and forgetting that MCP over HTTP will also need the header</li>
 </ul>
-<h2>What To Read Next</h2>
+<h2 id="what-to-read-next">What To Read Next</h2>
 <ul>
 <li><a href="/quick-start">Quick Start</a> for the first authenticated request</li>
 <li><a href="/playground">API Playground</a> for interactive testing</li>

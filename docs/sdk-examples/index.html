@@ -282,8 +282,8 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     </aside>
 
     <main class="content" id="content">
-      <article id="article" role="main"><h1>SDK Examples</h1>
-<h2>TypeScript</h2>
+      <article id="article" role="main"><h1 id="sdk-examples">SDK Examples</h1>
+<h2 id="typescript">TypeScript</h2>
 <pre><code class="language-ts">const res = await fetch(&quot;https://fastcrw.com/api/v1/scrape&quot;, {
   method: &quot;POST&quot;,
   headers: {
@@ -301,7 +301,7 @@ const payload = await res.json();
 console.log(payload.data?.markdown);
 </code></pre>
 <p>This is enough for most Node.js backends, server actions, and edge handlers.</p>
-<h2>Python</h2>
+<h2 id="python">Python</h2>
 <pre><code class="language-py">import requests
 
 res = requests.post(
@@ -317,7 +317,7 @@ res.raise_for_status()
 payload = res.json()
 print(payload[&quot;data&quot;][&quot;markdown&quot;])
 </code></pre>
-<h2>Go</h2>
+<h2 id="go">Go</h2>
 <pre><code class="language-go">package main
 
 import (
@@ -343,8 +343,8 @@ func main() {
   fmt.Println(string(b))
 }
 </code></pre>
-<h2>Search</h2>
-<h3>TypeScript</h3>
+<h2 id="search">Search</h2>
+<h3 id="typescript-1">TypeScript</h3>
 <pre><code class="language-ts">const res = await fetch(&quot;https://fastcrw.com/api/v1/search&quot;, {
   method: &quot;POST&quot;,
   headers: {
@@ -360,7 +360,7 @@ if (!res.ok) {
 
 const { data } = await res.json();
 </code></pre>
-<h3>Python</h3>
+<h3 id="python-1">Python</h3>
 <pre><code class="language-python">resp = requests.post(
     &quot;https://fastcrw.com/api/v1/search&quot;,
     headers={&quot;Authorization&quot;: &quot;Bearer YOUR_API_KEY&quot;},
@@ -370,7 +370,7 @@ const { data } = await res.json();
 resp.raise_for_status()
 data = resp.json()[&quot;data&quot;]
 </code></pre>
-<h3>Go</h3>
+<h3 id="go-1">Go</h3>
 <pre><code class="language-go">body := `{&quot;query&quot;:&quot;web scraping tools 2026&quot;,&quot;limit&quot;:5}`
 req, _ := http.NewRequest(&quot;POST&quot;, &quot;https://fastcrw.com/api/v1/search&quot;,
     strings.NewReader(body))
@@ -383,7 +383,7 @@ if err != nil {
 }
 defer resp.Body.Close()
 </code></pre>
-<h3>Search + Scrape</h3>
+<h3 id="search-scrape">Search + Scrape</h3>
 <p>Add <code>scrapeOptions</code> to fetch page content for each result in one call:</p>
 <pre><code class="language-ts">const res = await fetch(&quot;https://fastcrw.com/api/v1/search&quot;, {
   method: &quot;POST&quot;,
@@ -398,7 +398,7 @@ defer resp.Body.Close()
   }),
 });
 </code></pre>
-<h2>Crawl Polling Pattern</h2>
+<h2 id="crawl-polling-pattern">Crawl Polling Pattern</h2>
 <p>Every language follows the same basic loop:</p>
 <ol>
 <li><code>POST /crawl</code> to start the job.</li>
@@ -406,7 +406,7 @@ defer resp.Body.Close()
 <li><code>GET /crawl/:id</code> until the job reaches a terminal state.</li>
 </ol>
 <p>That is why the examples here stay close to raw HTTP instead of pretending there is an official SDK package.</p>
-<h2>When To Use Raw HTTP</h2>
+<h2 id="when-to-use-raw-http">When To Use Raw HTTP</h2>
 <p>Raw HTTP is the right default when you are:</p>
 <ul>
 <li>already inside a backend service that owns retry logic,</li>
@@ -414,7 +414,7 @@ defer resp.Body.Close()
 <li>or integrating through an environment where extra SDK abstraction does not buy much.</li>
 </ul>
 <p>That includes server actions, background jobs, serverless functions, and internal APIs that just need a predictable request shape. The main advantage is operational clarity: what you send over the wire is exactly what CRW receives.</p>
-<h2>Example: Start a Crawl and Poll It</h2>
+<h2 id="example-start-a-crawl-and-poll-it">Example: Start a Crawl and Poll It</h2>
 <p>The same shape works in every language:</p>
 <pre><code class="language-ts">const start = await fetch(&quot;https://fastcrw.com/api/v1/crawl&quot;, {
   method: &quot;POST&quot;,
@@ -432,19 +432,19 @@ const status = await fetch(`https://fastcrw.com/api/v1/crawl/${id}`, {
 });
 </code></pre>
 <p>If your app already has a standard HTTP client with auth, tracing, and retries, adding a dedicated SDK layer too early usually just hides useful operational details.</p>
-<h2>Common Mistakes</h2>
+<h2 id="common-mistakes">Common Mistakes</h2>
 <ul>
 <li>Do not treat <code>response.ok</code> as the full success signal. You still need to inspect <code>warning</code> and <code>metadata.statusCode</code>.</li>
 <li>Do not hardcode retry timing for rate limits. Read <code>Retry-After</code> from the API response.</li>
 <li>Do not jump straight into crawl jobs before validating a single page through <a href="/docs/scraping">scrape</a> or <a href="/docs/quick-start">getting started</a>.</li>
 </ul>
-<h2>What To Read Next</h2>
+<h2 id="what-to-read-next">What To Read Next</h2>
 <ul>
 <li>Use <a href="/docs/rate-limits">rate limits</a> before adding parallel workers.</li>
 <li>Use <a href="/docs/error-codes">error codes</a> when you need machine-readable failure handling.</li>
 <li>Use <a href="/docs/output-formats">output formats</a> when you are deciding between markdown, html, and structured extraction output.</li>
 </ul>
-<h2>Production Advice</h2>
+<h2 id="production-advice">Production Advice</h2>
 <ul>
 <li>Load the API key from an environment variable.</li>
 <li>Respect <code>Retry-After</code> on <code>429</code>.</li>
