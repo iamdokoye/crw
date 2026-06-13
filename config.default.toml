@@ -67,6 +67,28 @@ job_ttl_secs = 3600
 # Residential proxies use real ISP IPs and are much harder for sites to detect.
 # Most providers give you a single gateway URL that auto-rotates IPs per request.
 # proxy = "http://proxy:8080"
+#
+# Proxy rotation — supply your OWN pool and crw rotates across it per request.
+# When proxy_list is non-empty it takes precedence over the single `proxy` above.
+# Each entry is validated at startup; a malformed URL is a hard error (crw never
+# silently falls back to a direct connection, which would leak your real IP).
+# Accepts a TOML array here, or a comma-separated / JSON-array string via the
+# env var CRW_CRAWLER__PROXY_LIST.
+#
+#   proxy_list = ["http://user:pass@a:8080", "http://user:pass@b:8080", "socks5://c:1080"]
+#
+# proxy_rotation strategy (default: sticky_per_host):
+#   sticky_per_host — pin each target host to one proxy (best for sessions /
+#                     anti-bot; keeps cookies + TLS coherent per host).
+#   round_robin     — cycle through the pool, one step per request.
+#   random          — pick a random proxy per request.
+#   proxy_rotation = "sticky_per_host"
+#
+# Coverage: rotation currently applies to the HTTP fetch path (direct HTTP
+# scrapes and the HTTP pages of a crawl). JS/Chrome-rendered requests and the
+# managed-cloud proxy network are being rolled out — see ROADMAP.
+# proxy_list = []
+# proxy_rotation = "sticky_per_host"
 
 [extraction]
 default_format = "markdown"
