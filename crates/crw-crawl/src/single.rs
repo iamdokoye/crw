@@ -6,9 +6,35 @@ use crw_core::types::{
     resolve_pinned_renderer, resolve_render_js,
 };
 use crw_renderer::FallbackRenderer;
-use crw_renderer::http_only::{HttpFetcher, RotatingHttpFetcher};
+use crw_renderer::http_only::HttpFetcher;
 use crw_renderer::traits::PageFetcher;
 use std::sync::{Arc, Mutex};
+
+/// Resolve the effective proxy for a request, honoring precedence
+/// `req.proxy_list > req.proxy > server config`. The single resolved entry is
+/// scoped into `REQUEST_PROXY` so BOTH the HTTP and JS/CDP paths egress through
+/// it (no second pick, no path-specific resolution). A malformed BYOP proxy is
+/// an `InvalidRequest` error — never a silent direct connection.
+fn resolve_request_proxy(
+    req: &ScrapeRequest,
+    renderer: &FallbackRenderer,
+) -> CrwResult<Option<Arc<crw_core::ProxyEntry>>> {
+    if !req.proxy_list.is_empty() || req.proxy.is_some() {
+        let byop = crw_core::ProxyRotator::build(
+            &req.proxy_list,
+            req.proxy.as_deref(),
+            req.proxy_rotation.unwrap_or_default(),
+        )
+        .map_err(crw_core::error::CrwError::InvalidRequest)?;
+        if let Some(byop) = byop {
+            let host = url::Url::parse(&req.url)
+                .ok()
+                .and_then(|u| u.host_str().map(str::to_string));
+            return Ok(Some(Arc::new(byop.pick(host.as_deref()).clone())));
+        }
+    }
+    Ok(renderer.pick_proxy_for_url(&req.url))
+}
 
 /// Scrape a single URL: fetch → extract → (optional) LLM structured extraction.
 ///
@@ -28,13 +54,11 @@ pub async fn scrape_url(
     render_js_default: Option<bool>,
     deadline: Deadline,
 ) -> CrwResult<ScrapeData> {
-    // Propagate per-request country + resolved proxy into the renderer stack
-    // via task-locals. `REQUEST_COUNTRY` drives DataImpulse credential country;
-    // `REQUEST_PROXY` carries the rotator-picked proxy so the JS/CDP path
-    // egresses through it (HTTP-only BYOP is handled separately in the inner fn
-    // via a temp RotatingHttpFetcher). The proxy is resolved from the configured
-    // rotator here; per-request BYOP applies to the HTTP path.
-    let resolved_proxy = renderer.pick_proxy_for_url(&req.url);
+    // Propagate per-request country + the single resolved proxy into the
+    // renderer stack via task-locals. `REQUEST_COUNTRY` drives DataImpulse
+    // credential country; `REQUEST_PROXY` carries the resolved proxy (BYOP >
+    // config) so BOTH the HTTP and JS/CDP paths egress through the same entry.
+    let resolved_proxy = resolve_request_proxy(req, renderer)?;
     crw_renderer::REQUEST_COUNTRY
         .scope(req.country.clone(), async move {
             crw_renderer::REQUEST_PROXY
@@ -109,27 +133,12 @@ async fn scrape_url_inner(
         }
     }
 
-    // Per-request proxy override (BYOP). A non-empty `proxy_list` or a single
-    // `proxy` builds a fresh rotator that takes precedence over server config.
-    // An invalid URL is a 400 (InvalidRequest), never a silent direct fetch.
-    let req_rotator: Option<Arc<crw_core::ProxyRotator>> =
-        if !req.proxy_list.is_empty() || req.proxy.is_some() {
-            crw_core::ProxyRotator::build(
-                &req.proxy_list,
-                req.proxy.as_deref(),
-                req.proxy_rotation.unwrap_or_default(),
-            )
-            .map_err(crw_core::error::CrwError::InvalidRequest)?
-            .map(Arc::new)
-        } else {
-            None
-        };
-
-    // Use a temporary fetcher when:
-    // (a) a per-request proxy/proxy_list overrides global proxy, OR
-    // (b) per-request stealth differs from what the shared renderer was built with.
-    let needs_temp_fetcher =
-        req_rotator.is_some() || req.stealth.is_some_and(|s| s != default_stealth);
+    // Use a temporary fetcher ONLY when per-request stealth differs from the
+    // shared renderer's config. Proxy egress (config rotation + BYOP) is carried
+    // by the REQUEST_PROXY task-local (resolved once in `scrape_url`) and is
+    // honored by the shared renderer's HTTP and CDP paths, so it does not need a
+    // temp fetcher.
+    let needs_temp_fetcher = req.stealth.is_some_and(|s| s != default_stealth);
 
     let mut fetch_result = if needs_temp_fetcher {
         // Rotate UA from built-in pool when stealth is active, so the request
@@ -141,19 +150,25 @@ async fn scrape_url_inner(
         };
 
         if effective_render_js == Some(false) {
-            // HTTP-only: safe to use a temp fetcher with custom proxy/stealth.
-            // With a per-request rotator, rotate across the pool; otherwise a
-            // plain direct fetcher (stealth-only override).
-            if let Some(rot) = &req_rotator {
-                let temp = RotatingHttpFetcher::new(rot.clone(), &effective_ua, inject_stealth)?;
-                temp.fetch(&req.url, &req.headers, req.wait_for, deadline)
-                    .await?
-            } else {
-                let temp_http = HttpFetcher::new(&effective_ua, None, inject_stealth);
-                temp_http
-                    .fetch(&req.url, &req.headers, req.wait_for, deadline)
-                    .await?
-            }
+            // HTTP-only temp fetcher with per-request stealth. Honor REQUEST_PROXY
+            // so a stealth-override request still egresses through the resolved
+            // proxy — fail-closed, a set proxy is never bypassed.
+            let temp_http = match crw_renderer::REQUEST_PROXY
+                .try_with(|p| p.clone())
+                .ok()
+                .flatten()
+            {
+                Some(entry) => HttpFetcher::with_proxy(
+                    &effective_ua,
+                    entry.raw(),
+                    inject_stealth,
+                    std::time::Duration::from_secs(30),
+                )?,
+                None => HttpFetcher::new(&effective_ua, None, inject_stealth),
+            };
+            temp_http
+                .fetch(&req.url, &req.headers, req.wait_for, deadline)
+                .await?
         } else {
             // JS rendering needed (or auto-detect): use the shared renderer which
             // has CDP backends configured. Inject stealth headers via custom headers

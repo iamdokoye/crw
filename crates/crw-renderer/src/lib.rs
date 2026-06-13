@@ -227,6 +227,11 @@ pub struct FallbackRenderer {
     /// feature) per-request CDP `proxyServer` selection. `None` = no proxy
     /// configured → direct connections, byte-identical to prior behavior.
     proxy_rotator: Option<Arc<crw_core::ProxyRotator>>,
+    /// Saved HTTP-fetcher construction inputs so a per-request proxied client
+    /// can be built on demand (when `REQUEST_PROXY` is set) without re-picking.
+    http_ua: String,
+    http_inject_stealth: bool,
+    http_timeout_ms: u64,
     /// Chrome browser-context pool handle for graceful drain on shutdown.
     /// `None` when the pool is disabled or the chrome tier isn't configured.
     #[cfg(feature = "cdp")]
@@ -259,11 +264,17 @@ impl FallbackRenderer {
     ) -> CrwResult<Self> {
         let effective_ua = pick_ua(user_agent, stealth);
         let inject_headers = stealth.enabled && stealth.inject_headers;
+        let http_timeout_ms = config.http_timeout();
+        // Fail closed: a malformed single `proxy` (e.g. CLI `--proxy htp://...`)
+        // is a hard error, never a silent direct connection (real-IP leak).
+        if let Some(p) = proxy {
+            crw_core::ProxyEntry::parse(p).map_err(CrwError::ConfigError)?;
+        }
         let http = Arc::new(http_only::HttpFetcher::with_timeout(
             &effective_ua,
             proxy,
             inject_headers,
-            std::time::Duration::from_millis(config.http_timeout()),
+            std::time::Duration::from_millis(http_timeout_ms),
         )) as Arc<dyn PageFetcher>;
 
         // A pinned backend (Lightpanda/Chrome/Playwright) must have CDP compiled in
@@ -302,6 +313,9 @@ impl FallbackRenderer {
                 per_host_max_concurrent: 1,
                 antibot: config.antibot.clone(),
                 proxy_rotator: None,
+                http_ua: effective_ua.clone(),
+                http_inject_stealth: inject_headers,
+                http_timeout_ms,
                 #[cfg(feature = "cdp")]
                 chrome_pool: None,
             });
@@ -492,35 +506,43 @@ impl FallbackRenderer {
             per_host_max_concurrent: 1,
             antibot: config.antibot.clone(),
             proxy_rotator: None,
+            http_ua: effective_ua.clone(),
+            http_inject_stealth: inject_headers,
+            http_timeout_ms,
             #[cfg(feature = "cdp")]
             chrome_pool,
         })
     }
 
-    /// Attach a proxy rotator built from config (or per request). When `Some`,
-    /// the HTTP fetcher is rebuilt as a [`http_only::RotatingHttpFetcher`] over
-    /// the pool, and the rotator is retained for per-request CDP `proxyServer`
-    /// selection. `None` is a no-op (keeps the direct/single-proxy fetcher from
-    /// [`Self::new`]). Builder-style so `new()`'s signature stays stable.
+    /// Attach the config proxy rotator. Retained so scrape/crawl entry points
+    /// can resolve a per-request proxy (via [`Self::pick_proxy_for_url`]) into
+    /// the [`REQUEST_PROXY`] task-local; the HTTP and CDP paths then both consume
+    /// that single resolved entry — no second pick. `None` is a no-op. Builder
+    /// style so `new()`'s signature stays stable.
     pub fn with_proxy_rotator(
         mut self,
         rotator: Option<Arc<crw_core::ProxyRotator>>,
-        user_agent: &str,
-        stealth: &StealthConfig,
-        http_timeout_ms: u64,
     ) -> CrwResult<Self> {
-        if let Some(rotator) = rotator {
-            let effective_ua = pick_ua(user_agent, stealth);
-            let inject_headers = stealth.enabled && stealth.inject_headers;
-            self.http = Arc::new(http_only::RotatingHttpFetcher::with_timeout(
-                rotator.clone(),
-                &effective_ua,
-                inject_headers,
-                std::time::Duration::from_millis(http_timeout_ms),
-            )?) as Arc<dyn PageFetcher>;
-            self.proxy_rotator = Some(rotator);
-        }
+        self.proxy_rotator = rotator;
         Ok(self)
+    }
+
+    /// The HTTP fetcher to use for the current request. When `REQUEST_PROXY` is
+    /// set (resolved once by the caller, honoring BYOP > config precedence),
+    /// build a client bound to THAT exact proxy so the HTTP path egresses
+    /// through the same proxy the CDP path uses. Hard-fails on a bad proxy
+    /// (never a silent direct connection). When unset, use the shared
+    /// (no-proxy or single-proxy) fetcher from `new()`.
+    fn http_fetcher_for_request(&self) -> CrwResult<Arc<dyn PageFetcher>> {
+        match REQUEST_PROXY.try_with(|p| p.clone()).ok().flatten() {
+            Some(entry) => Ok(Arc::new(http_only::HttpFetcher::with_proxy(
+                &self.http_ua,
+                entry.raw(),
+                self.http_inject_stealth,
+                std::time::Duration::from_millis(self.http_timeout_ms),
+            )?) as Arc<dyn PageFetcher>),
+            None => Ok(self.http.clone()),
+        }
     }
 
     /// Pick a proxy from the configured rotator for `host` (honoring the
@@ -664,13 +686,19 @@ impl FallbackRenderer {
         let is_hard_pinned = matches!(requested_renderer, Some(name) if name != "auto");
         match effective {
             Some(false) => {
-                let mut r = self.http.fetch(url, headers, None, deadline).await?;
+                let mut r = self
+                    .http_fetcher_for_request()?
+                    .fetch(url, headers, None, deadline)
+                    .await?;
                 stamp_http_decision(&mut r, requested_renderer);
                 Ok(r)
             }
             Some(true) => {
                 // Fetch via HTTP first to check content type — PDFs can't be JS-rendered.
-                let mut http_result = self.http.fetch(url, headers, None, deadline).await?;
+                let mut http_result = self
+                    .http_fetcher_for_request()?
+                    .fetch(url, headers, None, deadline)
+                    .await?;
                 if http_result.content_type.as_deref() == Some("application/pdf") {
                     stamp_http_decision(&mut http_result, requested_renderer);
                     return Ok(http_result);
@@ -702,7 +730,11 @@ impl FallbackRenderer {
                 // sites that reject reqwest's TLS/UA fingerprint succeed via a
                 // real Chromium navigation. Bench analysis: 10/147 false
                 // "unreachable" + 5/147 "http_502" map to this branch.
-                let mut result = match self.http.fetch(url, headers, None, deadline).await {
+                let mut result = match self
+                    .http_fetcher_for_request()?
+                    .fetch(url, headers, None, deadline)
+                    .await
+                {
                     Ok(r) => r,
                     Err(e) if !self.js_renderers.is_empty() => {
                         tracing::info!(
@@ -871,17 +903,20 @@ impl FallbackRenderer {
 
         // LightPanda has no upstream-proxy support: when a proxy is active for
         // this request, drop it so the rotated/sticky egress IP is honored
-        // (vanilla Chrome applies it via a per-context `proxyServer`). Only
-        // filter when at least one other renderer remains.
+        // (vanilla Chrome applies it via a per-context `proxyServer`). Fail
+        // CLOSED — if filtering leaves no proxy-capable JS renderer, return a
+        // hard error rather than silently navigating direct through LightPanda
+        // and leaking the host's real IP.
         let proxy_active = REQUEST_PROXY.try_with(|p| p.is_some()).unwrap_or(false);
         if proxy_active {
-            let filtered: Vec<&Arc<dyn PageFetcher>> = renderers
-                .iter()
-                .filter(|r| r.name() != "lightpanda")
-                .copied()
-                .collect();
-            if !filtered.is_empty() {
-                renderers = filtered;
+            renderers.retain(|r| r.name() != "lightpanda");
+            if renderers.is_empty() {
+                return Err(CrwError::RendererError(
+                    "a proxy is required for this request but the only available JS \
+                     renderer (lightpanda) cannot route through a proxy; configure a \
+                     chrome/chrome_proxy tier to use proxies with JS rendering"
+                        .into(),
+                ));
             }
         }
 

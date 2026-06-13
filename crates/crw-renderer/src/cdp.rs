@@ -1406,13 +1406,23 @@ impl CdpRenderer {
         let proxy_ctx: Option<String> =
             match crate::REQUEST_PROXY.try_with(|p| p.clone()).ok().flatten() {
                 Some(entry) => {
+                    // Chrome cannot authenticate SOCKS proxies (no Fetch.authRequired
+                    // for SOCKS). Reject socks+auth on the CDP path with a clear error
+                    // rather than hanging the auth pump on an event that never fires.
+                    if !entry.supports_cdp_auth() {
+                        return Err(CrwError::RendererError(
+                            "SOCKS5 proxy authentication is not supported on the \
+                             Chrome/JS renderer; use an HTTP/HTTPS proxy for JS rendering \
+                             or a credential-less SOCKS proxy"
+                                .into(),
+                        ));
+                    }
                     let v = conn
                         .send_recv(
                             "Target.createBrowserContext",
-                            serde_json::json!({
-                                "proxyServer": entry.chrome_proxy_server(),
-                                "proxyBypassList": "<-loopback>",
-                            }),
+                            // No proxyBypassList: Chrome bypasses loopback by default,
+                            // which is what we want (don't route localhost via proxy).
+                            serde_json::json!({ "proxyServer": entry.chrome_proxy_server() }),
                             None,
                             Duration::from_secs(2),
                         )
