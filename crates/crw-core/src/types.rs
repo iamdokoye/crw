@@ -188,11 +188,13 @@ pub struct ScrapeRequest {
     pub proxy: Option<String>,
     /// Per-request proxy pool to rotate among (BYOP). Takes precedence over
     /// `proxy` and over the server's configured pool. Empty = use server config.
-    #[serde(default)]
+    /// Accepts the snake_case `proxy_list` alias (the managed layer injects it)
+    /// in addition to the camelCase `proxyList`.
+    #[serde(default, alias = "proxy_list")]
     pub proxy_list: Vec<String>,
     /// Rotation strategy for `proxy_list` (`round_robin`, `random`,
     /// `sticky_per_host`). `None` = server default (`sticky_per_host`).
-    #[serde(default)]
+    #[serde(default, alias = "proxy_rotation")]
     pub proxy_rotation: Option<crate::proxy::ProxyRotation>,
     /// 2-letter ISO 3166-1 alpha-2 country code (e.g. "us", "gb") for the
     /// residential-proxy chrome tier's egress. When the server has
@@ -680,12 +682,12 @@ pub struct CrawlRequest {
     pub country: Option<String>,
     /// Per-crawl proxy pool to rotate among (BYOP). Takes precedence over the
     /// server's configured pool. Empty = use server config. Rotation is applied
-    /// per page (see `proxy_rotation`).
-    #[serde(default)]
+    /// per page (see `proxy_rotation`). Accepts the snake_case `proxy_list` alias.
+    #[serde(default, alias = "proxy_list")]
     pub proxy_list: Vec<String>,
     /// Rotation strategy for `proxy_list` (`round_robin`, `random`,
     /// `sticky_per_host`). `None` = server default (`sticky_per_host`).
-    #[serde(default)]
+    #[serde(default, alias = "proxy_rotation")]
     pub proxy_rotation: Option<crate::proxy::ProxyRotation>,
 }
 
