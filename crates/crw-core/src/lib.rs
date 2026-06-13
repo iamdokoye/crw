@@ -21,9 +21,11 @@ pub mod deadline;
 pub mod error;
 pub mod mcp;
 pub mod metrics;
+pub mod proxy;
 pub mod types;
 pub mod url_safety;
 
 pub use config::AppConfig;
 pub use deadline::Deadline;
 pub use error::{CrwError, CrwResult};
+pub use proxy::{ProxyEntry, ProxyRotation, ProxyRotator};

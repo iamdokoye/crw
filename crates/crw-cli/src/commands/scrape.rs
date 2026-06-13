@@ -764,6 +764,8 @@ fn build_request(
         filter_mode: None,
         top_k: None,
         proxy,
+        proxy_list: Vec::new(),
+        proxy_rotation: None,
         country: None,
         stealth: if stealth { Some(true) } else { None },
         actions: None,

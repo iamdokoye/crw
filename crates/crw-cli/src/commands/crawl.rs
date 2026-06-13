@@ -139,6 +139,8 @@ pub async fn run(mut args: CrawlArgs) -> Result<(), CmdError> {
         wait_for: None,
         renderer: None,
         country: None,
+        proxy_list: Vec::new(),
+        proxy_rotation: None,
     };
 
     let id = Uuid::new_v4();

@@ -1084,6 +1084,8 @@ async fn enrich_with_scrape(
                 filter_mode: None,
                 top_k: None,
                 proxy: None,
+                proxy_list: Vec::new(),
+                proxy_rotation: None,
                 country: None,
                 stealth: None,
                 actions: None,

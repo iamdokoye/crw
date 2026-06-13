@@ -6,7 +6,7 @@ use crw_core::types::{
     resolve_pinned_renderer, resolve_render_js,
 };
 use crw_renderer::FallbackRenderer;
-use crw_renderer::http_only::HttpFetcher;
+use crw_renderer::http_only::{HttpFetcher, RotatingHttpFetcher};
 use crw_renderer::traits::PageFetcher;
 use std::sync::{Arc, Mutex};
 
@@ -101,14 +101,29 @@ async fn scrape_url_inner(
         }
     }
 
-    // Use a temporary HttpFetcher when:
-    // (a) per-request proxy overrides global proxy, OR
+    // Per-request proxy override (BYOP). A non-empty `proxy_list` or a single
+    // `proxy` builds a fresh rotator that takes precedence over server config.
+    // An invalid URL is a 400 (InvalidRequest), never a silent direct fetch.
+    let req_rotator: Option<Arc<crw_core::ProxyRotator>> =
+        if !req.proxy_list.is_empty() || req.proxy.is_some() {
+            crw_core::ProxyRotator::build(
+                &req.proxy_list,
+                req.proxy.as_deref(),
+                req.proxy_rotation.unwrap_or_default(),
+            )
+            .map_err(crw_core::error::CrwError::InvalidRequest)?
+            .map(Arc::new)
+        } else {
+            None
+        };
+
+    // Use a temporary fetcher when:
+    // (a) a per-request proxy/proxy_list overrides global proxy, OR
     // (b) per-request stealth differs from what the shared renderer was built with.
     let needs_temp_fetcher =
-        req.proxy.is_some() || req.stealth.is_some_and(|s| s != default_stealth);
+        req_rotator.is_some() || req.stealth.is_some_and(|s| s != default_stealth);
 
     let mut fetch_result = if needs_temp_fetcher {
-        let proxy = req.proxy.as_deref();
         // Rotate UA from built-in pool when stealth is active, so the request
         // looks like a real browser even for per-request stealth overrides.
         let effective_ua = if inject_stealth {
@@ -118,11 +133,19 @@ async fn scrape_url_inner(
         };
 
         if effective_render_js == Some(false) {
-            // HTTP-only: safe to use a temp HttpFetcher with custom proxy/stealth.
-            let temp_http = HttpFetcher::new(&effective_ua, proxy, inject_stealth);
-            temp_http
-                .fetch(&req.url, &req.headers, req.wait_for, deadline)
-                .await?
+            // HTTP-only: safe to use a temp fetcher with custom proxy/stealth.
+            // With a per-request rotator, rotate across the pool; otherwise a
+            // plain direct fetcher (stealth-only override).
+            if let Some(rot) = &req_rotator {
+                let temp = RotatingHttpFetcher::new(rot.clone(), &effective_ua, inject_stealth)?;
+                temp.fetch(&req.url, &req.headers, req.wait_for, deadline)
+                    .await?
+            } else {
+                let temp_http = HttpFetcher::new(&effective_ua, None, inject_stealth);
+                temp_http
+                    .fetch(&req.url, &req.headers, req.wait_for, deadline)
+                    .await?
+            }
         } else {
             // JS rendering needed (or auto-detect): use the shared renderer which
             // has CDP backends configured. Inject stealth headers via custom headers

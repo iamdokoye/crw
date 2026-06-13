@@ -186,6 +186,14 @@ pub struct ScrapeRequest {
     /// (e.g. "http://proxy:8080" or "socks5://user:pass@proxy:1080").
     #[serde(default)]
     pub proxy: Option<String>,
+    /// Per-request proxy pool to rotate among (BYOP). Takes precedence over
+    /// `proxy` and over the server's configured pool. Empty = use server config.
+    #[serde(default)]
+    pub proxy_list: Vec<String>,
+    /// Rotation strategy for `proxy_list` (`round_robin`, `random`,
+    /// `sticky_per_host`). `None` = server default (`sticky_per_host`).
+    #[serde(default)]
+    pub proxy_rotation: Option<crate::proxy::ProxyRotation>,
     /// 2-letter ISO 3166-1 alpha-2 country code (e.g. "us", "gb") for the
     /// residential-proxy chrome tier's egress. When the server has
     /// DataImpulse credentials configured, the engine composes
@@ -376,6 +384,8 @@ impl Default for ScrapeRequest {
             filter_mode: None,
             top_k: None,
             proxy: None,
+            proxy_list: Vec::new(),
+            proxy_rotation: None,
             country: None,
             stealth: None,
             actions: None,
@@ -668,6 +678,15 @@ pub struct CrawlRequest {
     /// every page fetched in this crawl. See `ScrapeRequest::country`.
     #[serde(default)]
     pub country: Option<String>,
+    /// Per-crawl proxy pool to rotate among (BYOP). Takes precedence over the
+    /// server's configured pool. Empty = use server config. Rotation is applied
+    /// per page (see `proxy_rotation`).
+    #[serde(default)]
+    pub proxy_list: Vec<String>,
+    /// Rotation strategy for `proxy_list` (`round_robin`, `random`,
+    /// `sticky_per_host`). `None` = server default (`sticky_per_host`).
+    #[serde(default)]
+    pub proxy_rotation: Option<crate::proxy::ProxyRotation>,
 }
 
 /// Resolve the effective `render_js` decision from a per-request value and the
