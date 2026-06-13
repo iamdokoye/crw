@@ -125,6 +125,8 @@ pub async fn start_crawl(
         wait_for: opts.wait_for,
         renderer: v2.renderer,
         country: v2.country,
+        proxy_list: Vec::new(),
+        proxy_rotation: None,
     };
     validate_crawl_renderer(&req, &state)?;
 

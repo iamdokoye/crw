@@ -284,6 +284,8 @@ impl EngineSource {
             filter_mode: None,
             top_k: None,
             proxy: None,
+            proxy_list: Vec::new(),
+            proxy_rotation: None,
             country: None,
             stealth: None,
             actions: None,
@@ -377,6 +379,8 @@ impl EngineSource {
             wait_for: None,
             renderer: None,
             country: None,
+            proxy_list: Vec::new(),
+            proxy_rotation: None,
         };
         let initial = CrawlState {
             id: uuid::Uuid::new_v4(),

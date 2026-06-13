@@ -1,8 +1,10 @@
 use async_trait::async_trait;
 use crw_core::Deadline;
+use crw_core::ProxyRotator;
 use crw_core::error::{CrwError, CrwResult};
 use crw_core::types::FetchResult;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Instant;
 
 use crate::traits::PageFetcher;
@@ -49,6 +51,34 @@ const STEALTH_ACCEPT: &str =
 const STEALTH_SEC_CH_UA: &str =
     r#""Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24""#;
 
+/// Build a configured reqwest client, optionally routed through `proxy`.
+///
+/// **Strict**: a malformed proxy URL or a client build failure is a hard error
+/// — we never silently fall back to a direct (no-proxy) client, which would
+/// leak the host's real IP. Used by the rotating fetcher, whose entries are
+/// already validated upstream so the error path is effectively unreachable.
+fn build_client(
+    user_agent: &str,
+    proxy: Option<&str>,
+    request_timeout: std::time::Duration,
+) -> CrwResult<reqwest::Client> {
+    let mut builder = reqwest::Client::builder()
+        .user_agent(user_agent)
+        .connect_timeout(HTTP_CONNECT_TIMEOUT)
+        .timeout(request_timeout)
+        .redirect(crw_core::url_safety::safe_redirect_policy());
+
+    if let Some(proxy_url) = proxy {
+        let p = reqwest::Proxy::all(proxy_url)
+            .map_err(|e| CrwError::ConfigError(format!("invalid proxy URL '{proxy_url}': {e}")))?;
+        builder = builder.proxy(p);
+    }
+
+    builder
+        .build()
+        .map_err(|e| CrwError::ConfigError(format!("failed to build HTTP client: {e}")))
+}
+
 /// Simple HTTP fetcher using reqwest. No JS rendering.
 pub struct HttpFetcher {
     client: reqwest::Client,
@@ -67,36 +97,99 @@ impl HttpFetcher {
 
     /// Same as [`Self::new`] but with a caller-supplied request timeout.
     /// Used by `FallbackRenderer` to honor `RendererConfig::http_timeout()`.
+    ///
+    /// Infallible for backward compatibility: an invalid proxy URL logs and
+    /// falls back to a default client. The strict, leak-safe path is
+    /// [`RotatingHttpFetcher`] (used whenever a proxy pool/rotator is active).
     pub fn with_timeout(
         user_agent: &str,
         proxy: Option<&str>,
         inject_stealth_headers: bool,
         request_timeout: std::time::Duration,
     ) -> Self {
-        let mut builder = reqwest::Client::builder()
-            .user_agent(user_agent)
-            .connect_timeout(HTTP_CONNECT_TIMEOUT)
-            .timeout(request_timeout)
-            .redirect(crw_core::url_safety::safe_redirect_policy());
-
-        if let Some(proxy_url) = proxy {
-            match reqwest::Proxy::all(proxy_url) {
-                Ok(p) => builder = builder.proxy(p),
-                Err(e) => tracing::warn!("Invalid proxy URL '{}': {}", proxy_url, e),
-            }
-        }
-
-        let client = match builder.build() {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::error!("Failed to build HTTP client: {e}, using default");
-                reqwest::Client::new()
-            }
-        };
+        let client = build_client(user_agent, proxy, request_timeout).unwrap_or_else(|e| {
+            tracing::error!("{e}, using default client");
+            reqwest::Client::new()
+        });
         Self {
             client,
             inject_stealth_headers,
         }
+    }
+}
+
+/// HTTP fetcher that rotates across a pool of proxies. One pre-built
+/// [`HttpFetcher`] (warm `reqwest::Client`, no per-request client churn) per
+/// proxy entry; the [`ProxyRotator`] picks the fetcher per request by host.
+pub struct RotatingHttpFetcher {
+    fetchers: Vec<HttpFetcher>,
+    rotator: Arc<ProxyRotator>,
+}
+
+impl RotatingHttpFetcher {
+    /// Build one fetcher per validated proxy entry with the default request
+    /// timeout. Used by the per-request BYOP path.
+    pub fn new(
+        rotator: Arc<ProxyRotator>,
+        user_agent: &str,
+        inject_stealth_headers: bool,
+    ) -> CrwResult<Self> {
+        Self::with_timeout(
+            rotator,
+            user_agent,
+            inject_stealth_headers,
+            HTTP_REQUEST_TIMEOUT,
+        )
+    }
+
+    /// Build one fetcher per validated proxy entry. Hard-fails (no silent
+    /// direct-connection fallback) if any client cannot be built.
+    pub fn with_timeout(
+        rotator: Arc<ProxyRotator>,
+        user_agent: &str,
+        inject_stealth_headers: bool,
+        request_timeout: std::time::Duration,
+    ) -> CrwResult<Self> {
+        let mut fetchers = Vec::with_capacity(rotator.len());
+        for entry in rotator.entries() {
+            let client = build_client(user_agent, Some(entry.raw()), request_timeout)?;
+            fetchers.push(HttpFetcher {
+                client,
+                inject_stealth_headers,
+            });
+        }
+        Ok(Self { fetchers, rotator })
+    }
+}
+
+#[async_trait]
+impl PageFetcher for RotatingHttpFetcher {
+    async fn fetch(
+        &self,
+        url: &str,
+        headers: &HashMap<String, String>,
+        wait_for_ms: Option<u64>,
+        deadline: Deadline,
+    ) -> CrwResult<FetchResult> {
+        let host_key = url::Url::parse(url)
+            .ok()
+            .and_then(|u| u.host_str().map(crate::preference::normalize_host));
+        let idx = self.rotator.pick_index(host_key.as_deref());
+        self.fetchers[idx]
+            .fetch(url, headers, wait_for_ms, deadline)
+            .await
+    }
+
+    fn name(&self) -> &str {
+        "http"
+    }
+
+    fn supports_js(&self) -> bool {
+        false
+    }
+
+    async fn is_available(&self) -> bool {
+        true
     }
 }
 

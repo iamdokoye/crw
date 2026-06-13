@@ -134,12 +134,29 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(config: AppConfig) -> CrwResult<Self> {
-        let proxy = config.crawler.proxy.as_deref();
+        // Build the proxy rotator from config (list takes precedence over the
+        // single `proxy`). When present, it owns ALL proxy routing (HTTP pool +
+        // per-request CDP proxyServer), so `new()` gets `proxy = None` and the
+        // rotator is attached via `with_proxy_rotator`. An invalid proxy URL is
+        // a hard startup error — never a silent direct-connection fallback.
+        let proxy_rotator = crw_core::ProxyRotator::build(
+            &config.crawler.proxy_list,
+            config.crawler.proxy.as_deref(),
+            config.crawler.proxy_rotation,
+        )
+        .map_err(CrwError::ConfigError)?
+        .map(Arc::new);
         let renderer = FallbackRenderer::new(
             &config.renderer,
             &config.crawler.user_agent,
-            proxy,
+            None,
             &config.crawler.stealth,
+        )?
+        .with_proxy_rotator(
+            proxy_rotator,
+            &config.crawler.user_agent,
+            &config.crawler.stealth,
+            config.renderer.http_timeout(),
         )?
         .with_host_limits(
             config.crawler.requests_per_second,

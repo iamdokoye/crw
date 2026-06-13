@@ -976,6 +976,16 @@ pub struct CrawlerConfig {
     /// (e.g. "http://proxy:8080" or "socks5://user:pass@proxy:1080").
     #[serde(default)]
     pub proxy: Option<String>,
+    /// Pool of proxy URLs to rotate among (HTTP, HTTPS, SOCKS5). When non-empty
+    /// this takes precedence over the single `proxy` field. Empty (default) =
+    /// no rotation. Accepts a TOML array, a JSON-array string, or a
+    /// comma-separated string (for `CRW_CRAWLER__PROXY_LIST`).
+    #[serde(default, deserialize_with = "deserialize_string_vec")]
+    pub proxy_list: Vec<String>,
+    /// Strategy for selecting from `proxy_list`: `round_robin`, `random`, or
+    /// `sticky_per_host` (default). Ignored when the list is empty.
+    #[serde(default)]
+    pub proxy_rotation: crate::proxy::ProxyRotation,
     /// TTL in seconds for completed crawl jobs before cleanup (default: 3600)
     #[serde(default = "default_job_ttl")]
     pub job_ttl_secs: u64,
@@ -1008,6 +1018,8 @@ impl Default for CrawlerConfig {
             default_max_depth: default_depth(),
             default_max_pages: default_max_pages(),
             proxy: None,
+            proxy_list: Vec::new(),
+            proxy_rotation: crate::proxy::ProxyRotation::default(),
             job_ttl_secs: default_job_ttl(),
             stealth: StealthConfig::default(),
             per_host_min_interval_ms: 0,

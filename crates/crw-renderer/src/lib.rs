@@ -214,6 +214,10 @@ pub struct FallbackRenderer {
     /// decides whether a 200-status block page is a soft failure (escalate
     /// toward `chrome_proxy`) or a genuine success.
     antibot: crw_core::config::AntibotConfig,
+    /// Active proxy rotator. Drives the HTTP fetcher pool and (with the `cdp`
+    /// feature) per-request CDP `proxyServer` selection. `None` = no proxy
+    /// configured → direct connections, byte-identical to prior behavior.
+    proxy_rotator: Option<Arc<crw_core::ProxyRotator>>,
     /// Chrome browser-context pool handle for graceful drain on shutdown.
     /// `None` when the pool is disabled or the chrome tier isn't configured.
     #[cfg(feature = "cdp")]
@@ -288,6 +292,7 @@ impl FallbackRenderer {
                 requests_per_second: 0.0,
                 per_host_max_concurrent: 1,
                 antibot: config.antibot.clone(),
+                proxy_rotator: None,
                 #[cfg(feature = "cdp")]
                 chrome_pool: None,
             });
@@ -477,9 +482,36 @@ impl FallbackRenderer {
             requests_per_second: 0.0,
             per_host_max_concurrent: 1,
             antibot: config.antibot.clone(),
+            proxy_rotator: None,
             #[cfg(feature = "cdp")]
             chrome_pool,
         })
+    }
+
+    /// Attach a proxy rotator built from config (or per request). When `Some`,
+    /// the HTTP fetcher is rebuilt as a [`http_only::RotatingHttpFetcher`] over
+    /// the pool, and the rotator is retained for per-request CDP `proxyServer`
+    /// selection. `None` is a no-op (keeps the direct/single-proxy fetcher from
+    /// [`Self::new`]). Builder-style so `new()`'s signature stays stable.
+    pub fn with_proxy_rotator(
+        mut self,
+        rotator: Option<Arc<crw_core::ProxyRotator>>,
+        user_agent: &str,
+        stealth: &StealthConfig,
+        http_timeout_ms: u64,
+    ) -> CrwResult<Self> {
+        if let Some(rotator) = rotator {
+            let effective_ua = pick_ua(user_agent, stealth);
+            let inject_headers = stealth.enabled && stealth.inject_headers;
+            self.http = Arc::new(http_only::RotatingHttpFetcher::with_timeout(
+                rotator.clone(),
+                &effective_ua,
+                inject_headers,
+                std::time::Duration::from_millis(http_timeout_ms),
+            )?) as Arc<dyn PageFetcher>;
+            self.proxy_rotator = Some(rotator);
+        }
+        Ok(self)
     }
 
     /// Drain the chrome browser-context pool. Idempotent and a no-op when
