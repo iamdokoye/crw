@@ -214,15 +214,22 @@ async fn run_crawl_inner(opts: CrawlOptions<'_>) {
         // the renderer's acquire when per_host_max_concurrent = 1.
 
         let page_deadline = crw_core::Deadline::from_request_ms(deadline_ms_per_page);
-        let mut fetch_result = match renderer
-            .fetch(
-                &url,
-                &Default::default(),
-                effective_render_js,
-                req.wait_for,
-                pinned_renderer,
-                page_deadline,
-            )
+        // Per-page proxy selection (sticky-per-host by default) so each crawled
+        // host egresses through its assigned proxy across both the HTTP and
+        // JS/CDP paths. Scoped per page since hosts vary across the crawl.
+        let resolved_proxy = renderer.pick_proxy_for_url(&url);
+        let empty_headers: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        let fetch_fut = renderer.fetch(
+            &url,
+            &empty_headers,
+            effective_render_js,
+            req.wait_for,
+            pinned_renderer,
+            page_deadline,
+        );
+        let mut fetch_result = match crw_renderer::REQUEST_PROXY
+            .scope(resolved_proxy, fetch_fut)
             .await
         {
             Ok(r) => r,

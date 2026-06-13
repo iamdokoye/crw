@@ -28,22 +28,30 @@ pub async fn scrape_url(
     render_js_default: Option<bool>,
     deadline: Deadline,
 ) -> CrwResult<ScrapeData> {
-    // Propagate per-request country into the renderer stack via task-local.
-    // Read by `crw-renderer::cdp` when composing DataImpulse credentials for
-    // the chrome_proxy tier. None = use `proxy_default_country` fallback.
+    // Propagate per-request country + resolved proxy into the renderer stack
+    // via task-locals. `REQUEST_COUNTRY` drives DataImpulse credential country;
+    // `REQUEST_PROXY` carries the rotator-picked proxy so the JS/CDP path
+    // egresses through it (HTTP-only BYOP is handled separately in the inner fn
+    // via a temp RotatingHttpFetcher). The proxy is resolved from the configured
+    // rotator here; per-request BYOP applies to the HTTP path.
+    let resolved_proxy = renderer.pick_proxy_for_url(&req.url);
     crw_renderer::REQUEST_COUNTRY
         .scope(req.country.clone(), async move {
-            scrape_url_inner(
-                req,
-                renderer,
-                llm_config,
-                extraction_cfg,
-                user_agent,
-                default_stealth,
-                render_js_default,
-                deadline,
-            )
-            .await
+            crw_renderer::REQUEST_PROXY
+                .scope(resolved_proxy, async move {
+                    scrape_url_inner(
+                        req,
+                        renderer,
+                        llm_config,
+                        extraction_cfg,
+                        user_agent,
+                        default_stealth,
+                        render_js_default,
+                        deadline,
+                    )
+                    .await
+                })
+                .await
         })
         .await
 }

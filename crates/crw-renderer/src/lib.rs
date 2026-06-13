@@ -75,6 +75,15 @@ tokio::task_local! {
     pub static REQUEST_COUNTRY: Option<String>;
 }
 
+tokio::task_local! {
+    /// Resolved proxy entry for the current request, picked from the active
+    /// rotator by host. Set by the scrape/crawl entry points (via
+    /// [`FallbackRenderer::pick_proxy`]); read in `cdp.rs` to drive the
+    /// per-request Chrome `proxyServer` (a fresh proxied browser context) and
+    /// the `Fetch.authRequired` pump. `None` = no proxy → existing behaviour.
+    pub static REQUEST_PROXY: Option<Arc<crw_core::ProxyEntry>>;
+}
+
 /// Map a renderer's name string to the closed `RendererKind` enum.
 /// Returns `None` for unknown names (e.g. "playwright" — treated as a
 /// JS renderer but not tracked in metrics/preferences).
@@ -514,6 +523,27 @@ impl FallbackRenderer {
         Ok(self)
     }
 
+    /// Pick a proxy from the configured rotator for `host` (honoring the
+    /// rotation strategy). `None` when no proxy is configured. Scrape/crawl
+    /// entry points call this and scope the result into the [`REQUEST_PROXY`]
+    /// task-local so the CDP/JS path egresses through the chosen proxy.
+    pub fn pick_proxy(&self, host: Option<&str>) -> Option<Arc<crw_core::ProxyEntry>> {
+        self.proxy_rotator
+            .as_ref()
+            .map(|r| Arc::new(r.pick(host).clone()))
+    }
+
+    /// Like [`Self::pick_proxy`] but derives the host key from a URL using the
+    /// same normalization the HTTP fetcher and host limiter use — so the CDP
+    /// `proxyServer` and the HTTP client land on the SAME sticky proxy.
+    pub fn pick_proxy_for_url(&self, url: &str) -> Option<Arc<crw_core::ProxyEntry>> {
+        self.proxy_rotator.as_ref()?;
+        let host = url::Url::parse(url)
+            .ok()
+            .and_then(|u| u.host_str().map(crate::preference::normalize_host));
+        self.pick_proxy(host.as_deref())
+    }
+
     /// Drain the chrome browser-context pool. Idempotent and a no-op when
     /// the pool is disabled. Call from the server's SIGTERM handler after
     /// the HTTP server has finished serving in-flight requests.
@@ -838,6 +868,22 @@ impl FallbackRenderer {
                 .collect(),
             _ => self.js_renderers.iter().collect(),
         };
+
+        // LightPanda has no upstream-proxy support: when a proxy is active for
+        // this request, drop it so the rotated/sticky egress IP is honored
+        // (vanilla Chrome applies it via a per-context `proxyServer`). Only
+        // filter when at least one other renderer remains.
+        let proxy_active = REQUEST_PROXY.try_with(|p| p.is_some()).unwrap_or(false);
+        if proxy_active {
+            let filtered: Vec<&Arc<dyn PageFetcher>> = renderers
+                .iter()
+                .filter(|r| r.name() != "lightpanda")
+                .copied()
+                .collect();
+            if !filtered.is_empty() {
+                renderers = filtered;
+            }
+        }
 
         // Auto mode: if this host has been promoted, try Chrome first.
         if !is_user_pinned
