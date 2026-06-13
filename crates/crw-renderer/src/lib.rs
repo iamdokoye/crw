@@ -232,6 +232,11 @@ pub struct FallbackRenderer {
     http_ua: String,
     http_inject_stealth: bool,
     http_timeout_ms: u64,
+    /// Warm per-proxy HTTP fetchers keyed by `ProxyEntry::raw()`, so repeated
+    /// requests to the same proxy reuse a connection pool instead of rebuilding
+    /// a client each time. Bounded — cleared past a cap to avoid unbounded
+    /// growth under arbitrary BYOP proxies.
+    proxy_client_cache: std::sync::Mutex<std::collections::HashMap<String, Arc<dyn PageFetcher>>>,
     /// Chrome browser-context pool handle for graceful drain on shutdown.
     /// `None` when the pool is disabled or the chrome tier isn't configured.
     #[cfg(feature = "cdp")]
@@ -316,6 +321,7 @@ impl FallbackRenderer {
                 http_ua: effective_ua.clone(),
                 http_inject_stealth: inject_headers,
                 http_timeout_ms,
+                proxy_client_cache: std::sync::Mutex::new(std::collections::HashMap::new()),
                 #[cfg(feature = "cdp")]
                 chrome_pool: None,
             });
@@ -509,6 +515,7 @@ impl FallbackRenderer {
             http_ua: effective_ua.clone(),
             http_inject_stealth: inject_headers,
             http_timeout_ms,
+            proxy_client_cache: std::sync::Mutex::new(std::collections::HashMap::new()),
             #[cfg(feature = "cdp")]
             chrome_pool,
         })
@@ -534,15 +541,35 @@ impl FallbackRenderer {
     /// (never a silent direct connection). When unset, use the shared
     /// (no-proxy or single-proxy) fetcher from `new()`.
     fn http_fetcher_for_request(&self) -> CrwResult<Arc<dyn PageFetcher>> {
-        match REQUEST_PROXY.try_with(|p| p.clone()).ok().flatten() {
-            Some(entry) => Ok(Arc::new(http_only::HttpFetcher::with_proxy(
-                &self.http_ua,
-                entry.raw(),
-                self.http_inject_stealth,
-                std::time::Duration::from_millis(self.http_timeout_ms),
-            )?) as Arc<dyn PageFetcher>),
-            None => Ok(self.http.clone()),
+        let Some(entry) = REQUEST_PROXY.try_with(|p| p.clone()).ok().flatten() else {
+            return Ok(self.http.clone());
+        };
+        // Reuse a warm per-proxy client if we've built one before.
+        if let Some(f) = self
+            .proxy_client_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(entry.raw())
+            .cloned()
+        {
+            return Ok(f);
         }
+        let fetcher: Arc<dyn PageFetcher> = Arc::new(http_only::HttpFetcher::with_proxy(
+            &self.http_ua,
+            entry.raw(),
+            self.http_inject_stealth,
+            std::time::Duration::from_millis(self.http_timeout_ms),
+        )?);
+        let mut cache = self
+            .proxy_client_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        // Bound growth under arbitrary BYOP proxies (config pools are small).
+        if cache.len() >= 512 {
+            cache.clear();
+        }
+        cache.insert(entry.raw().to_string(), fetcher.clone());
+        Ok(fetcher)
     }
 
     /// Pick a proxy from the configured rotator for `host` (honoring the
@@ -1726,6 +1753,66 @@ mod tests {
             FallbackRenderer::new(&cfg, "crw-test", None, &StealthConfig::default()).unwrap();
         r.js_renderers = mocks;
         r
+    }
+
+    #[tokio::test]
+    async fn proxy_active_lightpanda_only_fails_closed() {
+        // When a proxy is active but the only JS renderer is lightpanda (which
+        // cannot proxy), fetch_with_js must hard-error, never egress direct.
+        let lp = Arc::new(MockFetcher {
+            name: "lightpanda",
+            behavior: MockBehavior::Ok(rich_html("LP-")),
+        }) as Arc<dyn PageFetcher>;
+        let r = make_renderer_with_mocks(vec![lp]);
+        let entry = Arc::new(crw_core::ProxyEntry::parse("http://p:8080").unwrap());
+        // Call fetch_with_js directly to isolate the lightpanda guard from the
+        // HTTP pre-fetch (which would otherwise fail against the fake proxy).
+        let res = REQUEST_PROXY
+            .scope(Some(entry), async {
+                r.fetch_with_js(
+                    "https://example.com",
+                    &HashMap::new(),
+                    None,
+                    None,
+                    crw_core::Deadline::from_request_ms(5000),
+                )
+                .await
+            })
+            .await;
+        assert!(
+            res.is_err(),
+            "lightpanda-only + proxy active must fail closed, got {res:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn proxy_active_prefers_chrome_over_lightpanda() {
+        // With a proxy active, lightpanda is skipped and chrome (proxy-capable)
+        // serves the request.
+        let lp = Arc::new(MockFetcher {
+            name: "lightpanda",
+            behavior: MockBehavior::Ok(rich_html("LP-")),
+        }) as Arc<dyn PageFetcher>;
+        let chrome = Arc::new(MockFetcher {
+            name: "chrome",
+            behavior: MockBehavior::Ok(rich_html("CHROME-")),
+        }) as Arc<dyn PageFetcher>;
+        let r = make_renderer_with_mocks(vec![lp, chrome]);
+        let entry = Arc::new(crw_core::ProxyEntry::parse("http://p:8080").unwrap());
+        let res = REQUEST_PROXY
+            .scope(Some(entry), async {
+                r.fetch_with_js(
+                    "https://example.com",
+                    &HashMap::new(),
+                    None,
+                    None,
+                    crw_core::Deadline::from_request_ms(5000),
+                )
+                .await
+            })
+            .await
+            .unwrap();
+        assert_eq!(res.rendered_with.as_deref(), Some("chrome"));
     }
 
     #[tokio::test]

@@ -325,3 +325,33 @@ impl PageFetcher for HttpFetcher {
         true
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn with_proxy_is_fail_closed_on_bad_url() {
+        // A malformed proxy is a hard error — never a silent direct client.
+        assert!(
+            HttpFetcher::with_proxy("ua", "", false, std::time::Duration::from_secs(5)).is_err()
+        );
+        assert!(
+            HttpFetcher::with_proxy("ua", "not a url", false, std::time::Duration::from_secs(5))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn with_proxy_accepts_valid_url() {
+        assert!(
+            HttpFetcher::with_proxy(
+                "ua",
+                "http://user:pass@host:8080",
+                false,
+                std::time::Duration::from_secs(5),
+            )
+            .is_ok()
+        );
+    }
+}
