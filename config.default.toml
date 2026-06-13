@@ -84,9 +84,12 @@ job_ttl_secs = 3600
 #   random          — pick a random proxy per request.
 #   proxy_rotation = "sticky_per_host"
 #
-# Coverage: rotation currently applies to the HTTP fetch path (direct HTTP
-# scrapes and the HTTP pages of a crawl). JS/Chrome-rendered requests and the
-# managed-cloud proxy network are being rolled out — see ROADMAP.
+# Coverage: rotation applies to the HTTP fetch path AND the JS/Chrome (CDP) path
+# — for scrape, crawl, and map. Vanilla Chrome routes per request via a
+# per-context proxyServer; LightPanda has no proxy support and is skipped
+# (fail-closed) when a proxy is active. SOCKS5 proxies with credentials are not
+# supported on the JS/Chrome path (Chrome can't auth SOCKS) — use http/https
+# there, or a credential-less SOCKS proxy.
 # proxy_list = []
 # proxy_rotation = "sticky_per_host"
 

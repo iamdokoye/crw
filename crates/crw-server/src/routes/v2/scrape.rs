@@ -46,6 +46,13 @@ pub struct V2ScrapeRequest {
     /// residential chrome tier; everything else is reported as "basic".
     #[serde(default = "default_proxy")]
     pub proxy: String,
+    /// BYOP proxy pool (crw extension) rotated per `proxy_rotation`. Distinct
+    /// from the `proxy` MODE above — these are actual proxy URLs. Accepts the
+    /// snake_case `proxy_list` alias (what the managed layer injects).
+    #[serde(default, alias = "proxy_list")]
+    pub proxy_list: Vec<String>,
+    #[serde(default, alias = "proxy_rotation")]
+    pub proxy_rotation: Option<crw_core::proxy::ProxyRotation>,
     /// v2 `timeout` (ms) → engine `deadline_ms`.
     #[serde(default)]
     pub timeout: Option<u64>,
@@ -146,6 +153,8 @@ pub(crate) fn to_internal(
         summary_prompt: v2.summary_prompt,
         renderer,
         parsers: v2.parsers,
+        proxy_list: v2.proxy_list,
+        proxy_rotation: v2.proxy_rotation,
         ..Default::default()
     };
     Ok((req, decomposed, tier))
