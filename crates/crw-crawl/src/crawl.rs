@@ -5,7 +5,7 @@ use crw_core::types::{
 };
 use crw_extract::readability::extract_links;
 use crw_renderer::FallbackRenderer;
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use uuid::Uuid;
@@ -528,19 +528,29 @@ pub async fn discover_urls(opts: DiscoverOptions<'_>) -> CrwResult<DiscoverResul
     }
     let origin = parsed.origin().ascii_serialization();
 
+    // robots/sitemap egress must match page egress: prefer the config rotator
+    // (proxy_list), then the legacy single `proxy`. Fail closed on a bad proxy —
+    // never a silent direct connection (real-IP leak).
+    let discover_proxy: Option<String> = renderer
+        .pick_proxy_for_url(&origin)
+        .map(|e| e.raw().to_string())
+        .or_else(|| proxy.clone());
     let mut discover_client_builder = reqwest::Client::builder()
         .user_agent(user_agent)
         .timeout(std::time::Duration::from_secs(15))
         .connect_timeout(std::time::Duration::from_secs(5))
         .redirect(crw_core::url_safety::safe_redirect_policy());
-    if let Some(ref proxy_url) = proxy
-        && let Ok(p) = reqwest::Proxy::all(proxy_url)
-    {
+    if let Some(ref proxy_url) = discover_proxy {
+        let p = reqwest::Proxy::all(proxy_url).map_err(|e| {
+            crw_core::error::CrwError::InvalidRequest(format!(
+                "invalid proxy URL '{proxy_url}': {e}"
+            ))
+        })?;
         discover_client_builder = discover_client_builder.proxy(p);
     }
     let client = discover_client_builder
         .build()
-        .expect("reqwest client build should not fail");
+        .map_err(|e| crw_core::error::CrwError::Internal(format!("http client build: {e}")))?;
 
     let mut all_urls: HashSet<String> = HashSet::new();
 
@@ -670,15 +680,20 @@ pub async fn discover_urls(opts: DiscoverOptions<'_>) -> CrwResult<DiscoverResul
         }
 
         let discover_deadline = crw_core::Deadline::from_request_ms(deadline_ms_per_page);
-        let fetch = renderer
-            .fetch(
-                &url,
-                &Default::default(),
-                Some(false),
-                None,
-                None,
-                discover_deadline,
-            )
+        // Honor the config rotator so discovery page fetches egress through the
+        // proxy (sticky-per-host), not direct. Resolved once into REQUEST_PROXY.
+        let resolved_proxy = renderer.pick_proxy_for_url(&url);
+        let empty_headers: HashMap<String, String> = HashMap::new();
+        let fetch_fut = renderer.fetch(
+            &url,
+            &empty_headers,
+            Some(false),
+            None,
+            None,
+            discover_deadline,
+        );
+        let fetch = crw_renderer::REQUEST_PROXY
+            .scope(resolved_proxy, fetch_fut)
             .await;
 
         if let Ok(result) = fetch {

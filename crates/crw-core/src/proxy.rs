@@ -217,20 +217,13 @@ impl ProxyRotator {
         self.entries.is_empty()
     }
 
-    /// The validated entries, in stable index order. Callers that pre-build a
-    /// per-entry resource (e.g. one `reqwest::Client` per proxy) index into
-    /// this and select with [`Self::pick_index`].
-    pub fn entries(&self) -> &[ProxyEntry] {
-        &self.entries
-    }
-
     /// Select a proxy for a request. `host_key` is used only by
     /// [`ProxyRotation::StickyPerHost`]; pass the normalized target host.
     pub fn pick(&self, host_key: Option<&str>) -> &ProxyEntry {
         &self.entries[self.pick_index(host_key)]
     }
 
-    /// Index into [`Self::entries`] for this request, applying the strategy.
+    /// Index into the validated pool for this request, applying the strategy.
     ///
     /// `StickyPerHost` is **stateless**: the index is a deterministic hash of the
     /// host modulo the pool size. This keeps a host pinned to one proxy for the
