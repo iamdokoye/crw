@@ -14,8 +14,6 @@
 //! error string to the appropriate [`crate::CrwError`] variant
 //! (`ConfigError` at startup, `InvalidRequest` for per-request BYOP).
 
-use std::collections::HashMap;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use serde::{Deserialize, Serialize};
@@ -74,9 +72,18 @@ impl ProxyEntry {
             .host_str()
             .ok_or_else(|| format!("proxy URL '{trimmed}' has no host"))?;
 
+        // Chrome's `proxyServer` only understands `socks5` (which already does
+        // remote DNS) — it does not recognize the `socks5h` scheme. Normalize so
+        // the CDP path passes a scheme Chrome accepts. (`reqwest`/`raw` keeps the
+        // original scheme for the HTTP path.)
+        let chrome_scheme = if scheme == "socks5h" {
+            "socks5"
+        } else {
+            &scheme
+        };
         let chrome_proxy_server = match url.port() {
-            Some(port) => format!("{scheme}://{host}:{port}"),
-            None => format!("{scheme}://{host}"),
+            Some(port) => format!("{chrome_scheme}://{host}:{port}"),
+            None => format!("{chrome_scheme}://{host}"),
         };
 
         let auth = match (url.username(), url.password()) {
@@ -111,6 +118,16 @@ impl ProxyEntry {
     /// Optional `(username, password)` for the CDP auth pump.
     pub fn auth(&self) -> Option<&(String, String)> {
         self.auth.as_ref()
+    }
+
+    /// Whether this proxy can authenticate on the Chrome/CDP path. Chrome's
+    /// network stack never emits `Fetch.authRequired` for SOCKS proxies, so a
+    /// `socks5`/`socks5h` proxy that carries credentials cannot authenticate via
+    /// the CDP auth pump (it would hang/fail). HTTP/HTTPS proxies and
+    /// credential-less SOCKS proxies are fine. The HTTP (reqwest) path is
+    /// unaffected — it authenticates SOCKS natively via [`Self::raw`].
+    pub fn supports_cdp_auth(&self) -> bool {
+        !(self.scheme.starts_with("socks") && self.auth.is_some())
     }
 }
 
@@ -153,7 +170,6 @@ pub struct ProxyRotator {
     entries: Vec<ProxyEntry>,
     strategy: ProxyRotation,
     rr_cursor: AtomicUsize,
-    sticky: Mutex<HashMap<String, usize>>,
 }
 
 impl ProxyRotator {
@@ -188,7 +204,6 @@ impl ProxyRotator {
             entries,
             strategy,
             rr_cursor: AtomicUsize::new(0),
-            sticky: Mutex::new(HashMap::new()),
         }))
     }
 
@@ -216,18 +231,22 @@ impl ProxyRotator {
     }
 
     /// Index into [`Self::entries`] for this request, applying the strategy.
+    ///
+    /// `StickyPerHost` is **stateless**: the index is a deterministic hash of the
+    /// host modulo the pool size. This keeps a host pinned to one proxy for the
+    /// rotator's lifetime with no per-host map (no unbounded growth, no lock, and
+    /// — crucially — no cursor side-effect, so repeated picks for the same host
+    /// are idempotent and HTTP + CDP always agree).
     pub fn pick_index(&self, host_key: Option<&str>) -> usize {
         let len = self.entries.len();
-        debug_assert!(len > 0, "ProxyRotator must never be empty");
+        if len == 0 {
+            return 0; // unreachable: `build` never yields an empty rotator.
+        }
         match self.strategy {
             ProxyRotation::RoundRobin => self.next_rr() % len,
             ProxyRotation::Random => rand::random_range(0..len),
             ProxyRotation::StickyPerHost => match host_key {
-                Some(host) => {
-                    let mut map = self.sticky.lock().unwrap_or_else(|e| e.into_inner());
-                    *map.entry(host.to_string())
-                        .or_insert_with(|| self.next_rr() % len)
-                }
+                Some(host) => (fnv1a(host) % len as u64) as usize,
                 None => self.next_rr() % len,
             },
         }
@@ -236,6 +255,17 @@ impl ProxyRotator {
     fn next_rr(&self) -> usize {
         self.rr_cursor.fetch_add(1, Ordering::Relaxed)
     }
+}
+
+/// FNV-1a 64-bit hash — small, stable, dependency-free. Used for stateless
+/// sticky-per-host proxy assignment.
+fn fnv1a(s: &str) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in s.as_bytes() {
+        hash ^= *b as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
 }
 
 #[cfg(test)]
@@ -363,5 +393,70 @@ mod tests {
     #[test]
     fn default_strategy_is_sticky() {
         assert_eq!(ProxyRotation::default(), ProxyRotation::StickyPerHost);
+    }
+
+    #[test]
+    fn socks5h_maps_to_socks5_for_chrome() {
+        let e = ProxyEntry::parse("socks5h://host:1080").unwrap();
+        assert_eq!(e.scheme(), "socks5h"); // reqwest/raw keeps original
+        assert_eq!(e.chrome_proxy_server(), "socks5://host:1080"); // chrome normalized
+    }
+
+    #[test]
+    fn socks_with_auth_unsupported_on_cdp() {
+        let e = ProxyEntry::parse("socks5://user:pass@host:1080").unwrap();
+        assert!(!e.supports_cdp_auth());
+        let e2 = ProxyEntry::parse("socks5h://user:pass@host:1080").unwrap();
+        assert!(!e2.supports_cdp_auth());
+        // No-auth SOCKS and HTTP(+auth) are fine for CDP.
+        assert!(
+            ProxyEntry::parse("socks5://host:1080")
+                .unwrap()
+                .supports_cdp_auth()
+        );
+        assert!(
+            ProxyEntry::parse("http://user:pass@host:8080")
+                .unwrap()
+                .supports_cdp_auth()
+        );
+    }
+
+    #[test]
+    fn sticky_is_stateless_and_deterministic() {
+        // Two independent rotators with the same pool map a host identically
+        // (proves stickiness is a pure hash, not per-instance state).
+        let list = vec![
+            "http://a:1".to_string(),
+            "http://b:2".to_string(),
+            "http://c:3".to_string(),
+        ];
+        let r1 = ProxyRotator::build(&list, None, ProxyRotation::StickyPerHost)
+            .unwrap()
+            .unwrap();
+        let r2 = ProxyRotator::build(&list, None, ProxyRotation::StickyPerHost)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            r1.pick(Some("example.com")).raw(),
+            r2.pick(Some("example.com")).raw()
+        );
+        // Repeated picks never advance the round-robin cursor (idempotent).
+        let first = r1.pick(Some("example.com")).raw().to_string();
+        for _ in 0..10 {
+            assert_eq!(r1.pick(Some("example.com")).raw(), first);
+        }
+    }
+
+    #[test]
+    fn round_robin_advances_exactly_once_per_pick() {
+        let list = vec!["http://a:1".to_string(), "http://b:2".to_string()];
+        let r = ProxyRotator::build(&list, None, ProxyRotation::RoundRobin)
+            .unwrap()
+            .unwrap();
+        // Each pick advances by exactly one step (a→b→a→b).
+        assert_eq!(r.pick_index(None), 0);
+        assert_eq!(r.pick_index(None), 1);
+        assert_eq!(r.pick_index(None), 0);
+        assert_eq!(r.pick_index(None), 1);
     }
 }

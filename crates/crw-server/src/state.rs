@@ -152,12 +152,7 @@ impl AppState {
             None,
             &config.crawler.stealth,
         )?
-        .with_proxy_rotator(
-            proxy_rotator,
-            &config.crawler.user_agent,
-            &config.crawler.stealth,
-            config.renderer.http_timeout(),
-        )?
+        .with_proxy_rotator(proxy_rotator)?
         .with_host_limits(
             config.crawler.requests_per_second,
             config.crawler.per_host_max_concurrent,

@@ -119,6 +119,21 @@ async fn run_crawl_inner(opts: CrawlOptions<'_>) {
     let max_depth = req.max_depth.unwrap_or(2).min(10);
     let max_pages = req.max_pages.unwrap_or(100).min(1000) as usize;
 
+    // Per-crawl BYOP proxy pool (req.proxy_list, req.proxy_rotation). Takes
+    // precedence over the server-config rotator. A malformed entry fails the
+    // whole job — never a silent direct connection (real-IP leak).
+    let byop_rotator = match crw_core::ProxyRotator::build(
+        &req.proxy_list,
+        None,
+        req.proxy_rotation.unwrap_or_default(),
+    ) {
+        Ok(r) => r.map(std::sync::Arc::new),
+        Err(e) => {
+            send_failed(id, &state_tx, format!("invalid proxy_list: {e}"));
+            return;
+        }
+    };
+
     // Apply "pinned implies JS" once per crawl, mirroring single.rs.
     let pinned_renderer = resolve_pinned_renderer(req.renderer);
     let effective_render_js = if req.renderer.is_some()
@@ -216,8 +231,17 @@ async fn run_crawl_inner(opts: CrawlOptions<'_>) {
         let page_deadline = crw_core::Deadline::from_request_ms(deadline_ms_per_page);
         // Per-page proxy selection (sticky-per-host by default) so each crawled
         // host egresses through its assigned proxy across both the HTTP and
-        // JS/CDP paths. Scoped per page since hosts vary across the crawl.
-        let resolved_proxy = renderer.pick_proxy_for_url(&url);
+        // JS/CDP paths. BYOP pool (if supplied) takes precedence over config.
+        // Scoped per page since hosts vary across the crawl.
+        let resolved_proxy = match &byop_rotator {
+            Some(b) => {
+                let host = url::Url::parse(&url)
+                    .ok()
+                    .and_then(|u| u.host_str().map(str::to_string));
+                Some(std::sync::Arc::new(b.pick(host.as_deref()).clone()))
+            }
+            None => renderer.pick_proxy_for_url(&url),
+        };
         let empty_headers: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
         let fetch_fut = renderer.fetch(
