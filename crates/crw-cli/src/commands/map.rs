@@ -107,16 +107,26 @@ pub async fn run(mut args: MapArgs) -> Result<(), CmdError> {
         ..Default::default()
     };
 
-    let renderer = match FallbackRenderer::new(
-        &renderer_config,
-        "crw/0.7.0",
-        args.proxy.as_deref(),
-        &stealth_config,
-    ) {
-        Ok(r) => Arc::new(r),
-        Err(e) => {
-            eprintln!("error: failed to build renderer: {e}");
-            return Err(CmdError::code_only(1));
+    // Attach a rotator from --proxy so discovery page fetches resolve the proxy
+    // into REQUEST_PROXY uniformly (HTTP + any JS), matching the crawl/server path.
+    let renderer = {
+        let build = || -> crw_core::CrwResult<FallbackRenderer> {
+            let rotator = crw_core::ProxyRotator::build(
+                &[],
+                args.proxy.as_deref(),
+                crw_core::ProxyRotation::default(),
+            )
+            .map_err(crw_core::CrwError::ConfigError)?
+            .map(Arc::new);
+            FallbackRenderer::new(&renderer_config, "crw/0.7.0", None, &stealth_config)?
+                .with_proxy_rotator(rotator)
+        };
+        match build() {
+            Ok(r) => Arc::new(r),
+            Err(e) => {
+                eprintln!("error: failed to build renderer: {e}");
+                return Err(CmdError::code_only(1));
+            }
         }
     };
 

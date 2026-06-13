@@ -106,16 +106,27 @@ pub async fn run(mut args: CrawlArgs) -> Result<(), CmdError> {
         ..Default::default()
     };
 
-    let renderer = match FallbackRenderer::new(
-        &renderer_config,
-        "crw/0.7.0",
-        args.proxy.as_deref(),
-        &stealth_config,
-    ) {
-        Ok(r) => Arc::new(r),
-        Err(e) => {
-            eprintln!("error: failed to build renderer: {e}");
-            return Err(CmdError::code_only(1));
+    // Attach a rotator built from --proxy so the proxy is resolved into
+    // REQUEST_PROXY for BOTH the HTTP and JS/CDP tiers (the JS tier reads only
+    // REQUEST_PROXY; passing --proxy to new() alone would leave JS direct).
+    let renderer = {
+        let build = || -> crw_core::CrwResult<FallbackRenderer> {
+            let rotator = crw_core::ProxyRotator::build(
+                &[],
+                args.proxy.as_deref(),
+                crw_core::ProxyRotation::default(),
+            )
+            .map_err(crw_core::CrwError::ConfigError)?
+            .map(Arc::new);
+            FallbackRenderer::new(&renderer_config, "crw/0.7.0", None, &stealth_config)?
+                .with_proxy_rotator(rotator)
+        };
+        match build() {
+            Ok(r) => Arc::new(r),
+            Err(e) => {
+                eprintln!("error: failed to build renderer: {e}");
+                return Err(CmdError::code_only(1));
+            }
         }
     };
 
