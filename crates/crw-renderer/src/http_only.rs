@@ -52,9 +52,10 @@ const STEALTH_SEC_CH_UA: &str =
 /// Build a configured reqwest client, optionally routed through `proxy`.
 ///
 /// **Strict**: a malformed proxy URL or a client build failure is a hard error
-/// — we never silently fall back to a direct (no-proxy) client, which would
-/// leak the host's real IP. Used by the rotating fetcher, whose entries are
-/// already validated upstream so the error path is effectively unreachable.
+/// — we never silently fall back to a direct (no-proxy) client, which would leak
+/// the host's real IP. Reached via [`HttpFetcher::with_timeout`] (infallible —
+/// callers pre-validate) and [`HttpFetcher::with_proxy`] (fail-closed per-request
+/// path for config rotation + BYOP, where the error path IS reachable).
 fn build_client(
     user_agent: &str,
     proxy: Option<&str>,
