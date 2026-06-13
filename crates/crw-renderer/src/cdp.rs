@@ -1201,8 +1201,15 @@ impl PageFetcher for CdpRenderer {
             ));
         }
 
+        // When a per-request proxy is active, bypass the context pool: each
+        // proxied request needs a fresh browser context created with its own
+        // `proxyServer`, which `fetch_with_ws` builds and disposes. The pool is
+        // reserved for the (common) no-proxy path where contexts are reused.
+        let proxy_active = crate::REQUEST_PROXY
+            .try_with(|p| p.is_some())
+            .unwrap_or(false);
         let fut = async {
-            if let Some(pool) = self.pool.as_ref() {
+            if let Some(pool) = self.pool.as_ref().filter(|_| !proxy_active) {
                 self.fetch_with_pool(pool, url, wait_for_ms, deadline).await
             } else {
                 self.fetch_with_ws(url, wait_for_ms, deadline).await
@@ -1392,6 +1399,38 @@ impl CdpRenderer {
 
         let conn = self.connect_with_retry().await?;
 
+        // Per-request proxy: create a dedicated browser context whose egress is
+        // routed through `proxyServer` (credentials, if any, are supplied by the
+        // `Fetch.authRequired` pump in `fetch_inner`). Disposed after the target
+        // closes. `None` keeps the prior browser-level behaviour unchanged.
+        let proxy_ctx: Option<String> =
+            match crate::REQUEST_PROXY.try_with(|p| p.clone()).ok().flatten() {
+                Some(entry) => {
+                    let v = conn
+                        .send_recv(
+                            "Target.createBrowserContext",
+                            serde_json::json!({
+                                "proxyServer": entry.chrome_proxy_server(),
+                                "proxyBypassList": "<-loopback>",
+                            }),
+                            None,
+                            Duration::from_secs(2),
+                        )
+                        .await?;
+                    let ctx = v
+                        .get("browserContextId")
+                        .and_then(|x| x.as_str())
+                        .ok_or_else(|| {
+                            CrwError::RendererError(
+                                "createBrowserContext: missing browserContextId".into(),
+                            )
+                        })?
+                        .to_string();
+                    Some(ctx)
+                }
+                None => None,
+            };
+
         // Legacy path: `tid_slot` is the SOLE authoritative source for target
         // close on both Ok and Err branches. fetch_inner no longer closes
         // targets itself — we own that here. `Arc<Mutex<...>>` (not `Cell`)
@@ -1403,7 +1442,14 @@ impl CdpRenderer {
             *tid_slot_rec.lock().unwrap() = Some(tid.to_string());
         };
         let result = self
-            .fetch_inner(&conn, None, &recorder, url, wait_for_ms, deadline)
+            .fetch_inner(
+                &conn,
+                proxy_ctx.as_deref(),
+                &recorder,
+                url,
+                wait_for_ms,
+                deadline,
+            )
             .await;
 
         // B2 gate metric: pre-navigation overhead (connect + createTarget +
@@ -1415,6 +1461,19 @@ impl CdpRenderer {
         let captured_tid = tid_slot.lock().unwrap().take();
         if let Some(tid) = captured_tid {
             close_target(&conn, &tid, &self.name).await;
+        }
+
+        // Dispose the per-request proxy context (best-effort) before closing the
+        // connection, so a proxied request doesn't leak browser contexts.
+        if let Some(ctx) = &proxy_ctx {
+            let _ = conn
+                .send_recv(
+                    "Target.disposeBrowserContext",
+                    serde_json::json!({ "browserContextId": ctx }),
+                    None,
+                    Duration::from_secs(1),
+                )
+                .await;
         }
 
         conn.close().await;
@@ -1850,10 +1909,17 @@ impl CdpRenderer {
         // Subscribe to events BEFORE navigating so we don't miss loadEventFired.
         let events_rx = conn.subscribe();
 
-        // Compose per-call DataImpulse credentials for the chrome_proxy tier.
-        // Country priority: per-request (task-local) → renderer default → none.
-        // Two-letter lowercase ASCII guard mirrors `RendererConfig::effective_proxy_credentials`.
-        let effective_creds: Option<(String, String)> =
+        // Credentials for the `Fetch.authRequired` pump. Priority:
+        //   1. The per-request rotated proxy's own embedded `user:pass`
+        //      (REQUEST_PROXY) — takes precedence so a BYOP/rotated proxy
+        //      authenticates correctly.
+        //   2. Otherwise the chrome_proxy tier's DataImpulse base creds, with
+        //      the country suffix composed from REQUEST_COUNTRY → default → none.
+        let request_proxy_auth: Option<(String, String)> = crate::REQUEST_PROXY
+            .try_with(|p| p.as_ref().and_then(|e| e.auth().cloned()))
+            .ok()
+            .flatten();
+        let effective_creds: Option<(String, String)> = request_proxy_auth.or_else(|| {
             self.proxy_auth_base.as_ref().map(|(base_user, base_pass)| {
                 let req_country = crate::REQUEST_COUNTRY
                     .try_with(|c| c.clone())
@@ -1868,7 +1934,8 @@ impl CdpRenderer {
                     Some(cc) => (format!("{base_user}__cr.{cc}"), base_pass.clone()),
                     None => (base_user.clone(), base_pass.clone()),
                 }
-            });
+            })
+        });
         let auth_active = effective_creds.is_some();
 
         // Optionally enable request interception. Must be done before
