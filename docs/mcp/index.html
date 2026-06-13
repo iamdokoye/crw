@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MCP Server — CRW Docs</title>
-  <meta name="description" content="CRW includes a built-in MCP (Model Context Protocol) server that gives any MCP-compatible AI assistant — Claude Code, Claude Desktop, Cursor, Windsurf, Cline, Continue.dev, OpenAI Codex CLI — 4 web sc">
+  <meta name="description" content="CRW includes a built-in MCP (Model Context Protocol) server that gives any MCP-compatible AI assistant — Claude Code, Claude Desktop, Cursor, Windsurf, Cline, Continue.dev, OpenAI Codex CLI — 6 web sc">
   <meta name="keywords" content="web scraper, web crawler, firecrawl alternative, crawl4ai alternative, self-hosted scraper, rust web scraper, mcp server, ai web scraping, rag pipeline, llm extraction, open source crawler, headless browser scraper">
   <link rel="canonical" href="https://docs.fastcrw.com/mcp">
   <link rel="icon" href="/favicon.png?v=2" type="image/png">
@@ -15,13 +15,13 @@
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://docs.fastcrw.com/mcp">
   <meta property="og:title" content="MCP Server — CRW | Web Scraper in Rust">
-  <meta property="og:description" content="CRW includes a built-in MCP (Model Context Protocol) server that gives any MCP-compatible AI assistant — Claude Code, Claude Desktop, Cursor, Windsurf, Cline, Continue.dev, OpenAI Codex CLI — 4 web sc">
+  <meta property="og:description" content="CRW includes a built-in MCP (Model Context Protocol) server that gives any MCP-compatible AI assistant — Claude Code, Claude Desktop, Cursor, Windsurf, Cline, Continue.dev, OpenAI Codex CLI — 6 web sc">
   <meta property="og:site_name" content="CRW">
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="MCP Server — CRW Docs">
-  <meta name="twitter:description" content="CRW includes a built-in MCP (Model Context Protocol) server that gives any MCP-compatible AI assistant — Claude Code, Claude Desktop, Cursor, Windsurf, Cline, Continue.dev, OpenAI Codex CLI — 4 web sc">
+  <meta name="twitter:description" content="CRW includes a built-in MCP (Model Context Protocol) server that gives any MCP-compatible AI assistant — Claude Code, Claude Desktop, Cursor, Windsurf, Cline, Continue.dev, OpenAI Codex CLI — 6 web sc">
 
   <!-- Structured Data (JSON-LD) -->
   <script type="application/ld+json">
@@ -283,7 +283,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 
     <main class="content" id="content">
       <article id="article" role="main"><h1 id="mcp-server-for-ai-agents">MCP Server for AI Agents</h1>
-<p>CRW includes a built-in MCP (Model Context Protocol) server that gives any MCP-compatible AI assistant — Claude Code, Claude Desktop, Cursor, Windsurf, Cline, Continue.dev, OpenAI Codex CLI — 4 web scraping tools. Turn any AI coding agent into a web scraper with a single command.</p>
+<p>CRW includes a built-in MCP (Model Context Protocol) server that gives any MCP-compatible AI assistant — Claude Code, Claude Desktop, Cursor, Windsurf, Cline, Continue.dev, OpenAI Codex CLI — 6 web scraping tools. Turn any AI coding agent into a web scraper with a single command.</p>
 <blockquote>
 <p>Also available on the <a href="https://registry.modelcontextprotocol.io/?q=crw">MCP Registry</a></p>
 </blockquote>
@@ -301,14 +301,14 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <tbody><tr>
 <td><strong>Embedded</strong> (default)</td>
 <td>No <code>--api-url</code> / <code>CRW_API_URL</code> set</td>
-<td>scrape, crawl, map</td>
-<td>Self-contained. No server needed. The scraping engine runs inside the MCP process.</td>
+<td>scrape, crawl, map, parse_file + <strong>search</strong> (when SearXNG configured)</td>
+<td>Self-contained. No server needed. The scraping engine runs inside the MCP process. <code>crw_search</code> is advertised only when a SearXNG backend is configured (e.g. the Docker compose sidecar).</td>
 </tr>
 <tr>
 <td><strong>Proxy / Server</strong></td>
 <td><code>--api-url</code> / <code>CRW_API_URL</code> set</td>
-<td>scrape, crawl, map + <strong>search</strong></td>
-<td>Forwards tool calls to a remote CRW server — the <a href="https://fastcrw.com">fastcrw.com</a> cloud <strong>or your own self-hosted server</strong>. <code>crw_search</code> works whenever that server has SearXNG configured (the Docker stack enables it by default).</td>
+<td>scrape, crawl, map, parse_file, search</td>
+<td>Forwards tool calls to a remote CRW server — the <a href="https://fastcrw.com">fastcrw.com</a> cloud <strong>or your own self-hosted server</strong>. <code>crw_search</code> is always advertised in proxy mode; it works whenever the server has SearXNG configured (the Docker stack enables it by default).</td>
 </tr>
 </tbody></table>
 <h2 id="where-to-use-what">Where to use what</h2>
@@ -453,8 +453,9 @@ claude mcp add \
 </tr>
 </tbody></table>
 <p>Build a slim proxy-only binary:</p>
-<pre><code class="language-bash">cargo build -p crw-mcp --no-default-features --release
+<pre><code class="language-bash">cargo build --profile release-small --no-default-features -p crw-mcp
 </code></pre>
+<p>This yields a ~4.2 MB binary (vs ~17 MB for the default embedded build) because the <code>embedded</code> feature gates the headless-browser engine (<code>crw-renderer</code>) and <code>crw-server</code>.</p>
 <h2 id="available-tools">Available Tools</h2>
 <table>
 <thead>
@@ -493,9 +494,18 @@ claude mcp add \
 <td><code>crw_search</code></td>
 <td>Search the web → titles, URLs, descriptions</td>
 <td><code>POST /v1/search</code></td>
-<td><strong>Server with SearXNG</strong> (cloud or self-hosted)</td>
+<td>Always in proxy mode; embedded only when a SearXNG backend is configured</td>
+</tr>
+<tr>
+<td><code>crw_parse_file</code></td>
+<td>Parse a local PDF (base64) → markdown</td>
+<td><code>POST /v1/parse</code></td>
+<td>All modes</td>
 </tr>
 </tbody></table>
+<blockquote>
+<p><strong>Output bounding:</strong> Tool results are bounded by default to keep agent context small. Content fields (markdown/html/etc.) are truncated to ~15 000 chars; <code>crw_map</code> returns at most 100 URLs. Truncated responses include <code>truncated: true</code> and <code>totalDiscovered</code> markers. Pass <code>maxLength: 0</code> (scrape / check_status / parse_file) or <code>limit: 0</code> (map) to opt out.</p>
+</blockquote>
 <h2 id="browser-automation-crw-browse">Browser Automation (<code>crw-browse</code>)</h2>
 <p><code>crw-browse</code> is a <strong>separate MCP server</strong> (since v0.4.0) that drives a real Chrome-family browser over CDP for stateful interaction. Use it when the agent needs to navigate multi-step flows, click, or read the DOM — cases where a one-shot scrape is not enough.</p>
 <table>
@@ -580,6 +590,30 @@ codex mcp add crw -- npx crw-mcp
 <td>no</td>
 <td>CSS selectors to remove</td>
 </tr>
+<tr>
+<td><code>renderJs</code></td>
+<td>boolean</td>
+<td>no</td>
+<td>Enable JS rendering via a CDP browser</td>
+</tr>
+<tr>
+<td><code>waitFor</code></td>
+<td>integer</td>
+<td>no</td>
+<td>ms to wait after page load</td>
+</tr>
+<tr>
+<td><code>renderer</code></td>
+<td>string</td>
+<td>no</td>
+<td>Renderer to use (e.g. <code>&quot;lightpanda&quot;</code>)</td>
+</tr>
+<tr>
+<td><code>maxLength</code></td>
+<td>integer</td>
+<td>no</td>
+<td>Max chars for content fields; <code>0</code> = unlimited (default: ~15 000)</td>
+</tr>
 </tbody></table>
 <h3 id="crw_crawl">crw_crawl</h3>
 <table>
@@ -609,6 +643,30 @@ codex mcp add crw -- npx crw-mcp
 <td>no</td>
 <td>Max pages (default: 10)</td>
 </tr>
+<tr>
+<td><code>jsonSchema</code></td>
+<td>object</td>
+<td>no</td>
+<td>JSON schema for structured extraction</td>
+</tr>
+<tr>
+<td><code>renderJs</code></td>
+<td>boolean</td>
+<td>no</td>
+<td>Enable JS rendering via a CDP browser</td>
+</tr>
+<tr>
+<td><code>waitFor</code></td>
+<td>integer</td>
+<td>no</td>
+<td>ms to wait after page load</td>
+</tr>
+<tr>
+<td><code>renderer</code></td>
+<td>string</td>
+<td>no</td>
+<td>Renderer to use (e.g. <code>&quot;lightpanda&quot;</code>)</td>
+</tr>
 </tbody></table>
 <h3 id="crw_check_crawl_status">crw_check_crawl_status</h3>
 <table>
@@ -625,6 +683,12 @@ codex mcp add crw -- npx crw-mcp
 <td>string</td>
 <td><strong>yes</strong></td>
 <td>Job ID from <code>crw_crawl</code></td>
+</tr>
+<tr>
+<td><code>maxLength</code></td>
+<td>integer</td>
+<td>no</td>
+<td>Max chars for content fields; <code>0</code> = unlimited (default: ~15 000)</td>
 </tr>
 </tbody></table>
 <h3 id="crw_map">crw_map</h3>
@@ -655,9 +719,21 @@ codex mcp add crw -- npx crw-mcp
 <td>no</td>
 <td>Read sitemap.xml (default: true)</td>
 </tr>
+<tr>
+<td><code>crawlFallback</code></td>
+<td>boolean</td>
+<td>no</td>
+<td>Fall back to a short crawl if sitemap is absent (default: true)</td>
+</tr>
+<tr>
+<td><code>limit</code></td>
+<td>integer</td>
+<td>no</td>
+<td>Max URLs returned; <code>0</code> = unlimited (default: 100)</td>
+</tr>
 </tbody></table>
-<h3 id="crw_search-server-backed">crw_search (server-backed)</h3>
-<p>Available when connected to a CRW <strong>server</strong> that has SearXNG configured — the <a href="https://fastcrw.com">fastcrw.com</a> cloud, or your own self-hosted server (the Docker stack enables it by default; see <a href="/docker">Docker → Search (SearXNG)</a>). Point the MCP at it with <code>--api-url</code> / <code>CRW_API_URL</code>. It is <em>not</em> available from the standalone embedded MCP binary, which has no search backend.</p>
+<h3 id="crw_search">crw_search</h3>
+<p>In <strong>proxy mode</strong> <code>crw_search</code> is always advertised. In <strong>embedded mode</strong> it is advertised only when a SearXNG backend is configured (e.g. via the Docker compose sidecar — see <a href="/docker">Docker → Search (SearXNG)</a>). With no backend configured, the tool is hidden from <code>tools/list</code>.</p>
 <table>
 <thead>
 <tr>
@@ -692,10 +768,76 @@ codex mcp add crw -- npx crw-mcp
 <td>Country code (e.g. <code>&quot;us&quot;</code>, <code>&quot;tr&quot;</code>)</td>
 </tr>
 <tr>
+<td><code>tbs</code></td>
+<td>string</td>
+<td>no</td>
+<td>Time-based filter (e.g. <code>&quot;qdr:d&quot;</code> for past day)</td>
+</tr>
+<tr>
+<td><code>sources</code></td>
+<td>string[]</td>
+<td>no</td>
+<td>Restrict results to specific sources</td>
+</tr>
+<tr>
+<td><code>categories</code></td>
+<td>string[]</td>
+<td>no</td>
+<td>SearXNG categories (e.g. <code>[&quot;general&quot;,&quot;news&quot;]</code>)</td>
+</tr>
+<tr>
 <td><code>scrapeOptions</code></td>
 <td>object</td>
 <td>no</td>
 <td>Scrape each result page (e.g. <code>{&quot;formats&quot;: [&quot;markdown&quot;]}</code>)</td>
+</tr>
+</tbody></table>
+<h3 id="crw_parse_file">crw_parse_file</h3>
+<p>Parse a local PDF supplied as a base64-encoded string. No OCR — works on text-layer PDFs.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>contentBase64</code></td>
+<td>string</td>
+<td><strong>yes</strong></td>
+<td>Base64-encoded PDF content</td>
+</tr>
+<tr>
+<td><code>filename</code></td>
+<td>string</td>
+<td>no</td>
+<td>Original filename (used for format hints)</td>
+</tr>
+<tr>
+<td><code>formats</code></td>
+<td>string[]</td>
+<td>no</td>
+<td>Output formats (e.g. <code>[&quot;markdown&quot;]</code>)</td>
+</tr>
+<tr>
+<td><code>jsonSchema</code></td>
+<td>object</td>
+<td>no</td>
+<td>JSON schema for structured extraction</td>
+</tr>
+<tr>
+<td><code>parsers</code></td>
+<td>string[]</td>
+<td>no</td>
+<td>Parser hints to use</td>
+</tr>
+<tr>
+<td><code>maxLength</code></td>
+<td>integer</td>
+<td>no</td>
+<td>Max chars for content fields; <code>0</code> = unlimited (default: ~15 000)</td>
 </tr>
 </tbody></table>
 <h2 id="example-agent-tool-flow">Example Agent Tool Flow</h2>

@@ -307,12 +307,12 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 </thead>
 <tbody><tr>
 <td>Embedded local</td>
-<td>You want zero server setup and local scrape/map/crawl tools</td>
+<td>You want zero server setup and local scrape/crawl/map/parse tools</td>
 <td><code>command: npx</code>, <code>args: [&quot;crw-mcp&quot;]</code></td>
 </tr>
 <tr>
 <td>fastcrw.com cloud</td>
-<td>You want hosted infrastructure and <code>crw_search</code></td>
+<td>You want hosted infrastructure and always-on <code>crw_search</code></td>
 <td>same as local plus <code>CRW_API_URL</code> and <code>CRW_API_KEY</code></td>
 </tr>
 <tr>
@@ -327,16 +327,23 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 </tr>
 </tbody></table>
 <h2 id="what-tools-you-get">What tools you get</h2>
-<p>Embedded local mode (<code>crw-mcp</code>) exposes:</p>
+<p>Embedded local mode (<code>crw-mcp</code>) exposes up to 6 tools:</p>
 <ul>
 <li><code>crw_scrape</code></li>
 <li><code>crw_crawl</code></li>
 <li><code>crw_check_crawl_status</code></li>
 <li><code>crw_map</code></li>
+<li><code>crw_parse_file</code> — parse a local PDF (base64) to markdown, no OCR (always present)</li>
+<li><code>crw_search</code> — only advertised when a SearXNG backend is configured; hidden otherwise</li>
 </ul>
-<p>fastcrw.com cloud mode exposes all of the above plus:</p>
+<p>fastcrw.com cloud mode exposes all 6 tools:</p>
 <ul>
-<li><code>crw_search</code></li>
+<li><code>crw_scrape</code></li>
+<li><code>crw_crawl</code></li>
+<li><code>crw_check_crawl_status</code></li>
+<li><code>crw_map</code></li>
+<li><code>crw_parse_file</code></li>
+<li><code>crw_search</code> — always available (managed search backend)</li>
 </ul>
 <p>Browser automation mode (<code>crw-browse</code>, separate server — v0.4.0+) exposes:</p>
 <ul>
@@ -344,7 +351,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <li><code>tree</code> — accessibility snapshot of the current page</li>
 </ul>
 <p>:::tip
-If you only remember one rule, remember this one: local embedded mode is the easiest setup, and fastcrw.com cloud mode is the easiest way to add web search.
+If you only remember one rule, remember this one: local embedded mode is the easiest setup (up to 6 tools, with <code>crw_search</code> appearing automatically when SearXNG is configured), and fastcrw.com cloud mode is the easiest way to get all 6 tools including always-on web search.
 :::</p>
 <h2 id="claude-code">Claude Code</h2>
 <h3 id="local-embedded">Local embedded</h3>
@@ -486,7 +493,7 @@ Codex uses the same stdio MCP server as Claude Code. The only difference is wher
 }
 </code></pre>
 <p>:::note
-Windsurf has a total MCP tool limit. CRW stays lightweight: local mode exposes 4 tools, cloud mode exposes 5.
+Windsurf has a total MCP tool limit. CRW stays lightweight: local embedded mode exposes up to 6 tools (<code>crw_search</code> is hidden unless a SearXNG backend is configured), and cloud mode always exposes all 6 tools.
 :::</p>
 <h2 id="cline">Cline</h2>
 <p>Edit the Cline MCP settings file:</p>
