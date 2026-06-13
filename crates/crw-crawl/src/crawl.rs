@@ -167,14 +167,30 @@ async fn run_crawl_inner(opts: CrawlOptions<'_>) {
         }
     };
 
+    // Robots/sitemap egress must match the page egress: prefer the per-crawl
+    // BYOP pool, then the config rotator, then the legacy single `proxy`. Never
+    // a silent direct connection when a proxy is configured (real-IP leak).
+    let robots_proxy: Option<String> = match &byop_rotator {
+        Some(b) => Some(b.pick(base_url.host_str()).raw().to_string()),
+        None => renderer
+            .pick_proxy_for_url(&origin)
+            .map(|e| e.raw().to_string())
+            .or_else(|| proxy.clone()),
+    };
     let mut client_builder = reqwest::Client::builder()
         .user_agent(user_agent)
         .redirect(crw_core::url_safety::safe_redirect_policy());
-    if let Some(ref proxy_url) = proxy {
-        if let Ok(p) = reqwest::Proxy::all(proxy_url) {
-            client_builder = client_builder.proxy(p);
-        } else {
-            tracing::warn!("Invalid crawl proxy URL: {proxy_url}");
+    if let Some(ref proxy_url) = robots_proxy {
+        match reqwest::Proxy::all(proxy_url) {
+            Ok(p) => client_builder = client_builder.proxy(p),
+            Err(e) => {
+                send_failed(
+                    id,
+                    &state_tx,
+                    format!("invalid crawl proxy URL '{proxy_url}': {e}"),
+                );
+                return;
+            }
         }
     }
     let client = client_builder
