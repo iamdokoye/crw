@@ -66,6 +66,27 @@ paths consume that single entry** — no re-picking, no path-specific resolution
   client ignored the rotator + silent-swallow). Fixed in `c920a32`.
 - **Round 3** — 8 confirmed, **0 blocker/high → `satisfied: true`**. Per-request
   client warm-pool regression and the missing fail-closed tests were then addressed.
+- **Round 4** — verifying the round-3 polish surfaced **1 high** (new): `crw crawl
+  --js --proxy` routed only the HTTP tier through the proxy — the CLI crawl/map
+  renderer never attached a rotator, so `REQUEST_PROXY` stayed `None` and the JS/CDP
+  tier (+ the lightpanda fail-closed guard) was bypassed → real-IP leak. Fixed in
+  `ca5d7e2` (CLI crawl/map build the renderer with a rotator from `--proxy`).
+- **Round 5** — 6 confirmed, **0 blocker/high → `satisfied: true`**. Loop converged.
+
+### Additional low/nit follow-ups (round 4–5, non-blocking)
+- **robots/sitemap client is origin-scoped:** under a multi-host crawl with
+  `sticky_per_host`, non-origin hosts' robots/sitemap fetches use the origin host's
+  proxy while their page fetches use their own — still proxied (no leak), just an
+  IP-correlation inconsistency. Per-host robots client or documentation.
+- **/map drops per-request BYOP:** `MapRequest`/`DiscoverOptions` have no
+  `proxy_list`; /map honors only the server-config rotator (fail-safe, never direct
+  when config proxy exists). Add fields if /map BYOP is desired.
+- **proxy client cache eviction:** `http_fetcher_for_request` clears the whole cache
+  at 512 entries (coarse safety valve for arbitrary BYOP; config pools never hit it).
+  Swap for LRU if a pathological BYOP workload warrants it.
+- **#15 createBrowserContext parse-failure:** if Chrome returns success without a
+  `browserContextId`, the context isn't disposed — effectively unreachable (Chrome
+  always returns the id; there is no id to dispose), accepted.
 
 ### Remaining documented follow-ups (low / nit — non-blocking)
 - **#17 error class:** `build_client` maps a post-`parse` reqwest build failure to
