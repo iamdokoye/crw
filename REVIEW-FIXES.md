@@ -53,6 +53,30 @@ paths consume that single entry** — no re-picking, no path-specific resolution
 ## Verify
 - `cargo clippy --workspace` (default + `cdp`) clean; full test suite green.
 - New unit tests: stateless-sticky determinism; round_robin single-advance per request;
-  HTTP+CDP pick same entry; lightpanda-only+proxy → error; CLI bad `--proxy` → error;
-  socks5+auth → rejected for CDP.
+  socks5+auth → rejected for CDP; socks5h→socks5 mapping; lightpanda-only+proxy → error;
+  proxy-active prefers chrome over lightpanda; `HttpFetcher::with_proxy` fail-closed.
 - Re-run the multi-agent review workflow until 0 confirmed blocker/high findings.
+
+## Review loop outcome (CONVERGED)
+
+- **Round 1** — 17 confirmed (3 blocker, then highs/mediums/lows). Fixed in commits
+  `92c5027` + `3ff9145`.
+- **Round 2** — 11 confirmed, **4 high** — all one root: the `/map` `discover_urls`
+  path was left on the old direct/single-proxy path (BFS fetch unscoped + discovery
+  client ignored the rotator + silent-swallow). Fixed in `c920a32`.
+- **Round 3** — 8 confirmed, **0 blocker/high → `satisfied: true`**. Per-request
+  client warm-pool regression and the missing fail-closed tests were then addressed.
+
+### Remaining documented follow-ups (low / nit — non-blocking)
+- **#17 error class:** `build_client` maps a post-`parse` reqwest build failure to
+  `ConfigError` (HTTP 500) even on the per-request BYOP path (should be
+  `InvalidRequest`/400). Window is tiny — `ProxyEntry::parse` already validated
+  scheme+host, so `reqwest::Proxy::all` failing afterward is unlikely. Map at the
+  `with_proxy` call sites if surfaced.
+- **chrome_proxy tier override:** when a config/BYOP `REQUEST_PROXY` is active AND a
+  request escalates to the residential `chrome_proxy` tier, the per-request proxy
+  overrides the DataImpulse residential egress. Uncommon combo; document or skip the
+  per-request context when `self.name == "chrome_proxy"`.
+- **sticky key normalization:** BYOP sticky uses the raw host; the config rotator uses
+  `normalize_host` (eTLD+1). Mutually exclusive per request (no correctness impact);
+  unify by normalizing the BYOP host key too.
