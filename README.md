@@ -163,7 +163,7 @@ Continue.dev) live under [docs.fastcrw.com/mcp-clients/](https://docs.fastcrw.co
 | Best when | You want full data residency, AGPL is fine, you can run your own proxy strategy, latency to your infra matters more than ours. | You want zero infra, a global proxy network, a dashboard, usage metering, and AGPL carve-out for closed-source product code. |
 | Install | `docker run -p 3000:3000 ghcr.io/us/crw` or `cargo install crw-server`. | Sign up at [fastcrw.com](https://fastcrw.com) — 500 free credits, no card. |
 | Search | Bundled SearXNG sidecar (`docker compose up`). | Managed search backend. |
-| Proxy rotation | Bring your own pool (`proxy_list` + `proxy_rotation`: round_robin / random / sticky_per_host) — rotated across the HTTP fetch path; per-request BYOP supported. | Managed proxy network. |
+| Proxy rotation | Bring your own pool (`proxy_list` + `proxy_rotation`: round_robin / random / sticky_per_host) — rotated across the HTTP **and** JS/Chrome paths for scrape, crawl, and map; per-request BYOP supported. LightPanda can't proxy, so it's skipped (fail-closed) when a proxy is active. | Managed proxy network. |
 | Cost | $0 + your hosting bill. | From $13/mo; pricing on [fastcrw.com/pricing](https://fastcrw.com/pricing). |
 | License obligations | AGPL-3.0 applies if you expose the API to third parties. | AGPL carve-out included. |
 

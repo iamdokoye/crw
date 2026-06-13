@@ -49,6 +49,12 @@ pub struct V2CrawlRequest {
     pub renderer: Option<RequestedRenderer>,
     #[serde(default)]
     pub country: Option<String>,
+    /// BYOP proxy pool (crw extension), rotated per `proxy_rotation`. Accepts the
+    /// snake_case `proxy_list` alias (what the managed layer injects).
+    #[serde(default, alias = "proxy_list")]
+    pub proxy_list: Vec<String>,
+    #[serde(default, alias = "proxy_rotation")]
+    pub proxy_rotation: Option<crw_core::proxy::ProxyRotation>,
 }
 
 #[derive(Debug, Serialize)]
@@ -125,8 +131,8 @@ pub async fn start_crawl(
         wait_for: opts.wait_for,
         renderer: v2.renderer,
         country: v2.country,
-        proxy_list: Vec::new(),
-        proxy_rotation: None,
+        proxy_list: v2.proxy_list,
+        proxy_rotation: v2.proxy_rotation,
     };
     validate_crawl_renderer(&req, &state)?;
 
