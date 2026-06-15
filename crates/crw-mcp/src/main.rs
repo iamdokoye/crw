@@ -23,7 +23,7 @@
 //! crw-mcp
 //!
 //! # Proxy mode — connect to a remote server
-//! crw-mcp --api-url https://fastcrw.com/api --api-key fc-xxx
+//! crw-mcp --api-url https://api.fastcrw.com --api-key crw_live_xxx
 //! ```
 
 mod teardown;

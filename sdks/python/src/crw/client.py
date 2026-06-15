@@ -304,7 +304,7 @@ class CrwClient:
         filename: str | None = None,
         formats: list[str] | None = None,
         json_schema: dict | None = None,
-        parsers: list[str] | None = None,
+        parsers: list[str | dict] | None = None,
         **kwargs: Any,
     ) -> dict:
         """Parse an uploaded document (PDF) into markdown / structured JSON.
@@ -319,7 +319,9 @@ class CrwClient:
             filename: Name to report (defaults to the basename of ``path``).
             formats: Output formats, e.g. ``["markdown", "json"]``.
             json_schema: JSON Schema for structured LLM extraction from the document.
-            parsers: Explicit parser selection (e.g. ``["pdf"]``).
+            parsers: Explicit parser selection.  Accepts bare strings
+                (``["pdf"]``) or parser-spec dicts
+                (``[{"type": "pdf", "maxPages": 10}]``).
 
         Returns:
             Dict with keys like 'markdown', 'json', 'metadata' (numPages, …).
