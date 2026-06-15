@@ -1,0 +1,20 @@
+name: Docs Guards
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  docs-guards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Base-URL lint (fastcrw.com/api must not leak into engine docs)
+        run: bash scripts/docs-guards.sh
+
+      # The step above also covers Guard 2 (SKILL.md divergence), so a single
+      # script invocation runs both checks. A failure in either guard fails
+      # this job with a clear per-guard diagnostic.

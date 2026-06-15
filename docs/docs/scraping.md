@@ -38,7 +38,7 @@ Authentication:
 
 ### Installation
 
-CRW is HTTP-first. You can start with cURL immediately and then move to your existing Python or Node.js HTTP client without installing a dedicated SDK.
+CRW is HTTP-first. You can start with cURL immediately and then move to your existing Python or Node.js HTTP client without installing a dedicated SDK. See the [Basic usage](#basic-usage) tabs below for ready-to-run Python (`requests`), Node.js (`fetch`), and cURL examples.
 
 ### Basic usage
 
@@ -59,7 +59,7 @@ Start with this request:
 import requests
 
 resp = requests.post(
-    "https://fastcrw.com/api/v1/scrape",
+    "https://api.fastcrw.com/v1/scrape",
     headers={
         "Authorization": "Bearer YOUR_API_KEY",
         "Content-Type": "application/json",
@@ -75,7 +75,7 @@ print(resp.json()["data"]["markdown"])
 ```
 ::tab{title="Node.js"}
 ```javascript
-const resp = await fetch("https://fastcrw.com/api/v1/scrape", {
+const resp = await fetch("https://api.fastcrw.com/v1/scrape", {
   method: "POST",
   headers: {
     "Authorization": "Bearer YOUR_API_KEY",
@@ -93,7 +93,7 @@ console.log(body.data.markdown);
 ```
 ::tab{title="cURL"}
 ```bash
-curl -X POST https://fastcrw.com/api/v1/scrape \
+curl -X POST https://api.fastcrw.com/v1/scrape \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -128,11 +128,11 @@ That is the default CRW success shape: requested content plus a compact metadata
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `url` | string | required | URL to scrape |
-| `formats` | string[] | `["markdown"]` | `markdown`, `html`, `rawHtml`, `plainText`, `links`, `json`, `summary` |
+| `formats` | string[] | `["markdown"]` | `markdown`, `html`, `rawHtml`, `plainText`, `links`, `json`, `summary`, `changeTracking` |
 | `onlyMainContent` | boolean | `true` | Remove nav, footer, and boilerplate before conversion |
 | `renderJs` | boolean or null | `null` | `null` auto-detects, `true` forces browser rendering, `false` stays HTTP-only |
 | `waitFor` | number | -- | Milliseconds to wait after JS rendering |
-| `renderer` | string | `auto` | Pin to a specific renderer: `auto`, `lightpanda`, `chrome`, or `playwright`. Non-`auto` values hard-pin (no fallback) and imply `renderJs:true` unless `renderJs:false` is set explicitly. See [JS rendering](#js-rendering) |
+| `renderer` | string | `auto` | Pin to a specific renderer: `auto`, `lightpanda`, `chrome`, `chrome_proxy`, or `playwright`. Non-`auto` values hard-pin (no fallback) and imply `renderJs:true` unless `renderJs:false` is set explicitly. See [JS rendering](#js-rendering) |
 | `includeTags` | string[] | `[]` | CSS selectors to keep |
 | `excludeTags` | string[] | `[]` | CSS selectors to remove |
 | `headers` | object | `{}` | Custom HTTP headers |
@@ -148,11 +148,14 @@ That is the default CRW success shape: requested content plus a compact metadata
 | `jsonSchema` | object | -- | Schema for structured extraction |
 | `extract` | object | -- | Firecrawl-compatible alias wrapper for extraction schema |
 | `llmApiKey` | string | -- | Per-request LLM API key (BYOK) |
-| `llmProvider` | string | server default | `anthropic`, `openai`, `azure`, or `openai-compatible` |
+| `llmProvider` | string | server default | `anthropic`, `openai`, `deepseek`, `azure`, or `openai-compatible` |
 | `llmModel` | string | server default | Model override (extraction and summary) |
 | `baseUrl` | string | -- | OpenAI-compatible endpoint base, e.g. `https://api.deepseek.com/v1` (also used by Azure). crw appends `/chat/completions` automatically if you omit it. |
 | `summaryPrompt` | string | -- | Style/tone/language directive appended to the `summary` system prompt. Safety wrapper kept intact. Capped at 500 chars. |
 | `maxContentChars` | number | `[extraction.llm].max_html_bytes` (100 KB) | Per-request byte cap on content sent to the LLM for `summary`. Clamped to 200 KB server-side. |
+| `deadlineMs` | number | `8000` | End-to-end request deadline in milliseconds. Must be in `(0, 60000]`. Requests above 8 000 ms land in a separate slow-path histogram and are excluded from the standard SLO p95 metric. |
+| `debug` | boolean | `false` | When `true`, includes a `debugExtraction` field in the response with a trace of every extraction candidate considered and why one was selected. |
+| `parsers` | object[] | PDF auto-parsed | Firecrawl-compatible document parser directives. Omit for the default (PDFs auto-converted to markdown). Pass `[]` to disable PDF parsing. Pass `[{"type":"pdf","maxPages":10}]` to cap pages. Accepted fields: `type` (`"pdf"`), `mode` (`"auto"` \| `"fast"` \| `"ocr"`), `maxPages`. |
 | `actions` | any | -- | Rejected with a clear error; use `cssSelector` or `xpath` instead |
 
 ## Formats

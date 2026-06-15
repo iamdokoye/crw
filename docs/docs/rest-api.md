@@ -3,7 +3,7 @@
   <h1>API Overview</h1>
   <p class="page-subtitle">Use this page to pick the right CRW route quickly. The endpoint pages are the real usage guides; this page is the shortest map from your task to the right API surface.</p>
   <div class="page-capabilities">
-    <div class="page-capability"><strong>Hosted base URL:</strong> <code>https://fastcrw.com/api</code></div>
+    <div class="page-capability"><strong>Hosted base URL:</strong> <code>https://api.fastcrw.com</code></div>
     <div class="page-capability"><strong>Self-host default:</strong> <code>http://localhost:3000</code></div>
     <div class="page-capability"><strong>Best first route:</strong> <code>POST /v1/scrape</code></div>
   </div>
@@ -47,7 +47,7 @@
 ## Start with this request
 
 ```bash
-curl -X POST https://fastcrw.com/api/v1/scrape \
+curl -X POST https://api.fastcrw.com/v1/scrape \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"url":"https://example.com","formats":["markdown"]}'

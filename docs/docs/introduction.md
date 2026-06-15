@@ -1,7 +1,9 @@
+<p align="right"><a href="https://github.com/us/crw/blob/main/README.zh-CN.md">中文文档 (README.zh-CN.md)</a></p>
+
 <div class="page-intro">
   <div class="page-kicker">Get Started</div>
   <h1>CRW Docs</h1>
-  <p class="page-subtitle">Turn websites into usable data with one API. Start with a single <code>scrape</code> request, then move into <code>search</code>, <code>map</code>, <code>crawl</code>, <code>extract</code>, <code>browse</code> (interactive browser automation), or MCP only when your workflow actually needs them.</p>
+  <p class="page-subtitle">Turn websites into usable data with one API. Start with a single <code>scrape</code> request, then move into <code>search</code>, <code>map</code>, <code>crawl</code>, <code>extract</code>, or MCP only when your workflow actually needs them. Interactive browser automation is handled by the companion <code>crw-browse</code> service.</p>
   <div class="page-capabilities">
     <div class="page-capability"><strong>Fastest first win:</strong> one URL, one markdown response</div>
     <div class="page-capability"><strong>Works for:</strong> agents, ETL, RAG, structured extraction</div>
@@ -19,8 +21,22 @@
   <div class="playground-copy">If this request works, you already understand the core CRW model: known URL in, clean content out. Everything else in the docs builds on that.</div>
 </div>
 
+## Does this work for me?
+
+| I want to… | Use |
+|---|---|
+| Scrape a known URL → markdown / JSON | **scrape** |
+| Discover all pages under a domain | **map** |
+| Crawl and scrape many pages in one job | **crawl** |
+| Find relevant URLs via web search | **search** |
+| Pull structured data with an LLM | **extract** |
+| Drive a real browser, click, fill forms | **crw-browse** (companion service) |
+| Give my AI agent live web access | **MCP** |
+
+All five core verbs share the same API key and base URL. You can mix them in a single workflow.
+
 ```bash
-curl -X POST https://fastcrw.com/api/v1/scrape \
+curl -X POST https://api.fastcrw.com/v1/scrape \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -33,12 +49,13 @@ curl -X POST https://fastcrw.com/api/v1/scrape \
 {
   "success": true,
   "data": {
-    "markdown": "# Example Domain\n\nThis domain is for use in illustrative examples...",
+    "markdown": "# Example Domain\n\nThis domain is for use in illustrative examples in documents.",
     "metadata": {
       "title": "Example Domain",
       "sourceURL": "https://example.com",
       "statusCode": 200,
-      "elapsedMs": 32
+      "renderedWith": "http",
+      "elapsedMs": 218
     }
   }
 }
@@ -49,7 +66,7 @@ curl -X POST https://fastcrw.com/api/v1/scrape \
 :::cards
 ::card{icon="code" title="Scrape a page" href="#scraping" description="Use one URL and get markdown, HTML, links, or JSON back."}
 ::card{icon="search" title="Search the web" href="#search" description="Find URLs first, then scrape only the results you care about."}
-::card{icon="cursor" title="Browse interactively" href="#mcp" description="Drive a real browser from your agent — multi-step flows, clicks, stateful sessions (v0.4.0)."}
+::card{icon="cursor" title="crw-browse (companion)" href="/docs/mcp#browser-automation-crw-browse" description="Separate companion service for multi-step browser automation — clicks, form fills, stateful sessions. Not part of the core API verbs."}
 ::card{icon="plug" title="Add MCP tools" href="#mcp" description="Give Claude, Cursor, Codex, and other hosts live web access."}
 :::
 

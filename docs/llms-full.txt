@@ -1,0 +1,867 @@
+# fastCRW — Full Context for AI Agents
+# Single-fetch reference: API routes, MCP tools, patterns, formats, errors.
+# Version: 0.16.0 | Updated: 2026-06-15
+# Compact index: https://docs.fastcrw.com/llms.txt
+
+================================================================================
+## PART 1 — TWO API NAMESPACES
+================================================================================
+
+fastCRW exposes two distinct base URLs. Always pick the correct one.
+
+| Namespace         | Base URL                    | What lives here                                      |
+|-------------------|-----------------------------|------------------------------------------------------|
+| Engine            | https://api.fastcrw.com     | Scrape, crawl, map, search, extract, parse (/v1, /v2, /mcp) |
+| SaaS control-plane| https://fastcrw.com/api     | Account balance, monitor CRUD, billing               |
+
+RULES:
+- Fetching content from the web → https://api.fastcrw.com
+- Reading balance or managing monitors → https://fastcrw.com/api
+- Self-hosted → http://localhost:3000 (engine routes only; no control-plane)
+
+Every authenticated request: Authorization: Bearer YOUR_API_KEY
+Key prefix for cloud: crw_live_...
+Self-hosted: auth is optional; configure [auth] api_keys in config.toml to require it.
+
+
+================================================================================
+## PART 2 — API ROUTE MAP
+================================================================================
+
+All routes on the engine namespace (https://api.fastcrw.com or self-hosted base).
+
+| Method | Route                  | Purpose                                                  |
+|--------|------------------------|----------------------------------------------------------|
+| POST   | /v1/scrape             | Single-URL content extraction                            |
+| POST   | /v1/crawl              | Start async multi-page crawl job → returns job ID        |
+| GET    | /v1/crawl/{id}         | Poll crawl job status and retrieve results               |
+| DELETE | /v1/crawl/{id}         | Cancel a running crawl job                               |
+| POST   | /v1/map                | URL discovery without scraping page bodies               |
+| POST   | /v1/search             | Web search (SearXNG-backed), returns ranked results      |
+| POST   | /v2/parse              | Parse a file (PDF) into markdown/structured output       |
+| POST   | /v1/change-tracking/diff | Stateless per-page diff; accepts single item or batch  |
+| GET    | /v1/capabilities       | Surface what this instance supports (renderers, search)  |
+| GET/POST | /mcp               | HTTP MCP transport endpoint (crw-server built-in)        |
+| GET    | /health                | Health check — always public, no auth required           |
+
+SaaS-only (fastcrw.com/api):
+| Method | Route                       | Purpose                                      |
+|--------|-----------------------------|----------------------------------------------|
+| GET    | /api/v1/account/balance     | Read included credits + purchased balance    |
+| CRUD   | /api/v1/monitors            | Create/read/update/delete monitors           |
+
+NOT REAL — do not invent or call these routes:
+- /v1/extract (extraction is via /v1/scrape with formats:["json"])
+
+
+================================================================================
+## PART 3 — AUTHENTICATION DETAILS
+================================================================================
+
+Hosted (fastcrw.com):
+  curl -X POST https://api.fastcrw.com/v1/scrape \
+    -H "Authorization: Bearer crw_live_YOUR_KEY" \
+    -H "Content-Type: application/json" \
+    -d '{"url":"https://example.com","formats":["markdown"]}'
+
+Self-hosted (no auth by default):
+  curl -X POST http://localhost:3000/v1/scrape \
+    -H "Content-Type: application/json" \
+    -d '{"url":"https://example.com","formats":["markdown"]}'
+
+Self-hosted with auth enabled (config.toml):
+  [auth]
+  api_keys = ["fc-key-1234", "fc-key-5678"]
+  # Then: Authorization: Bearer fc-key-1234 is required on /v1/*, /v2/*, /mcp
+
+Free tier: 500 one-time lifetime credits (never resets, not monthly).
+
+
+================================================================================
+## PART 4 — CORE ENDPOINTS IN DETAIL
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+### 4.1  POST /v1/scrape
+────────────────────────────────────────────────────────────────────────────────
+
+Turn one known URL into clean content. Synchronous — returns the result directly.
+
+Minimal request:
+  {"url": "https://example.com", "formats": ["markdown"]}
+
+Key parameters:
+  url             string    required  URL to scrape
+  formats         string[]  opt       Output formats (default: ["markdown"]). See Part 5.
+  onlyMainContent boolean   opt       Strip nav/footer/boilerplate (default: true)
+  renderJs        bool|null opt       null=auto-detect, true=force browser, false=HTTP-only
+  waitFor         number    opt       ms to wait after JS render
+  renderer        string    opt       "auto"|"lightpanda"|"chrome"|"chrome_proxy"|"playwright"
+  includeTags     string[]  opt       CSS selectors to include
+  excludeTags     string[]  opt       CSS selectors to exclude
+  cssSelector     string    opt       Narrow to one CSS selector
+  xpath           string    opt       Narrow to one XPath expression
+  headers         object    opt       Custom HTTP headers forwarded to the target
+  jsonSchema      object    opt       JSON Schema for structured extraction (formats:["json"])
+  llmApiKey       string    opt       BYOK LLM key for json/summary formats
+  llmProvider     string    opt       "anthropic"|"openai"|"deepseek"|"azure"|"openai-compatible"
+  llmModel        string    opt       Model override
+  baseUrl         string    opt       OpenAI-compatible endpoint base URL
+  summaryPrompt   string    opt       Style/tone directive for summary (≤500 chars)
+  maxContentChars number    opt       Byte cap for content sent to LLM (default 100KB, max 200KB)
+  proxy           string    opt       Per-request proxy URL
+  country         string    opt       2-letter ISO country code for chrome_proxy pool routing
+  stealth         boolean   opt       Override global stealth setting
+  chunkStrategy   object    opt       Topic/sentence/regex chunking
+  query           string    opt       Ranking query for chunk filtering
+  filterMode      string    opt       "bm25"|"cosine"
+  topK            number    opt       Top chunks to keep (default: 5)
+  deadlineMs      number    opt       End-to-end deadline ms, range (0, 60000] (default: 8000)
+  debug           boolean   opt       Include debugExtraction trace in response
+  parsers         object[]  opt       PDF parser config (omit=auto, []=disable)
+  actions         any       REJECTED  Not supported; use cssSelector or xpath instead
+
+Success response:
+  {
+    "success": true,
+    "data": {
+      "markdown": "...",
+      "html": "...",
+      "rawHtml": "...",
+      "plainText": "...",
+      "links": ["https://..."],
+      "json": {},
+      "summary": "...",
+      "llmUsage": {"inputTokens":N,"outputTokens":N,"totalTokens":N,"estimatedCostUsd":0.0001,"model":"...","provider":"..."},
+      "warnings": [],
+      "warning": "optional degraded-result notice",
+      "creditCost": 1,
+      "metadata": {
+        "title": "...",
+        "description": "...",
+        "sourceURL": "https://example.com",
+        "statusCode": 200,
+        "renderedWith": "http",
+        "elapsedMs": 32
+      }
+    }
+  }
+
+Only requested formats appear in data. creditCost: 1 for HTTP/lightpanda, 2 for chrome.
+
+────────────────────────────────────────────────────────────────────────────────
+### 4.2  POST /v1/crawl  +  GET /v1/crawl/{id}
+────────────────────────────────────────────────────────────────────────────────
+
+Async BFS crawl. POST starts the job; poll GET until status reaches completed or failed.
+
+Start request:
+  {
+    "url": "https://docs.example.com",
+    "maxDepth": 2,
+    "maxPages": 50,
+    "formats": ["markdown"]
+  }
+
+Start response:
+  {"success": true, "id": "550e8400-e29b-41d4-a716-446655440000"}
+
+Key parameters (crawl start):
+  url             string    required  Starting URL
+  maxDepth        number    opt       Max BFS depth from start URL (default: 2)
+  maxPages        number    opt       Max pages to crawl (default: 100)
+  limit           number    opt       Alias for maxPages (Firecrawl compat)
+  formats         string[]  opt       Output formats per page (default: ["markdown"])
+  onlyMainContent boolean   opt       Strip boilerplate (default: true)
+  jsonSchema      object    opt       JSON Schema for per-page structured extraction
+  renderJs        bool|null opt       null=auto, true=force JS, false=HTTP-only
+  waitFor         number    opt       ms to wait after JS render per page
+  renderer        string    opt       Pin renderer for all pages
+  country         string    opt       2-letter country code for chrome_proxy pool
+
+Poll response (GET /v1/crawl/{id}):
+  {
+    "success": true,
+    "status": "scraping",      // scraping | completed | failed
+    "total": 50,
+    "completed": 12,
+    "data": [                  // partial results available during "scraping"
+      {
+        "markdown": "# Page content",
+        "metadata": {"sourceURL": "https://example.com/page"}
+      }
+    ],
+    "error": "optional, present only when status=failed"
+  }
+
+CrawlStatus values (EXACT — never use "pending" or "running"):
+  scraping   — job is actively crawling; data[] has partial results
+  completed  — all pages done; data[] is the full result set
+  failed     — job failed; error field has the reason
+
+Cancel: DELETE /v1/crawl/{id}
+
+Crawl poll loop — Python (copy-paste-runnable):
+  import time, requests
+
+  def poll_crawl(crawl_id: str, api_key: str, interval: float = 3.0) -> dict:
+      url = f"https://api.fastcrw.com/v1/crawl/{crawl_id}"
+      headers = {"Authorization": f"Bearer {api_key}"}
+      while True:
+          resp = requests.get(url, headers=headers)
+          resp.raise_for_status()
+          data = resp.json()
+          status = data["status"]
+          print(f"status={status}  pages={data['completed']}/{data['total']}")
+          if status in ("completed", "failed"):
+              return data
+          time.sleep(interval)
+
+Crawl poll loop — bash:
+  ID="550e8400-e29b-41d4-a716-446655440000"
+  while true; do
+    RESULT=$(curl -s -H "Authorization: Bearer $API_KEY" \
+      "https://api.fastcrw.com/v1/crawl/$ID")
+    STATUS=$(echo "$RESULT" | jq -r '.status')
+    echo "Status: $STATUS  ($(echo "$RESULT" | jq '.completed')/$(echo "$RESULT" | jq '.total') pages)"
+    if [ "$STATUS" = "completed" ] || [ "$STATUS" = "failed" ]; then
+      break
+    fi
+    sleep 3
+  done
+
+Crawl billing: 1 credit to start; then 1 credit per newly materialized page on each poll
+(already-seen pages are NOT re-billed on subsequent polls).
+
+────────────────────────────────────────────────────────────────────────────────
+### 4.3  POST /v1/map
+────────────────────────────────────────────────────────────────────────────────
+
+URL discovery — no page bodies fetched. Use before a large crawl to estimate scope.
+
+Request:
+  {"url": "https://example.com"}
+
+Key parameters:
+  url             string    required  Site to map
+  maxDepth        number    opt       Discovery depth (default: 2)
+  useSitemap      boolean   opt       Read sitemap.xml (default: true)
+  crawlFallback   boolean   opt       BFS crawl when sitemap is absent (default: true)
+  limit           number    opt       Max URLs to return; 0=unbounded (default: 100)
+
+Response:
+  {
+    "success": true,
+    "data": {
+      "links": ["https://example.com", "https://example.com/about", "..."]
+    }
+  }
+  If truncated: "truncated": true, "totalDiscovered": N
+
+────────────────────────────────────────────────────────────────────────────────
+### 4.4  POST /v1/search
+────────────────────────────────────────────────────────────────────────────────
+
+Web search via SearXNG backend. No "country" parameter — use "lang" for locale.
+
+Request:
+  {"query": "web scraping tools 2025", "limit": 5}
+
+Key parameters:
+  query           string    required  Search query
+  limit           number    opt       Max results (default: 5)
+  lang            string    opt       Language code, e.g. "en", "tr"
+  tbs             string    opt       Time filter: qdr:h|qdr:d|qdr:w|qdr:m|qdr:y
+  sources         string[]  opt       Group results by source: "web", "news", "images"
+  categories      string[]  opt       Category bias; each element: "pdf", "github", "research", or any SearXNG category string (max 5)
+  scrapeOptions   object    opt       Options to scrape each result page
+  summarizeResults boolean  opt       Per-result LLM summary (needs LLM config)
+  answer          boolean   opt       LLM-synthesized answer over top results
+
+Availability:
+  Cloud (fastcrw.com): always available
+  Self-hosted: requires SearXNG sidecar configured (docker compose up starts it automatically)
+  Embedded MCP mode: only when SearXNG backend is configured
+
+Flat response (no sources param):
+  {
+    "success": true,
+    "data": {
+      "results": [
+        {
+          "url": "https://example.com/article",
+          "title": "Article Title",
+          "description": "Search snippet...",
+          "snippet": "Same value — Firecrawl-compatible alias",
+          "position": 1,
+          "score": 9.5,
+          "markdown": "# ...",
+          "summary": "Short LLM digest (when summarizeResults:true)"
+        }
+      ],
+      "answer": "LLM answer or null",
+      "citations": [{"url":"...","title":"...","position":0}],
+      "llmUsage": {"inputTokens":N, ...},
+      "warnings": []
+    }
+  }
+
+Grouped response (when sources:["web","news"] set): data.results is a keyed object
+  {"web": [...], "news": [...]}
+
+────────────────────────────────────────────────────────────────────────────────
+### 4.5  POST /v2/parse
+────────────────────────────────────────────────────────────────────────────────
+
+Parse a local file (PDF) into markdown or structured output. Does not fetch from the web.
+
+Request (multipart or JSON with base64):
+  {
+    "contentBase64": "<base64-encoded-pdf>",
+    "filename": "report.pdf",
+    "formats": ["markdown"],
+    "parsers": [{"type":"pdf"}]
+  }
+
+Key parameters:
+  contentBase64   string    required  Base64-encoded file bytes
+  filename        string    opt       Original filename (helps parser selection)
+  formats         string[]  opt       "markdown" (default), "plainText", "links", "json", "summary"
+  jsonSchema      object    opt       JSON Schema for extraction (when formats includes "json")
+  parsers         object[]  opt       Parser directives, e.g. [{"type":"pdf","maxPages":10}]
+  maxLength       number    opt       Truncate output chars; 0=unbounded (default: ~15 000)
+
+Note: "json" and "summary" formats require an LLM configured on the server.
+
+
+================================================================================
+## PART 5 — OUTPUT FORMATS (8 FORMATS)
+================================================================================
+
+Request multiple formats in one call. Only requested formats appear in the response data.
+
+| Format         | Key              | Response field    | Description                                    |
+|----------------|------------------|-------------------|------------------------------------------------|
+| Markdown       | markdown         | data.markdown     | HTML→Markdown via fast_html2md; LLM-friendly   |
+| HTML           | html             | data.html         | Cleaned HTML (scripts/nav removed)             |
+| Raw HTML       | rawHtml          | data.rawHtml      | Original unmodified HTML                       |
+| Plain Text     | plainText        | data.plainText    | Stripped text, no formatting                   |
+| Links          | links            | data.links        | All <a href> URLs (excludes # and javascript:) |
+| JSON           | json             | data.json         | LLM structured extraction; needs jsonSchema    |
+| Summary        | summary          | data.summary      | LLM prose digest; needs LLM config or BYOK     |
+| Change Tracking| changeTracking   | data.changeTracking | Diff against prior snapshot                  |
+
+Aliases accepted (map to json): "extract", "llm-extract"
+Not supported (returns 422): "screenshot"
+Not supported (returns 400): "actions" — use cssSelector or xpath instead
+
+Format selection guide:
+  markdown       — default; best for RAG, search, LLM prompts
+  html           — when downstream needs cleaned structure
+  rawHtml        — only when original source is required
+  links          — lightweight discovery without page bodies
+  summary        — ready-to-show prose digest (needs LLM)
+  json           — schema-shaped structured extraction (needs jsonSchema + LLM)
+  changeTracking — diff-based change detection
+
+Common combinations:
+  ["markdown"]                  — default extraction
+  ["markdown", "links"]         — content + link discovery
+  ["markdown", "json"]          — readable content + structured fields
+  ["html", "rawHtml"]           — debug the extraction pipeline
+
+
+================================================================================
+## PART 6 — RENDERER ENUM
+================================================================================
+
+The "renderer" parameter pins the rendering backend. Non-"auto" values hard-pin (no fallback)
+and imply renderJs:true unless renderJs:false is set explicitly.
+
+| Renderer       | Use case                                          | Credit cost |
+|----------------|---------------------------------------------------|-------------|
+| auto           | Default — HTTP first, then CDP if SPA detected    | 1           |
+| lightpanda     | Lightweight CDP-based JS rendering                | 1           |
+| chrome         | Full Chrome via CDP                               | 2           |
+| chrome_proxy   | Chrome via residential proxy pool (uses country)  | 2           |
+| playwright     | Playwright-backed browser (SaaS billing only)     | SaaS only   |
+
+NOTE: `http` appears in `metadata.renderedWith` response field as an outcome label but is NOT
+an accepted `renderer` request value — use `auto` or omit the field to get HTTP-only behavior
+when `renderJs: false`.
+
+renderJs values:
+  null (default) — auto-detect SPAs, fall back to CDP if needed
+  true           — force CDP rendering
+  false          — HTTP only, even if renderer is set
+
+metadata.renderedWith in response: "http"|"lightpanda"|"chrome"|"chrome_proxy"|"playwright"|"pdf"|"http_only_fallback"
+
+
+================================================================================
+## PART 7 — MCP SERVER (6 TOOLS)
+================================================================================
+
+Package: crw-mcp (npm: npx crw-mcp | cargo: cargo install crw-mcp)
+MCP key prefix: crw_live_
+
+Two MCP modes:
+  Embedded  — no CRW_API_URL set; scraping engine runs inside the MCP process (~6 MB RAM)
+              crw_search only appears when SearXNG backend is configured
+  Proxy     — CRW_API_URL set; forwards tool calls to a remote CRW server (cloud or self-hosted)
+              crw_search always advertised (search backend is on the server)
+
+Quick setup:
+  # Claude Code — embedded local
+  claude mcp add crw -- npx crw-mcp
+
+  # Claude Code — fastcrw.com cloud
+  claude mcp add \
+    -e CRW_API_URL=https://api.fastcrw.com \
+    -e CRW_API_KEY=crw_live_YOUR_KEY \
+    crw -- npx crw-mcp
+
+  # HTTP transport (crw-server running locally)
+  claude mcp add --transport http crw http://localhost:3000/mcp
+
+Output bounding defaults (keep agent context small):
+  crw_scrape / crw_check_crawl_status / crw_parse_file: content truncated to ~15 000 chars
+  crw_map: max 100 URLs returned
+  Truncated results carry truncated:true marker; crw_map also adds totalDiscovered.
+  Pass maxLength:0 (scrape/check_status/parse_file) or limit:0 (map) to disable bounding.
+
+────────────────────────────────────────────────────────────────────────────────
+### Tool: crw_scrape  →  POST /v1/scrape
+────────────────────────────────────────────────────────────────────────────────
+Scrape a single URL and return clean content.
+
+Parameters:
+  url             string    required  The URL to scrape
+  formats         string[]  opt       "markdown" (default), "html", "links"
+  onlyMainContent boolean   opt       Strip nav/footer (default: true)
+  includeTags     string[]  opt       CSS selectors to include
+  excludeTags     string[]  opt       CSS selectors to exclude
+  renderJs        boolean   opt       Force JS rendering (default: auto-detect/null)
+  waitFor         number    opt       ms to wait after page load
+  renderer        string    opt       Renderer override (e.g. "playwright")
+  maxLength       number    opt       Truncate output chars; 0=unbounded (default: ~15 000)
+
+Example:
+  crw_scrape(url="https://example.com", formats=["markdown"])
+
+────────────────────────────────────────────────────────────────────────────────
+### Tool: crw_crawl  →  POST /v1/crawl
+────────────────────────────────────────────────────────────────────────────────
+Start an async BFS crawl. Returns a job ID — poll with crw_check_crawl_status.
+
+Parameters:
+  url             string    required  Starting URL
+  maxDepth        number    opt       Max crawl depth (default: 2)
+  maxPages        number    opt       Max pages (default: 10 via MCP, 100 via REST)
+  jsonSchema      object    opt       JSON Schema for per-page structured extraction
+  renderJs        boolean   opt       Force JS rendering
+  waitFor         number    opt       ms to wait after page load
+  renderer        string    opt       Renderer override
+
+Returns: {"id": "job-uuid"}
+
+────────────────────────────────────────────────────────────────────────────────
+### Tool: crw_check_crawl_status  →  GET /v1/crawl/:id
+────────────────────────────────────────────────────────────────────────────────
+Poll a crawl job for status and results.
+
+Parameters:
+  id              string    required  Crawl job ID from crw_crawl
+  maxLength       number    opt       Truncate each page's content; 0=unbounded (default: ~15 000)
+
+Returns:
+  {
+    "status": "scraping|completed|failed",
+    "total": N,
+    "completed": N,
+    "data": [...]
+  }
+
+Poll until status == "completed" or "failed". data[] is populated incrementally.
+
+────────────────────────────────────────────────────────────────────────────────
+### Tool: crw_map  →  POST /v1/map
+────────────────────────────────────────────────────────────────────────────────
+Discover URLs on a site without scraping bodies.
+
+Parameters:
+  url             string    required  Site to map
+  maxDepth        number    opt       Discovery depth (default: 2)
+  useSitemap      boolean   opt       Read sitemap.xml (default: true)
+  crawlFallback   boolean   opt       BFS when sitemap absent (default: true)
+  limit           number    opt       Max URLs; 0=unbounded (default: 100)
+
+Returns: {"links": ["url1", "url2", ...]}
+
+────────────────────────────────────────────────────────────────────────────────
+### Tool: crw_search  →  POST /v1/search
+────────────────────────────────────────────────────────────────────────────────
+Search the web. NO "country" parameter — use "lang" for locale.
+
+Parameters:
+  query           string    required  Search query
+  limit           number    opt       Max results (default: 5)
+  lang            string    opt       Language code, e.g. "en", "tr"
+  tbs             string    opt       Time filter: "qdr:h"|"qdr:d"|"qdr:w"|"qdr:m"|"qdr:y"
+  sources         string[]  opt       Group by source: "web", "news", "images"
+  categories      string[]  opt       Category bias; each element: "pdf", "github", "research", or any SearXNG category string (max 5)
+  scrapeOptions   object    opt       Options for scraping each result
+
+Availability: always in proxy/cloud mode; embedded only when SearXNG is configured.
+
+Example:
+  crw_search(query="renewable energy 2025", limit=5)
+
+────────────────────────────────────────────────────────────────────────────────
+### Tool: crw_parse_file  →  POST /v2/parse
+────────────────────────────────────────────────────────────────────────────────
+Parse a local file (PDF) into markdown or structured output. No web fetch.
+
+Parameters:
+  contentBase64   string    required  Base64-encoded file bytes
+  filename        string    opt       Original filename (e.g. "report.pdf")
+  formats         string[]  opt       "markdown" (default), "plainText", "links", "json", "summary"
+  jsonSchema      object    opt       JSON Schema for extraction (formats includes "json")
+  parsers         object[]  opt       Parser directives: [{"type":"pdf","maxPages":10}]
+  maxLength       number    opt       Truncate output chars; 0=unbounded (default: ~15 000)
+
+Note: "json" and "summary" formats require server LLM config.
+
+
+================================================================================
+## PART 8 — crw-browse (SEPARATE MCP SERVER)
+================================================================================
+
+crw-browse is a SEPARATE MCP server binary — it is NOT a tool inside crw-mcp.
+Calling crw_browse via crw-mcp will return JSON-RPC error -32602 "Unknown tool".
+
+Use crw-browse when:
+  - crw_scrape returns empty or very short markdown (JS-gated / SPA page)
+  - You need stateful browser interaction: navigate, click, fill forms
+  - Multi-step flows that a one-shot scrape cannot handle
+
+Install:
+  cargo install crw-browse
+  # Or prebuilt binary from https://github.com/us/crw/releases/tag/v0.4.0
+
+Register alongside crw-mcp (it uses stdio transport, self-hosted, no cloud account needed):
+  claude mcp add crw-browse -- crw-browse
+
+Tools exposed by crw-browse (v0.4.0+):
+
+  | Tool        | Description                                                                 |
+  |-------------|-----------------------------------------------------------------------------|
+  | goto        | Navigate to an http(s) URL and wait for load. Creates session on first call.|
+  | tree        | Snapshot the current page as an indented accessibility tree (@e<N> refs).   |
+  | evaluate    | Run a JavaScript expression; async expressions resolve before returning.    |
+  | text        | Read visible text from the page or a CSS-selected element.                  |
+  | html        | Read raw outerHTML from the page or a CSS-selected element.                 |
+  | click       | Click an element by CSS selector or @e<N> ref from tree.                    |
+  | fill        | Set an input's value and dispatch input+change events.                      |
+  | type_text   | Type characters into the focused element via key events.                    |
+  | console     | Drain the session's console-message ring buffer (up to 200 entries).        |
+  | network     | Drain the session's network-request ring buffer (up to 500 entries).        |
+  | storage     | Read/write/clear cookies, localStorage, or sessionStorage.                  |
+  | screenshot  | Capture the page as PNG/JPEG (requires --chrome-ws-url).                    |
+  | wait        | Block until a CSS element appears or a page condition is met.               |
+  | script      | Execute a sequence of tool calls in one request (max 50 steps).             |
+
+Session state is automatically swept after an idle TTL.
+
+JS-gated fallback pattern:
+  1. crw_scrape(url=TARGET)
+  2. If data.markdown is "" or very short:
+     crw-browse goto(url=TARGET)
+     crw-browse tree()
+     → extract from accessibility tree
+
+Two-server config example (JSON mcpServers block):
+  {
+    "mcpServers": {
+      "crw": {
+        "command": "npx",
+        "args": ["crw-mcp"],
+        "env": {
+          "CRW_API_URL": "https://api.fastcrw.com",
+          "CRW_API_KEY": "crw_live_YOUR_KEY"
+        }
+      },
+      "crw-browse": {
+        "command": "crw-browse",
+        "args": ["--ws-url", "ws://localhost:9222"]
+      }
+    }
+  }
+
+
+================================================================================
+## PART 9 — AGENT ONBOARDING PATTERNS
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+### Pattern A — Crawl poll loop (with credit awareness)
+────────────────────────────────────────────────────────────────────────────────
+
+Credit-aware crawl in Python (copy-paste-runnable, stdlib + requests):
+
+  import time, requests
+
+  API_KEY = "crw_live_YOUR_KEY"
+  BASE = "https://api.fastcrw.com"
+  H = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
+
+  # Step 1: estimate scope before committing
+  map_resp = requests.post(f"{BASE}/v1/map",
+      headers=H, json={"url": "https://docs.example.com", "limit": 50})
+  urls = map_resp.json()["data"]["links"]
+  print(f"Discovered {len(urls)} URLs")
+
+  # Step 2: start a bounded crawl
+  start = requests.post(f"{BASE}/v1/crawl",
+      headers=H, json={"url": "https://docs.example.com", "maxPages": 50,
+                        "maxDepth": 2, "formats": ["markdown"]})
+  start.raise_for_status()
+  crawl_id = start.json()["id"]
+
+  # Step 3: poll until done
+  def poll_crawl(crawl_id: str, interval: float = 3.0) -> dict:
+      while True:
+          resp = requests.get(f"{BASE}/v1/crawl/{crawl_id}", headers=H)
+          if resp.status_code == 402:
+              stop_reason = resp.headers.get("X-FASTCRW-Stop-Reason", "unknown")
+              raise RuntimeError(f"Credits exhausted (reason: {stop_reason})")
+          if resp.status_code == 429:
+              body = resp.json()
+              raise RuntimeError(f"Quota exceeded: {body.get('error')}")
+          resp.raise_for_status()
+          data = resp.json()
+          status = data["status"]
+          print(f"status={status}  {data['completed']}/{data['total']} pages")
+          if status in ("completed", "failed"):
+              return data
+          time.sleep(interval)
+
+  result = poll_crawl(crawl_id)
+  pages = result["data"]
+  print(f"Crawled {len(pages)} pages")
+
+────────────────────────────────────────────────────────────────────────────────
+### Pattern B — Research loop
+────────────────────────────────────────────────────────────────────────────────
+
+  search(topic) → scrape(top results) → analyze → search(refined query) → repeat
+
+  Example:
+    resp = requests.post(f"{BASE}/v1/search",
+        headers=H, json={"query": "fastCRW web scraping", "limit": 5})
+    for item in resp.json()["data"]["results"]:
+        page = requests.post(f"{BASE}/v1/scrape",
+            headers=H, json={"url": item["url"], "formats": ["markdown"]})
+        print(page.json()["data"]["markdown"][:500])
+
+────────────────────────────────────────────────────────────────────────────────
+### Pattern C — Site exploration
+────────────────────────────────────────────────────────────────────────────────
+
+  map(domain) → filter URLs → scrape(relevant pages) → synthesize
+
+  Example (MCP tool calls):
+    crw_map(url="https://docs.example.com")            # get URL list
+    # filter for /api/* pages
+    crw_scrape(url="https://docs.example.com/api/scrape", formats=["markdown"])
+
+────────────────────────────────────────────────────────────────────────────────
+### Pattern D — Monitoring / change detection
+────────────────────────────────────────────────────────────────────────────────
+
+  scrape(url) → store result → wait → scrape(url) → compare with stored
+
+────────────────────────────────────────────────────────────────────────────────
+### Pattern E — JS-gated fallback
+────────────────────────────────────────────────────────────────────────────────
+
+  crw_scrape(url) → if markdown empty → crw-browse goto(url) → crw-browse tree() → extract
+
+────────────────────────────────────────────────────────────────────────────────
+### Credit awareness rules
+────────────────────────────────────────────────────────────────────────────────
+
+  HTTP 402 — credit exhausted on a PAID plan (auto-recharge stopped)
+    Headers: X-FASTCRW-Stop-Reason (cap_reached|card_declined|action_required|no_payment_method)
+             X-FASTCRW-Credits-Available
+             X-FASTCRW-Upgrade-Url
+    Action: stop, alert user, top up credits. Do NOT retry.
+
+  HTTP 429 — rate limit OR free-tier lifetime credit cap reached
+    Headers: Retry-After
+    Action: back off and retry after Retry-After (rate limit case)
+             if free-tier cap: upgrade is required, retrying won't help
+
+  HTTP 200 with warning — success but degraded
+    Check data.warning and data.metadata.statusCode
+    Common: target returned 403/429, anti-bot detected
+
+  Balance check (SaaS only):
+    GET https://fastcrw.com/api/v1/account/balance
+    Headers: Authorization: Bearer crw_live_YOUR_KEY
+
+
+================================================================================
+## PART 10 — ERROR AND STATUS REFERENCE
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+### HTTP status codes returned by the CRW API
+────────────────────────────────────────────────────────────────────────────────
+
+| Status | Meaning                          | Agent action                               |
+|--------|----------------------------------|--------------------------------------------|
+| 200    | Success                          | Process response                           |
+| 400    | Invalid parameters/URL/selector  | Fix request; do NOT retry as-is            |
+| 401    | Missing or invalid API key       | Fix auth; do NOT retry                     |
+| 402    | Paid plan credits exhausted      | Alert user, top up; do NOT retry           |
+| 404    | Endpoint or crawl ID not found   | Do NOT retry                               |
+| 422    | Validation error (bad format,    | Fix semantic issue; do NOT retry same URL  |
+|        | schema, extraction failure)      |                                            |
+| 429    | Rate limit OR free-tier cap      | Backoff + Retry-After; if free-tier cap,   |
+|        |                                  | upgrade required                           |
+| 500    | Internal server error (renderer  | Retry once with backoff; persistent 500 on |
+|        | crash or internal error)         | the same request indicates a server-side bug |
+| 502    | Bad gateway / upstream error     | Retry with exponential backoff             |
+| 503    | Service unavailable              | Retry with exponential backoff             |
+| 504    | Gateway timeout                  | Retry; reduce maxPages or increase deadlineMs |
+
+────────────────────────────────────────────────────────────────────────────────
+### CrawlStatus values
+────────────────────────────────────────────────────────────────────────────────
+
+| Status    | Meaning                                                        |
+|-----------|----------------------------------------------------------------|
+| scraping  | Job is running; data[] has partial results (available now)     |
+| completed | All pages done; data[] is the complete result set              |
+| failed    | Job failed; error field has the reason                         |
+
+NEVER use "pending", "running", "queued", "processing" — they are not valid values.
+
+────────────────────────────────────────────────────────────────────────────────
+### Common engine errors
+────────────────────────────────────────────────────────────────────────────────
+
+| Error                                  | When                                         |
+|----------------------------------------|----------------------------------------------|
+| Invalid URL                            | URL is malformed or targets a blocked address|
+| Invalid selector                       | CSS/XPath cannot be parsed                   |
+| Renderer timeout                       | JS rendering exceeded page timeout           |
+| Navigation failed                      | CDP browser could not load the page          |
+| Response too large                     | Page exceeded maximum allowed size           |
+| Invalid JSON schema                    | Schema for extraction is malformed           |
+| Extraction failure                     | LLM extraction failed                        |
+| summary format requires LLM config    | formats:["summary"] without LLM configured  |
+| BYOK header required                   | Server in require_byok_header mode           |
+| No JS renderer available               | renderJs:true but no CDP browser configured  |
+
+────────────────────────────────────────────────────────────────────────────────
+### Common warnings (success:true, degraded result)
+────────────────────────────────────────────────────────────────────────────────
+
+| Warning                                        | Meaning                                    |
+|------------------------------------------------|--------------------------------------------|
+| Target returned 403 Forbidden                  | Target blocked the request                 |
+| Target returned 429 Too Many Requests          | Target rate limited the request            |
+| Blocked by anti-bot protection                 | Cloudflare/captcha markers detected        |
+| JS rendering was requested but no renderer     | Fell back to HTTP-only                     |
+| content truncated to N bytes before summarization | maxContentChars exceeded              |
+| summary failed: <reason>                       | Per-result summary failed in /v1/search    |
+| answer synthesis failed: <reason>              | Answer call failed; results still returned |
+| N of M per-result summaries failed             | Partial failure in /v1/search              |
+
+────────────────────────────────────────────────────────────────────────────────
+### Retry guidance
+────────────────────────────────────────────────────────────────────────────────
+
+  Retry with backoff: 429 (rate limit case), 500 (renderer/internal), 502, 503, 504
+  Do NOT retry: 400, 401, 402, 404, 422
+  Anti-bot warnings: longer retry loops make it worse — use crw-browse instead
+
+
+================================================================================
+## PART 11 — SDK AND INTEGRATIONS QUICK REFERENCE
+================================================================================
+
+Official SDKs:
+  Python:     pip install crw               # version 0.16.0; PyPI: pypi.org/project/crw/
+  TypeScript: npm install crw-sdk           # version 0.16.0; npm: npmjs.com/package/crw-sdk
+
+Framework extras (NOT standalone packages):
+  crw[langchain]  — pip install crw[langchain]
+  crw[crewai]     — pip install crw[crewai]
+
+Other integrations:
+  n8n:  n8n-nodes-crw (npm)
+  Dify: dify-plugin-crw
+  OpenClaw: via MCP server
+
+Python SDK minimal example:
+  from crw import CrwClient
+  client = CrwClient(api_key="crw_live_YOUR_KEY")
+  result = client.scrape("https://example.com", formats=["markdown"])
+  print(result.data.markdown)
+
+TypeScript SDK minimal example:
+  import { CrwClient } from "crw-sdk";
+  const client = new CrwClient({ apiKey: "crw_live_YOUR_KEY" });
+  const result = await client.scrape("https://example.com", { formats: ["markdown"] });
+  console.log(result.data.markdown);
+
+
+================================================================================
+## PART 12 — CREDIT COSTS SUMMARY
+================================================================================
+
+Cloud only (fastcrw.com) — self-hosted has no billing layer.
+
+| Operation                              | Credit cost                                |
+|----------------------------------------|--------------------------------------------|
+| scrape (HTTP or lightpanda render)     | 1                                          |
+| scrape (chrome render)                 | 2                                          |
+| scrape (chrome_proxy render)           | 2 (engine creditCost field)                |
+| scrape (playwright render)             | SaaS billing layer; engine reports 0       |
+| scrape with formats:["json"] / "summary" | 5 (SaaS billing layer, not engine)      |
+| map                                    | 1                                          |
+| crawl start                            | 1                                          |
+| crawl poll — new pages only            | 1 per newly materialized page              |
+| search                                 | 1                                          |
+| search + scrape results                | 1 + 1 per scraped result                   |
+| crw-browse session                     | 1 (planned cloud rate; binary is free)     |
+
+data.creditCost in scrape response = renderer cost only (1 or 2).
+LLM feature costs (extraction, summary) are in SaaS billing dashboard only.
+Managed-LLM on fastcrw.com: 3× token markup, capped at 8 000 credits/request.
+BYOK requests pay a flat infra fee only (no token markup).
+
+
+================================================================================
+## PART 13 — LINKS AND FURTHER READING
+================================================================================
+
+Docs home:          https://docs.fastcrw.com
+API playground:     https://fastcrw.com/playground
+Agent skill:        https://docs.fastcrw.com/agent-onboarding/SKILL.md
+OpenAPI contract:   https://docs.fastcrw.com/openapi.json
+GitHub:             https://github.com/us/crw
+MCP Registry:       https://registry.modelcontextprotocol.io/?q=crw
+PyPI (crw):         https://pypi.org/project/crw/
+npm (crw-sdk):      https://www.npmjs.com/package/crw-sdk
+npm (crw-mcp):      https://www.npmjs.com/package/crw-mcp
+
+Install crw binary: curl -fsSL https://raw.githubusercontent.com/us/crw/main/install.sh | sh
+Install crw-mcp:    npx crw-mcp  (zero-install) or cargo install crw-mcp
+Install crw-browse: cargo install crw-browse
+
+Compact route listing for agents: https://docs.fastcrw.com/llms.txt
+This full-context file:           https://docs.fastcrw.com/llms-full.txt

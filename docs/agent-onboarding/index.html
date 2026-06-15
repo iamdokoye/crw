@@ -309,7 +309,12 @@ On self-hosted instances, authentication is configured via your server settings.
 <tr>
 <td><code>/v1/crawl</code></td>
 <td>POST</td>
-<td>Recursively collect pages from a domain</td>
+<td>Start an async recursive crawl job</td>
+</tr>
+<tr>
+<td><code>/v1/crawl/:id</code></td>
+<td>GET</td>
+<td>Poll status of a crawl job</td>
 </tr>
 <tr>
 <td><code>/v1/map</code></td>
@@ -321,13 +326,18 @@ On self-hosted instances, authentication is configured via your server settings.
 <td>POST</td>
 <td>Search the web and return results with content</td>
 </tr>
+<tr>
+<td><code>/v2/parse</code></td>
+<td>POST</td>
+<td>Parse a file (PDF) into markdown or structured output</td>
+</tr>
 </tbody></table>
 <h2 id="quick-start-pattern">Quick Start Pattern</h2>
 <p>For most agent workflows, start with this sequence:</p>
 <ol>
 <li><strong>Discover</strong> what pages exist on a target domain:</li>
 </ol>
-<pre><code class="language-bash">curl -X POST https://fastcrw.com/api/v1/map \
+<pre><code class="language-bash">curl -X POST https://api.fastcrw.com/v1/map \
   -H &quot;Authorization: Bearer $API_KEY&quot; \
   -H &quot;Content-Type: application/json&quot; \
   -d &#39;{&quot;url&quot;: &quot;https://example.com&quot;}&#39;
@@ -335,7 +345,7 @@ On self-hosted instances, authentication is configured via your server settings.
 <ol start="2">
 <li><strong>Extract</strong> content from specific pages:</li>
 </ol>
-<pre><code class="language-bash">curl -X POST https://fastcrw.com/api/v1/scrape \
+<pre><code class="language-bash">curl -X POST https://api.fastcrw.com/v1/scrape \
   -H &quot;Authorization: Bearer $API_KEY&quot; \
   -H &quot;Content-Type: application/json&quot; \
   -d &#39;{&quot;url&quot;: &quot;https://example.com/page&quot;, &quot;formats&quot;: [&quot;markdown&quot;]}&#39;
@@ -343,10 +353,92 @@ On self-hosted instances, authentication is configured via your server settings.
 <ol start="3">
 <li><strong>Search</strong> when you need to find relevant pages across the web:</li>
 </ol>
-<pre><code class="language-bash">curl -X POST https://fastcrw.com/api/v1/search \
+<pre><code class="language-bash">curl -X POST https://api.fastcrw.com/v1/search \
   -H &quot;Authorization: Bearer $API_KEY&quot; \
   -H &quot;Content-Type: application/json&quot; \
   -d &#39;{&quot;query&quot;: &quot;your search query&quot;, &quot;limit&quot;: 5}&#39;
+</code></pre>
+<h2 id="crawl-start-and-poll">Crawl: Start and Poll</h2>
+<p>Crawls are asynchronous. POST to <code>/v1/crawl</code> returns a job ID immediately; you must poll <code>GET /v1/crawl/:id</code> until the status reaches <code>completed</code> or <code>failed</code>.</p>
+<h3 id="start-a-crawl">Start a crawl</h3>
+<pre><code class="language-bash">curl -X POST https://api.fastcrw.com/v1/crawl \
+  -H &quot;Authorization: Bearer $API_KEY&quot; \
+  -H &quot;Content-Type: application/json&quot; \
+  -d &#39;{&quot;url&quot;: &quot;https://example.com&quot;, &quot;maxPages&quot;: 50, &quot;formats&quot;: [&quot;markdown&quot;]}&#39;
+</code></pre>
+<p>Response:</p>
+<pre><code class="language-json">{
+  &quot;success&quot;: true,
+  &quot;id&quot;: &quot;3f2a1b4c-8e9d-4f7a-b6c5-2d1e0f9a8b7c&quot;
+}
+</code></pre>
+<h3 id="poll-until-done">Poll until done</h3>
+<p><code>GET /v1/crawl/:id</code> returns:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>status</code></td>
+<td>string</td>
+<td><code>scraping</code> | <code>completed</code> | <code>failed</code></td>
+</tr>
+<tr>
+<td><code>total</code></td>
+<td>number</td>
+<td>Total pages discovered</td>
+</tr>
+<tr>
+<td><code>completed</code></td>
+<td>number</td>
+<td>Pages scraped so far</td>
+</tr>
+<tr>
+<td><code>data</code></td>
+<td>array</td>
+<td>Pages scraped so far — <strong>partial during <code>scraping</code></strong></td>
+</tr>
+<tr>
+<td><code>error</code></td>
+<td>string</td>
+<td>Present only when <code>status</code> is <code>failed</code></td>
+</tr>
+</tbody></table>
+<p><strong>Important:</strong> <code>data[]</code> is populated incrementally. You can consume partial results while the crawl is still <code>scraping</code>.</p>
+<p>Poll loop example (bash):</p>
+<pre><code class="language-bash">ID=&quot;3f2a1b4c-8e9d-4f7a-b6c5-2d1e0f9a8b7c&quot;
+while true; do
+  RESULT=$(curl -s -H &quot;Authorization: Bearer $API_KEY&quot; \
+    &quot;https://api.fastcrw.com/v1/crawl/$ID&quot;)
+  STATUS=$(echo &quot;$RESULT&quot; | jq -r &#39;.status&#39;)
+  echo &quot;Status: $STATUS  ($(echo &quot;$RESULT&quot; | jq &#39;.completed&#39;)/$(echo &quot;$RESULT&quot; | jq &#39;.total&#39;) pages)&quot;
+  if [ &quot;$STATUS&quot; = &quot;completed&quot; ] || [ &quot;$STATUS&quot; = &quot;failed&quot; ]; then
+    break
+  fi
+  sleep 3
+done
+echo &quot;$RESULT&quot; | jq &#39;.data | length&#39;
+</code></pre>
+<p>Python example:</p>
+<pre><code class="language-python">import time
+import requests
+
+def poll_crawl(crawl_id: str, api_key: str, interval: float = 3.0) -&gt; dict:
+    url = f&quot;https://api.fastcrw.com/v1/crawl/{crawl_id}&quot;
+    headers = {&quot;Authorization&quot;: f&quot;Bearer {api_key}&quot;}
+    while True:
+        resp = requests.get(url, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+        status = data[&quot;status&quot;]
+        print(f&quot;status={status}  pages={data[&#39;completed&#39;]}/{data[&#39;total&#39;]}&quot;)
+        if status in (&quot;completed&quot;, &quot;failed&quot;):
+            return data
+        time.sleep(interval)
 </code></pre>
 <h2 id="response-format">Response Format</h2>
 <p>All endpoints return JSON with a consistent structure:</p>
@@ -358,11 +450,12 @@ On self-hosted instances, authentication is configured via your server settings.
 <p>On failure:</p>
 <pre><code class="language-json">{
   &quot;success&quot;: false,
-  &quot;error&quot;: &quot;description of what went wrong&quot;
+  &quot;error&quot;: &quot;description of what went wrong&quot;,
+  &quot;error_code&quot;: &quot;machine_readable_code&quot;
 }
 </code></pre>
 <h2 id="error-handling-for-agents">Error Handling for Agents</h2>
-<p>Agents should handle these common scenarios:</p>
+<p>Agents must distinguish between different failure modes — some are permanent, some are transient, and some require user action.</p>
 <table>
 <thead>
 <tr>
@@ -378,25 +471,91 @@ On self-hosted instances, authentication is configured via your server settings.
 </tr>
 <tr>
 <td>400</td>
-<td>Bad request</td>
-<td>Fix the request parameters</td>
+<td>Bad request — invalid parameters or URL</td>
+<td>Fix the request; do not retry as-is</td>
 </tr>
 <tr>
 <td>401</td>
-<td>Invalid API key</td>
-<td>Check authentication</td>
+<td>Invalid or missing API key</td>
+<td>Check authentication; do not retry</td>
+</tr>
+<tr>
+<td>402</td>
+<td>Credit exhausted (paid plan, auto-recharge stopped)</td>
+<td>Alert the user; do not retry — top up credits first. Check <code>X-FASTCRW-Stop-Reason</code> header for the specific cause (<code>cap_reached</code>, <code>card_declined</code>, <code>action_required</code>, <code>no_payment_method</code>)</td>
+</tr>
+<tr>
+<td>404</td>
+<td>Resource not found (e.g. crawl ID does not exist)</td>
+<td>Do not retry</td>
+</tr>
+<tr>
+<td>422</td>
+<td>Unprocessable entity — URL is valid but target is unreachable or extraction failed</td>
+<td>Log and skip; do not retry the same URL</td>
 </tr>
 <tr>
 <td>429</td>
-<td>Rate limited or out of credits</td>
-<td>Back off and retry, or alert the user</td>
+<td>Rate limited <strong>or</strong> free-tier credit cap reached</td>
+<td>Back off and retry after the <code>Retry-After</code> interval. If this is a free-tier credit cap (not a rate limit), the response body will explain — upgrade is required</td>
 </tr>
 <tr>
 <td>500</td>
-<td>Server error</td>
+<td>Internal server error (renderer crash, internal error)</td>
+<td>Retry once with exponential backoff; if persistent, reduce request complexity or contact support</td>
+</tr>
+<tr>
+<td>502</td>
+<td>Bad gateway — upstream fetch error from the target site</td>
+<td>Retry with exponential backoff; the target may be temporarily unavailable</td>
+</tr>
+<tr>
+<td>503</td>
+<td>Service unavailable — a required subsystem (e.g. search) is down</td>
 <td>Retry with exponential backoff</td>
 </tr>
+<tr>
+<td>504</td>
+<td>Gateway timeout — the request exceeded the deadline</td>
+<td>Retry; consider passing a larger <code>deadlineMs</code> or reducing <code>maxPages</code> for crawls</td>
+</tr>
 </tbody></table>
+<h3 id="402-vs-429-credit-awareness">402 vs 429: credit awareness</h3>
+<p>These two codes have different meanings and require different handling:</p>
+<ul>
+<li><strong>429</strong> is used for both rate-limiting and the <strong>free-tier lifetime credit cap</strong> (500 one-time free credits). On the free tier, once credits are exhausted, retrying will not help — the user must upgrade.</li>
+<li><strong>402</strong> is used only when a <strong>paid plan</strong>&#39;s auto-recharge was blocked (spending cap hit, card declined, bank SCA required, or no payment method on file). The response headers carry <code>X-FASTCRW-Stop-Reason</code>, <code>X-FASTCRW-Credits-Available</code>, and <code>X-FASTCRW-Upgrade-Url</code> to surface the exact cause.</li>
+</ul>
+<p>:::note
+Stop-reason values (<code>cap_reached</code>, <code>card_declined</code>, <code>action_required</code>, <code>no_payment_method</code>) and the response headers listed above (<code>X-FASTCRW-Stop-Reason</code>, <code>X-FASTCRW-Credits-Available</code>, <code>X-FASTCRW-Upgrade-Url</code>) are SaaS billing internals — verify against the <a href="https://fastcrw.com/docs">fastcrw.com dashboard docs</a> if exact values matter for your integration.
+:::</p>
+<p>Your agent should check the status code, not guess from the error message:</p>
+<pre><code class="language-python">if resp.status_code == 402:
+    stop_reason = resp.headers.get(&quot;X-FASTCRW-Stop-Reason&quot;, &quot;unknown&quot;)
+    upgrade_url = resp.headers.get(&quot;X-FASTCRW-Upgrade-Url&quot;, &quot;https://fastcrw.com/dashboard/billing&quot;)
+    raise RuntimeError(f&quot;Credits exhausted (auto-recharge stop: {stop_reason}). Top up at {upgrade_url}&quot;)
+elif resp.status_code == 429:
+    # Could be rate-limit or free-tier cap — check body
+    body = resp.json()
+    raise RuntimeError(f&quot;Quota exceeded: {body.get(&#39;error&#39;)}&quot;)
+</code></pre>
+<h2 id="handling-js-gated-pages">Handling JS-Gated Pages</h2>
+<p>If <code>crw_scrape</code> returns an empty or near-empty <code>markdown</code> field for a page that visually has content, the page is likely JS-gated (client-side rendered, anti-bot wall, or heavy SPA). The engine&#39;s auto-detect heuristic may have missed it, or the page requires real browser interaction (login flow, cookie consent, infinite scroll).</p>
+<p>In that case, use <strong>crw-browse</strong> — the separate interactive browser MCP server that gives your agent full CDP control:</p>
+<ul>
+<li><code>goto</code> — navigate to a URL and wait for load</li>
+<li><code>tree</code> — inspect the accessibility tree to find elements</li>
+<li><code>click</code>, <code>fill</code>, <code>type_text</code> — interact with forms and UI</li>
+<li><code>evaluate</code> — run JavaScript on the page</li>
+<li><code>text</code> / <code>html</code> — read page content after JS execution</li>
+<li><code>console</code> — drain the console-message ring buffer (up to 200 entries; filter by level)</li>
+<li><code>network</code> — drain the network-request ring buffer (up to 500 entries; filter by status)</li>
+<li><code>storage</code> — read or write cookies, localStorage, or sessionStorage</li>
+<li><code>screenshot</code> — capture the page as PNG/JPEG (requires <code>--chrome-ws-url</code>)</li>
+<li><code>wait</code> — block until a CSS selector is present/visible or a page condition fires (<code>load</code>, <code>networkidle</code>)</li>
+<li><code>script</code> — execute a sequence of up to 50 tool calls in a single request</li>
+</ul>
+<p>crw-browse is a separate binary (<code>crw-browse</code>), not a tool inside the main MCP server. See the <a href="/docs/crw-browse">crw-browse documentation</a> for setup. As a quick heuristic: if scrape returns <code>markdown: &quot;&quot;</code> or a very short markdown with no meaningful content, switch to crw-browse for that URL.</p>
 <h2 id="common-agent-patterns">Common Agent Patterns</h2>
 <h3 id="research-loop">Research Loop</h3>
 <pre><code>search(topic) -&gt; scrape(top results) -&gt; analyze -&gt; search(refined query) -&gt; repeat
@@ -404,8 +563,14 @@ On self-hosted instances, authentication is configured via your server settings.
 <h3 id="site-exploration">Site Exploration</h3>
 <pre><code>map(domain) -&gt; filter URLs -&gt; scrape(relevant pages) -&gt; synthesize
 </code></pre>
+<h3 id="full-site-crawl">Full-Site Crawl</h3>
+<pre><code>crawl(domain) -&gt; poll until completed/failed -&gt; process data[]
+</code></pre>
 <h3 id="monitoring">Monitoring</h3>
 <pre><code>scrape(url) -&gt; store result -&gt; wait -&gt; scrape(url) -&gt; compare with previous
+</code></pre>
+<h3 id="js-gated-fallback">JS-Gated Fallback</h3>
+<pre><code>scrape(url) -&gt; if markdown empty -&gt; crw-browse goto(url) -&gt; tree/text -&gt; extract
 </code></pre>
 <h2 id="rate-limits">Rate Limits</h2>
 <p>Check the <a href="/docs/rate-limits">rate limits documentation</a> for current limits. Agents should respect <code>Retry-After</code> headers and implement exponential backoff.</p>
@@ -458,6 +623,7 @@ On self-hosted instances, authentication is configured via your server settings.
           <div class="footer-col-links">
             <a href="https://github.com/us/crw" target="_blank" rel="noopener">GitHub</a>
             <a href="https://github.com/us/crw/issues" target="_blank" rel="noopener">Issues</a>
+            <a href="https://discord.gg/VNxv2DuBB" target="_blank" rel="noopener">Discord</a>
           </div>
         </div>
         <div class="footer-col">

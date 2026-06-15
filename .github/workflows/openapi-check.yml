@@ -1,0 +1,68 @@
+name: OpenAPI Drift Check
+
+# Builds the release binary and verifies that:
+#   1. docs/openapi.json info.version matches [workspace.package].version.
+#   2. GET /openapi.json served by the binary is byte-equal to docs/openapi.json
+#      (after JSON normalisation), so the committed spec never drifts from the
+#      spec the binary actually ships.
+#
+# Runs on every push/PR that touches the spec, the crate sources, or this
+# workflow itself so drift is caught at feature-branch time, not post-merge.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/openapi.json"
+      - "crates/crw-server/openapi/**"
+      - "crates/crw-server/src/**"
+      - "crates/crw-core/src/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/openapi-check.yml"
+      - "scripts/check-openapi.sh"
+  pull_request:
+    branches: [main]
+    paths:
+      - "docs/openapi.json"
+      - "crates/crw-server/openapi/**"
+      - "crates/crw-server/src/**"
+      - "crates/crw-core/src/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/openapi-check.yml"
+      - "scripts/check-openapi.sh"
+
+permissions:
+  contents: read
+
+jobs:
+  openapi-drift:
+    name: OpenAPI spec drift check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-openapi-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-openapi-
+            ${{ runner.os }}-cargo-
+
+      - name: Build release binary
+        run: cargo build --release -p crw-server
+
+      - name: OpenAPI drift check
+        env:
+          CRW_SERVER_BIN: target/release/crw-server
+        run: bash scripts/check-openapi.sh

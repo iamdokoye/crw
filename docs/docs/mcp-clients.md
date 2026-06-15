@@ -65,7 +65,7 @@ claude mcp add crw -- npx crw-mcp
 
 ```bash
 claude mcp add \
-  -e CRW_API_URL=https://fastcrw.com/api \
+  -e CRW_API_URL=https://api.fastcrw.com \
   -e CRW_API_KEY=YOUR_API_KEY \
   crw -- npx crw-mcp
 ```
@@ -105,7 +105,7 @@ command = "npx"
 args = ["crw-mcp"]
 
 [mcp_servers.crw.env]
-CRW_API_URL = "https://fastcrw.com/api"
+CRW_API_URL = "https://api.fastcrw.com"
 CRW_API_KEY = "YOUR_API_KEY"
 ```
 
@@ -145,7 +145,7 @@ Edit the config file for your OS:
       "command": "npx",
       "args": ["crw-mcp"],
       "env": {
-        "CRW_API_URL": "https://fastcrw.com/api",
+        "CRW_API_URL": "https://api.fastcrw.com",
         "CRW_API_KEY": "YOUR_API_KEY"
       }
     }
@@ -181,7 +181,7 @@ Create or edit `~/.cursor/mcp.json` for global setup, or `.cursor/mcp.json` insi
       "command": "npx",
       "args": ["crw-mcp"],
       "env": {
-        "CRW_API_URL": "https://fastcrw.com/api",
+        "CRW_API_URL": "https://api.fastcrw.com",
         "CRW_API_KEY": "YOUR_API_KEY"
       }
     }
@@ -217,7 +217,7 @@ Edit `~/.codeium/windsurf/mcp_config.json`.
       "command": "npx",
       "args": ["crw-mcp"],
       "env": {
-        "CRW_API_URL": "https://fastcrw.com/api",
+        "CRW_API_URL": "https://api.fastcrw.com",
         "CRW_API_KEY": "YOUR_API_KEY"
       }
     }
@@ -265,7 +265,7 @@ Edit the Cline MCP settings file:
       "alwaysAllow": ["crw_scrape", "crw_map", "crw_search"],
       "disabled": false,
       "env": {
-        "CRW_API_URL": "https://fastcrw.com/api",
+        "CRW_API_URL": "https://api.fastcrw.com",
         "CRW_API_KEY": "YOUR_API_KEY"
       }
     }
@@ -296,7 +296,7 @@ mcpServers:
     args:
       - crw-mcp
     env:
-      CRW_API_URL: https://fastcrw.com/api
+      CRW_API_URL: https://api.fastcrw.com
       CRW_API_KEY: YOUR_API_KEY
 ```
 
@@ -332,7 +332,7 @@ Or edit `~/.gemini/settings.json`:
       "command": "npx",
       "args": ["crw-mcp"],
       "env": {
-        "CRW_API_URL": "https://fastcrw.com/api",
+        "CRW_API_URL": "https://api.fastcrw.com",
         "CRW_API_KEY": "YOUR_API_KEY"
       }
     }
@@ -371,7 +371,7 @@ If your client accepts the standard JSON `mcpServers` shape, start here:
       "command": "npx",
       "args": ["crw-mcp"],
       "env": {
-        "CRW_API_URL": "https://fastcrw.com/api",
+        "CRW_API_URL": "https://api.fastcrw.com",
         "CRW_API_KEY": "YOUR_API_KEY"
       }
     }

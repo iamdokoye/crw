@@ -149,8 +149,12 @@ That is the flat response shape used when `sources` is not set.
 | `maxContentChars` | number | `[extraction.llm].max_html_bytes` (100 KB) | Per-result byte cap on markdown sent to the per-result summarizer (`summarizeResults`). Clamped to 200 KB server-side. Independent from `maxCharsPerSource`. |
 | `summaryPrompt` | string | -- | Style/tone/language directive appended to the per-result summary prompt. Capped at 500 chars. |
 | `answerPrompt` | string | -- | Style/tone/language directive appended to the answer-synthesis prompt. Capped at 500 chars. Cannot override the "answer using ONLY provided sources" rule or the citation discipline. |
+| `answerTemperature` | number | provider default | Sampling temperature for the answer-synthesis LLM call. Set `0` for deterministic/benchmark runs. |
+| `queryExpandVariants` | number | server config | Number of diverse query rewrites fetched and unioned when query expansion is enabled. Overrides `[search].query_expand_variants` for this request. |
+| `multiRound` | boolean | server config | When `true`, fires an adaptive evidence-scout round if the first-round answer abstains. Overrides `[search].multi_round` for this request. |
+| `answerListFormat` | boolean | server config | When `true` (and the query has list intent such as "best/top X"), renders the answer as a ranked list instead of prose. `false` forces prose. Overrides `[search].answer_list_format`. |
 | `llmApiKey` | string | -- | Per-request LLM API key (BYOK) |
-| `llmProvider` | string | server default | `anthropic`, `openai`, `azure`, or `openai-compatible` |
+| `llmProvider` | string | server default | `anthropic`, `openai`, `deepseek`, `azure`, or `openai-compatible` |
 | `llmModel` | string | server default | Model override |
 | `baseUrl` | string | -- | OpenAI-compatible endpoint base (e.g. DeepSeek, Azure) |
 

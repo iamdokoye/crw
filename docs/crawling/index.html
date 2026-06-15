@@ -332,7 +332,7 @@ DELETE /v1/crawl/{id}
 import time
 
 start = requests.post(
-    &quot;https://fastcrw.com/api/v1/crawl&quot;,
+    &quot;https://api.fastcrw.com/v1/crawl&quot;,
     headers={&quot;Authorization&quot;: &quot;Bearer YOUR_API_KEY&quot;},
     json={
         &quot;url&quot;: &quot;https://docs.example.com&quot;,
@@ -345,14 +345,14 @@ start = requests.post(
 crawl_id = start.json()[&quot;id&quot;]
 time.sleep(2)
 status = requests.get(
-    f&quot;https://fastcrw.com/api/v1/crawl/{crawl_id}&quot;,
+    f&quot;https://api.fastcrw.com/v1/crawl/{crawl_id}&quot;,
     headers={&quot;Authorization&quot;: &quot;Bearer YOUR_API_KEY&quot;},
 )
 
 print(status.json()[&quot;status&quot;])
 </code></pre>
 <p>::tab{title=&quot;Node.js&quot;}</p>
-<pre><code class="language-javascript">const start = await fetch(&quot;https://fastcrw.com/api/v1/crawl&quot;, {
+<pre><code class="language-javascript">const start = await fetch(&quot;https://api.fastcrw.com/v1/crawl&quot;, {
   method: &quot;POST&quot;,
   headers: {
     &quot;Authorization&quot;: &quot;Bearer YOUR_API_KEY&quot;,
@@ -369,14 +369,14 @@ print(status.json()[&quot;status&quot;])
 const { id } = await start.json();
 await new Promise((resolve) =&gt; setTimeout(resolve, 2000));
 
-const status = await fetch(`https://fastcrw.com/api/v1/crawl/${id}`, {
+const status = await fetch(`https://api.fastcrw.com/v1/crawl/${id}`, {
   headers: { &quot;Authorization&quot;: &quot;Bearer YOUR_API_KEY&quot; }
 });
 
 console.log((await status.json()).status);
 </code></pre>
 <p>::tab{title=&quot;cURL&quot;}</p>
-<pre><code class="language-bash">curl -X POST https://fastcrw.com/api/v1/crawl \
+<pre><code class="language-bash">curl -X POST https://api.fastcrw.com/v1/crawl \
   -H &quot;Authorization: Bearer YOUR_API_KEY&quot; \
   -H &quot;Content-Type: application/json&quot; \
   -d &#39;{
@@ -479,6 +479,12 @@ console.log((await status.json()).status);
 <td><code>auto</code></td>
 <td>Pin every crawled page to a specific renderer: <code>auto</code>, <code>lightpanda</code>, <code>chrome</code>, or <code>playwright</code>. Non-<code>auto</code> values hard-pin (no fallback) and imply <code>renderJs:true</code> unless <code>renderJs:false</code> is set. Validation runs once at crawl start — invalid combinations return HTTP 400 before the job is queued. Per-page failures of a pinned renderer are logged and skipped, so failed pages may be missing from results — see <a href="/js-rendering">JS rendering</a> for the resilience tradeoff</td>
 </tr>
+<tr>
+<td><code>country</code></td>
+<td>string</td>
+<td>--</td>
+<td>2-letter ISO 3166-1 alpha-2 country code (lowercase, e.g. <code>us</code>, <code>gb</code>, <code>de</code>). Routes every page in the crawl through the named residential pool when the <code>chrome_proxy</code> renderer tier is configured. Ignored if no proxy tier is set up</td>
+</tr>
 </tbody></table>
 <h2 id="scrape-options-and-extraction">Scrape options and extraction</h2>
 <p>Crawl inherits the same content-format logic as scrape:</p>
@@ -491,7 +497,7 @@ console.log((await status.json()).status);
 <h2 id="checking-job-status">Checking job status</h2>
 <p>Poll the crawl ID until you reach <code>completed</code> or <code>failed</code>:</p>
 <pre><code class="language-bash">curl -H &quot;Authorization: Bearer YOUR_API_KEY&quot; \
-  https://fastcrw.com/api/v1/crawl/CRAWL_ID
+  https://api.fastcrw.com/v1/crawl/CRAWL_ID
 </code></pre>
 <p>Status response shape:</p>
 <pre><code class="language-json">{
@@ -582,6 +588,7 @@ console.log((await status.json()).status);
           <div class="footer-col-links">
             <a href="https://github.com/us/crw" target="_blank" rel="noopener">GitHub</a>
             <a href="https://github.com/us/crw/issues" target="_blank" rel="noopener">Issues</a>
+            <a href="https://discord.gg/VNxv2DuBB" target="_blank" rel="noopener">Discord</a>
           </div>
         </div>
         <div class="footer-col">

@@ -1,0 +1,75 @@
+# Glossary
+
+Plain-English definitions of terms used throughout the fastCRW documentation, in alphabetical order.
+
+---
+
+## BFS (Breadth-First Crawl)
+
+Breadth-first search is the traversal strategy fastCRW uses for the [`/v1/crawl`](/docs/crawling) endpoint. Starting from a seed URL, the crawler visits all links at depth 1 before moving on to depth 2, then depth 3, and so on. This means you get a broad cross-section of a site early rather than going deep into one branch first. The crawl uses an async VecDeque queue internally and stops when `maxPages`, `maxDepth`, or an empty queue is reached. See [Architecture](/docs/architecture) for the internal request flow.
+
+---
+
+## BYOK (Bring Your Own Key)
+
+BYOK means supplying your own LLM provider API key per request instead of relying on a server-configured default. Pass `llmApiKey`, `llmProvider`, and `llmModel` in the request body when calling `formats: ["json"]` or `formats: ["summary"]` to have fastCRW bill your LLM account directly rather than the server's. On the hosted cloud, BYOK requests pay only a flat infrastructure fee with no token markup. On self-hosted deployments, BYOK is the only option unless you configure `[extraction.llm]` in `config.toml`. See [Output Formats](/docs/output-formats) and [Extract](/docs/extract) for usage.
+
+---
+
+## CDP (Chrome DevTools Protocol)
+
+Chrome DevTools Protocol is the WebSocket-based protocol that lets external programs control a running Chromium browser — navigating pages, waiting for JavaScript to finish, clicking elements, and reading the final DOM. fastCRW uses CDP (via `tokio-tungstenite`) to power its `chrome` and `chrome_proxy` rendering modes. When a page cannot be scraped cleanly by an HTTP request alone, the engine can fall back to CDP to obtain the fully rendered HTML. See [JS Rendering](/docs/js-rendering) for the rendering modes and per-request `renderer` field.
+
+---
+
+## changeTracking
+
+`changeTracking` is one of the 8 output formats you can request in `formats`. Instead of returning page content, it returns a diff object comparing the current scrape result against a prior snapshot you supply. The diff includes a status (`same` or `changed`) and a `diff` envelope (`{ text?, json? }`): in `gitDiff` mode, `text` is the unified markdown diff and `json` is a parse-diff AST; in `json` mode, `json` is a per-field path map (`{"<path>": {previous, current}}`); in mixed mode, `text` carries the unified markdown diff and `json` carries the per-field path map (the AST is not emitted in mixed mode). When no `previous` snapshot is supplied, `first_observation: true` is set on the result. The monitoring layer additionally tracks `new`, `removed`, and `error` states at the set level, but those are not part of the `changeTracking` format output itself. It is the stateless primitive that powers the full [Monitoring](/docs/monitoring) feature: monitors run changeTracking automatically on a schedule, store the snapshots server-side, and notify you via webhook or email when meaningful changes are detected. Self-hosted users can use changeTracking directly without the monitoring control-plane.
+
+---
+
+## chunkStrategy
+
+`chunkStrategy` is an optional request field on `POST /v1/scrape` that tells the engine to split the page's markdown into smaller pieces server-side before returning it. You supply an object with a `type` (`"topic"` to split on headings, `"sentence"` to split on punctuation, or `"regex"` for a custom pattern), an optional `maxChars` cap per chunk, and an optional `dedupe` flag to drop near-duplicate chunks. The engine returns the chunks as a `chunks` array alongside the normal `markdown` field — no text-splitting library needed on the client side. Note that `chunkStrategy` only works on `POST /v1/scrape`; it is not forwarded by batch or crawl jobs. See the [RAG recipe](/docs/recipe-rag) for a complete example.
+
+---
+
+## credit
+
+A credit is the billing unit for the hosted cloud at `fastcrw.com`. One plain scrape costs 1 credit; a Chrome-rendered scrape costs 2; LLM-backed extraction via `POST /v2/extract` costs 5 credits (legacy). When using `formats: ["json"]` on a scrape request, see the [Credit Costs](/docs/credit-costs) table for current billing. Map and search start-calls each cost 1 credit, and crawl jobs charge 1 credit at start plus one additional credit per page as pages are discovered during polling. Self-hosted deployments have no billing layer and are unaffected by credit costs. Check your balance with `GET /api/v1/account/balance` on the SaaS control-plane. See [Credit Costs](/docs/credit-costs) for the full table.
+
+---
+
+## Firecrawl-compatible
+
+"Firecrawl-compatible" means that fastCRW accepts the same core request shapes that the Firecrawl API uses — the same route names (`/v1/scrape`, `/v1/crawl`, `/v1/map`, `/v1/search`), the same common fields (`formats`, `onlyMainContent`, `waitFor`, etc.), and the same `Authorization: Bearer` header — so existing Firecrawl integrations can point at `https://api.fastcrw.com` with minimal changes. Compatibility is intentional but not identical: some Firecrawl features (such as screenshots) are not supported, and response semantics differ in a few places. See [Migrate from Firecrawl](/docs/migrate-from-firecrawl) for the exact list of changes and [Compatibility](/docs/compatibility) for the behavior matrix.
+
+---
+
+## llmProvider
+
+`llmProvider` is a request field that selects which LLM provider fastCRW routes extraction or summarization calls to. Accepted values are `"anthropic"`, `"openai"`, `"deepseek"`, `"azure"`, and `"openai-compatible"`. Use it together with `llmApiKey` and `llmModel` (BYOK mode) to pin a specific provider per request, or set the server-wide default in `config.toml` under `[extraction.llm]`. When using Azure or a custom OpenAI-compatible endpoint, also supply `baseUrl`. See [Extract](/docs/extract) and [Output Formats](/docs/output-formats) for full field references.
+
+---
+
+## MCP (Model Context Protocol)
+
+Model Context Protocol is an open standard that lets AI assistants (Claude Code, Claude Desktop, Cursor, Windsurf, Cline, and others) discover and call external tools through a uniform interface. fastCRW ships a built-in MCP server (`crw-mcp`) that exposes 6 tools: `crw_scrape`, `crw_crawl`, `crw_map`, `crw_parse_file`, `crw_search`, and `crw_check_crawl_status`. In embedded mode the MCP binary runs the scraping engine inline — no separate server needed. In proxy mode it forwards calls to a remote CRW server (the hosted cloud or your own self-hosted instance). See [MCP Server](/docs/mcp) for setup and [MCP Client Setup](/docs/mcp-clients) for host-specific config snippets.
+
+---
+
+## renderer / renderedWith
+
+`renderer` is a per-request field that pins which rendering engine to use for a scrape: `"auto"` (default fallback chain), `"lightpanda"`, `"chrome"`, `"chrome_proxy"` (residential-proxy Chrome tier), or `"playwright"`. It overrides the server-level `mode` setting for that one request. `renderedWith` is the response-side counterpart — a field in `data.metadata` that tells you which renderer actually ran (`"http"`, `"lightpanda"`, `"chrome"`, `"chrome_proxy"`, or `"http_only_fallback"`). Inspecting `renderedWith` is the first step in debugging empty or incomplete scrape results on JavaScript-heavy pages. See [JS Rendering](/docs/js-rendering).
+
+---
+
+## SearXNG
+
+SearXNG is an open-source, self-hostable meta-search engine that aggregates results from multiple search providers without exposing queries to any single third party. fastCRW bundles a SearXNG sidecar in its Docker Compose stack and uses it to power the `POST /v1/search` endpoint. Running `docker compose up` starts SearXNG automatically at `searxng:8080` inside the Compose network — no third-party search API key required. You can point fastCRW at an existing SearXNG instance with `CRW_SEARCH__SEARXNG_URL`, or disable search entirely with `[search].enabled = false`. On the hosted cloud at `fastcrw.com`, SearXNG is managed for you. See [Search](/docs/search) and [Docker](/docs/docker).
+
+---
+
+## v1 vs v2 API
+
+fastCRW exposes two API versions at `https://api.fastcrw.com`. **v1** (`/v1/*`) is the original surface: `string[]` formats, flat crawl status, and the core scrape/crawl/map/search routes. It is supported on both self-hosted and hosted deployments and is the default surface for the Python SDK. **v2** (`/v2/*`) adds object-format fields, paginated crawl and batch status with a `next` cursor, a `V2Document` response shape (with `metadata.proxyUsed`, `cacheState`, `creditsUsed`, `scrapeId`), batch scraping (`POST /v2/batch/scrape`), and file parsing (`POST /v2/parse`). The TypeScript SDK targets v2. Both versions are served by the same engine; you can mix them freely within one integration. See [v2 API Reference](/docs/v2-api) for the full route table and [Choose an Endpoint](/docs/choose-endpoint) for guidance on which version to start with.

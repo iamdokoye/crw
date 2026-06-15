@@ -16,6 +16,51 @@ That baseline is the starting point, not the finish line. A self-hosted scraper 
 - Avoid exposing internal health or admin surfaces to the public internet.
 - If browser rendering is enabled, isolate the renderer from internal systems it does not need to reach.
 
+## SSRF Protection
+
+fastCRW validates every outbound URL before fetching it (`crw-core/src/url_safety.rs`). The guard is fail-closed and multi-layered:
+
+- **Scheme**: only `http` and `https` are permitted; `file://`, `ftp://`, and all other schemes are rejected.
+- **Hostname blocklist**: `localhost`, `metadata.google.internal`, and wildcard aliases (`*.localhost`, `*.localtest.me`, `*.lvh.me`, `*.nip.io`, `*.xip.io`, `*.sslip.io`) are all blocked before DNS resolution.
+- **IP blocklist (pre-DNS)**: literal IPs in loopback (127.x, ::1), private (10.x, 172.16-31.x, 192.168.x), link-local (169.254.x — AWS/GCP metadata), unspecified (0.0.0.0, ::), broadcast, carrier-grade NAT (100.64-127.x), multicast/reserved (≥224.x), and IPv4-mapped IPv6 equivalents (e.g. `::ffff:169.254.169.254`) are all rejected.
+- **Post-DNS resolution**: the resolved IP of every hostname is checked against the same blocklist, preventing DNS-rebinding. DNS failure is fail-closed — if the hostname cannot be resolved, the request is rejected.
+- **Redirect chains**: every hop in an HTTP redirect is re-validated through the same checks (`safe_redirect_policy`). A redirect chain is capped at 10 hops.
+- **URL length**: URLs longer than 2 048 characters and URLs containing null bytes are rejected.
+
+### `CRW_ALLOW_LOOPBACK_FOR_TESTS` — never enable in production
+
+The env var `CRW_ALLOW_LOOPBACK_FOR_TESTS=1` disables the loopback and private-range checks so integration tests can target mock servers at `127.0.0.1:<random>`. It is **not a runtime configuration option** — it exists solely to make integration tests pass in CI without a public network. Setting it in a production process removes the SSRF guard for all outbound fetches and is never safe to do.
+
+## Unauthenticated Admin and Ops Endpoints
+
+Three endpoints are registered in `crates/crw-server/src/app.rs` **outside** the authenticated `api_routes` block and therefore bypass the `auth_middleware` entirely, even when `[auth].api_keys` is configured:
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/metrics` | `GET` | Prometheus text format metrics |
+| `/metrics/renderer-breakers` | `GET` | JSON snapshot of all circuit-breaker states |
+| `/admin/breakers/reset` | `POST` | Resets all circuit breakers; returns count of host entries cleared |
+
+These endpoints have no authentication built in. Anyone who can reach the process on its listen port can read internal metrics or reset circuit breakers.
+
+**How to protect them:**
+
+Option 1 — network policy (preferred for most deployments): bind fastCRW to a non-public interface or port and allow only your monitoring system (Prometheus scraper, internal ops tooling) to reach it. In Docker Compose the default `ports` block should only publish to localhost (`127.0.0.1:<port>:<port>`), never `0.0.0.0`.
+
+Option 2 — reverse-proxy access control: if the process must be reachable on a shared interface, configure your reverse proxy to block or require HTTP Basic / mutual-TLS on the `/metrics` and `/admin` path prefixes before traffic reaches fastCRW. Example (nginx):
+
+```nginx
+location ~ ^/(metrics|admin)/ {
+    # Only allow your Prometheus scraper and ops CIDR
+    allow 10.0.0.0/8;
+    deny  all;
+}
+```
+
+Option 3 — firewall rule: drop inbound traffic to the fastCRW port except from trusted source IPs (iptables/nftables/cloud security group).
+
+All three options can be layered.
+
 ## Runtime Isolation
 
 Treat page fetching and browser rendering as higher-risk components than your application logic.
@@ -29,6 +74,45 @@ Treat page fetching and browser rendering as higher-risk components than your ap
 - Keep API keys, proxy credentials, and LLM keys out of image builds.
 - Inject secrets at runtime through your platform's secret store.
 - Rotate keys during environment changes or incident response, not only on a fixed calendar.
+
+### Rotating `SEARXNG_SECRET_KEY` and `BROWSERLESS_TOKEN`
+
+Both variables ship with **publicly-known placeholder defaults** in the repository. These defaults are intentional for local dev but must be replaced before any internet-facing or shared deployment.
+
+**`SEARXNG_SECRET_KEY`** (`docker-compose.yml` line: `${SEARXNG_SECRET_KEY:-change-me-with-openssl-rand-hex-32-please}`):
+SearXNG uses this key to sign session cookies. Anyone who knows the default value can forge cookies against your SearXNG instance. Generate a real key and inject it:
+
+```bash
+echo "SEARXNG_SECRET_KEY=$(openssl rand -hex 32)" >> .env
+```
+
+**`BROWSERLESS_TOKEN`** (`docker-compose.yml` and `docker-compose.stealth.yml`: `${BROWSERLESS_TOKEN:-crwtest}`):
+Browserless v2 requires this token in every CDP WebSocket URL (`?token=...`). The default `crwtest` is public. Without a real token, any process that can reach the browserless port can open Chrome sessions against your host. Generate and inject:
+
+```bash
+echo "BROWSERLESS_TOKEN=$(openssl rand -hex 24)" >> .env
+```
+
+Both commands append to an `.env` file that Docker Compose reads automatically. After setting the variables, restart the affected containers:
+
+```bash
+docker compose up -d --force-recreate searxng chrome-stealth
+```
+
+Rotate again whenever you rotate other credentials (deployment cutover, suspected exposure, team member offboarding).
+
+## AGPL-3.0 §13 — Network Use Obligations
+
+fastCRW is licensed under AGPL-3.0 (`Cargo.toml`: `license = "AGPL-3.0"`). AGPL §13 extends the GPL copyleft to network use: **if you run a modified version of fastCRW and allow third parties to interact with it over a network (including your own users calling your API), you must offer them the complete corresponding source code** under the same license.
+
+What this means in practice:
+
+- **Unmodified self-hosting**: no source-offer obligation beyond what AGPL always requires. Point users at the upstream repository.
+- **Modified self-hosting exposed to third parties**: you must make the modified source available. The standard approach is a public fork or a `GET /source` endpoint that redirects to a tagged archive.
+- **Internal use only** (your own employees, no third-party network access): the network-use trigger does not apply. Standard GPL obligations still apply if you distribute binaries.
+- **Commercial carve-out**: if AGPL compliance is impractical for your use case (embedding in a proprietary product, offering a managed service without source disclosure), a commercial license is available — see the [LICENSE](https://github.com/us/crw/blob/main/LICENSE) file and contact information in the repository.
+
+**What counts as a modification**: any change to the Rust source in `crates/` or the build scripts that alters runtime behavior. Configuration-only changes (`.toml` files, `.env` files, `docker-compose.yml` overrides) do not constitute a modification of the software itself.
 
 ## LLM features and trust boundary
 
@@ -107,6 +191,9 @@ In those cases, a renderer problem should not become an easy pivot into the rest
 ## Common Mistakes
 
 - Leaving `/health` broadly exposed when only an internal load balancer needs it.
+- Exposing `/metrics`, `/metrics/renderer-breakers`, or `/admin/breakers/reset` to the public internet — these are unauthenticated and require network-level protection.
+- Deploying with the default `SEARXNG_SECRET_KEY` (`change-me-with-openssl-rand-hex-32-please`) or `BROWSERLESS_TOKEN` (`crwtest`) — both are publicly known.
+- Setting `CRW_ALLOW_LOOPBACK_FOR_TESTS=1` outside of a test environment — this removes SSRF protection for all outbound fetches.
 - Running the service with broader filesystem or network access than the scraping workload requires.
 - Keeping incident logs too thin to separate target-site anti-bot issues from engine regressions.
 

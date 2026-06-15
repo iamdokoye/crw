@@ -63,7 +63,7 @@ import requests
 import time
 
 start = requests.post(
-    "https://fastcrw.com/api/v1/crawl",
+    "https://api.fastcrw.com/v1/crawl",
     headers={"Authorization": "Bearer YOUR_API_KEY"},
     json={
         "url": "https://docs.example.com",
@@ -76,7 +76,7 @@ start = requests.post(
 crawl_id = start.json()["id"]
 time.sleep(2)
 status = requests.get(
-    f"https://fastcrw.com/api/v1/crawl/{crawl_id}",
+    f"https://api.fastcrw.com/v1/crawl/{crawl_id}",
     headers={"Authorization": "Bearer YOUR_API_KEY"},
 )
 
@@ -84,7 +84,7 @@ print(status.json()["status"])
 ```
 ::tab{title="Node.js"}
 ```javascript
-const start = await fetch("https://fastcrw.com/api/v1/crawl", {
+const start = await fetch("https://api.fastcrw.com/v1/crawl", {
   method: "POST",
   headers: {
     "Authorization": "Bearer YOUR_API_KEY",
@@ -101,7 +101,7 @@ const start = await fetch("https://fastcrw.com/api/v1/crawl", {
 const { id } = await start.json();
 await new Promise((resolve) => setTimeout(resolve, 2000));
 
-const status = await fetch(`https://fastcrw.com/api/v1/crawl/${id}`, {
+const status = await fetch(`https://api.fastcrw.com/v1/crawl/${id}`, {
   headers: { "Authorization": "Bearer YOUR_API_KEY" }
 });
 
@@ -109,7 +109,7 @@ console.log((await status.json()).status);
 ```
 ::tab{title="cURL"}
 ```bash
-curl -X POST https://fastcrw.com/api/v1/crawl \
+curl -X POST https://api.fastcrw.com/v1/crawl \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -159,6 +159,7 @@ Poll response:
 | `renderJs` | boolean or null | `null` | `true` forces JS on every page, `false` skips JS, `null` uses auto-detect or the server's `render_js_default` |
 | `waitFor` | number | -- | Milliseconds to wait after JS rendering on each page |
 | `renderer` | string | `auto` | Pin every crawled page to a specific renderer: `auto`, `lightpanda`, `chrome`, or `playwright`. Non-`auto` values hard-pin (no fallback) and imply `renderJs:true` unless `renderJs:false` is set. Validation runs once at crawl start — invalid combinations return HTTP 400 before the job is queued. Per-page failures of a pinned renderer are logged and skipped, so failed pages may be missing from results — see [JS rendering](#js-rendering) for the resilience tradeoff |
+| `country` | string | -- | 2-letter ISO 3166-1 alpha-2 country code (lowercase, e.g. `us`, `gb`, `de`). Routes every page in the crawl through the named residential pool when the `chrome_proxy` renderer tier is configured. Ignored if no proxy tier is set up |
 
 ## Scrape options and extraction
 
@@ -176,7 +177,7 @@ Poll the crawl ID until you reach `completed` or `failed`:
 
 ```bash
 curl -H "Authorization: Bearer YOUR_API_KEY" \
-  https://fastcrw.com/api/v1/crawl/CRAWL_ID
+  https://api.fastcrw.com/v1/crawl/CRAWL_ID
 ```
 
 Status response shape:

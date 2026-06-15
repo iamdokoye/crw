@@ -1,6 +1,6 @@
 # Output Formats
 
-crw supports 7 output formats. Request multiple formats in a single scrape call.
+crw supports 8 output formats. Request multiple formats in a single scrape call.
 
 ## Formats
 
@@ -13,6 +13,7 @@ crw supports 7 output formats. Request multiple formats in a single scrape call.
 | Links | `links` | All `<a href>` links extracted (excludes `#` and `javascript:`) |
 | JSON | `json` | LLM structured extraction with JSON schema validation |
 | Summary | `summary` | LLM-generated prose summary of the page |
+| Change Tracking | `changeTracking` | Diff-based change detection against a prior snapshot |
 | Extract | `extract` | Alias for `json` — accepted for Firecrawl compatibility |
 
 ## Which Format Should You Choose?
@@ -171,6 +172,7 @@ Each format populates a corresponding field in the response `data` object:
 | `links` | `links` | `string[]` |
 | `json` / `extract` | `json` | `object` |
 | `summary` | `summary` (+ `llmUsage`) | `string` (+ `object`) |
+| `changeTracking` | `changeTracking` | `object` |
 
 ## Full Response Schema
 
@@ -198,10 +200,13 @@ The exact shape of `data` depends on what you requested. Do not assume every fie
 | `links` | `string[] / null` | `formats` includes `links` |
 | `json` | `object / null` | `formats` includes `json` AND `jsonSchema` provided AND LLM configured |
 | `summary` | `string / null` | `formats` includes `summary` AND LLM configured |
+| `changeTracking` | `object / null` | `formats` includes `changeTracking` |
 | `llmUsage` | `object / null` | Set on any LLM-touching request — see [LLM Usage](#llm-usage-object) |
 | `chunks` | `ChunkResult[] / null` | `chunkStrategy` provided |
 | `warnings` | `string[]` | Per-feature non-fatal notices (truncation, summary failure, etc.) — always an array |
 | `warning` | `string / null` | Target returned error status, anti-bot detected, etc. |
+| `renderDecision` | `object / null` | Renderer routing decision (kind, chosen renderer, failover chain). Present when routing metadata is available. |
+| `creditCost` | `number` | Renderer credit cost for this request (omitted when 0). `chrome` or `chrome_proxy` render = 2; HTTP/lightpanda = 1. LLM feature costs are tracked separately by the SaaS billing layer and are not included in this field. |
 | `metadata` | `object` | Always |
 
 ### `metadata` object
@@ -217,7 +222,7 @@ The exact shape of `data` depends on what you requested. Do not assume every fie
 | `sourceURL` | `string` | Final URL after redirects |
 | `language` | `string / null` | `<html lang>` value |
 | `statusCode` | `number` | Target HTTP status code |
-| `renderedWith` | `string / null` | Usually `"http"`, `"lightpanda"`, `"playwright"`, `"chrome"`, `"pdf"`, or `"http_only_fallback"` |
+| `renderedWith` | `string / null` | One of `"http"`, `"lightpanda"`, `"chrome"`, `"chrome_proxy"`, `"playwright"`, `"pdf"`, `"http_only_fallback"` |
 | `elapsedMs` | `number` | Total processing time in ms |
 
 ### `llmUsage` object

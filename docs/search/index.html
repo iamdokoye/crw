@@ -486,6 +486,30 @@ under the SearXNG-native name. Pick whichever; both are emitted.</p>
 <td>Style/tone/language directive appended to the answer-synthesis prompt. Capped at 500 chars. Cannot override the &quot;answer using ONLY provided sources&quot; rule or the citation discipline.</td>
 </tr>
 <tr>
+<td><code>answerTemperature</code></td>
+<td>number</td>
+<td>provider default</td>
+<td>Sampling temperature for the answer-synthesis LLM call. Set <code>0</code> for deterministic/benchmark runs.</td>
+</tr>
+<tr>
+<td><code>queryExpandVariants</code></td>
+<td>number</td>
+<td>server config</td>
+<td>Number of diverse query rewrites fetched and unioned when query expansion is enabled. Overrides <code>[search].query_expand_variants</code> for this request.</td>
+</tr>
+<tr>
+<td><code>multiRound</code></td>
+<td>boolean</td>
+<td>server config</td>
+<td>When <code>true</code>, fires an adaptive evidence-scout round if the first-round answer abstains. Overrides <code>[search].multi_round</code> for this request.</td>
+</tr>
+<tr>
+<td><code>answerListFormat</code></td>
+<td>boolean</td>
+<td>server config</td>
+<td>When <code>true</code> (and the query has list intent such as &quot;best/top X&quot;), renders the answer as a ranked list instead of prose. <code>false</code> forces prose. Overrides <code>[search].answer_list_format</code>.</td>
+</tr>
+<tr>
 <td><code>llmApiKey</code></td>
 <td>string</td>
 <td>--</td>
@@ -495,7 +519,7 @@ under the SearXNG-native name. Pick whichever; both are emitted.</p>
 <td><code>llmProvider</code></td>
 <td>string</td>
 <td>server default</td>
-<td><code>anthropic</code>, <code>openai</code>, <code>azure</code>, or <code>openai-compatible</code></td>
+<td><code>anthropic</code>, <code>openai</code>, <code>deepseek</code>, <code>azure</code>, or <code>openai-compatible</code></td>
 </tr>
 <tr>
 <td><code>llmModel</code></td>
@@ -803,6 +827,7 @@ Which passthrough categories actually return results depends on the engines your
           <div class="footer-col-links">
             <a href="https://github.com/us/crw" target="_blank" rel="noopener">GitHub</a>
             <a href="https://github.com/us/crw/issues" target="_blank" rel="noopener">Issues</a>
+            <a href="https://discord.gg/VNxv2DuBB" target="_blank" rel="noopener">Discord</a>
           </div>
         </div>
         <div class="footer-col">

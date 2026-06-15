@@ -58,7 +58,7 @@ Start with this request:
 import requests
 
 resp = requests.post(
-    "https://fastcrw.com/api/v1/map",
+    "https://api.fastcrw.com/v1/map",
     headers={"Authorization": "Bearer YOUR_API_KEY"},
     json={
         "url": "https://example.com",
@@ -71,7 +71,7 @@ print(resp.json()["data"]["links"])
 ```
 ::tab{title="Node.js"}
 ```javascript
-const resp = await fetch("https://fastcrw.com/api/v1/map", {
+const resp = await fetch("https://api.fastcrw.com/v1/map", {
   method: "POST",
   headers: {
     "Authorization": "Bearer YOUR_API_KEY",
@@ -89,7 +89,7 @@ console.log(body.data.links);
 ```
 ::tab{title="cURL"}
 ```bash
-curl -X POST https://fastcrw.com/api/v1/map \
+curl -X POST https://api.fastcrw.com/v1/map \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -120,8 +120,15 @@ curl -X POST https://fastcrw.com/api/v1/map \
 |---|---|---|---|
 | `url` | string | required | Site or page URL to start discovery from |
 | `maxDepth` | number | `2` | Maximum discovery depth |
-| `useSitemap` | boolean | `true` | Read sitemap hints when available |
-| `timeout` | number | server default | Custom timeout in seconds |
+| `useSitemap` | boolean | `true` | Read sitemap.xml hints when available |
+| `crawlFallback` | boolean | `true` | After the sitemap phase, run a short-budget BFS crawl to fill gaps. Set to `false` for sitemap-only mode (faster on sites with rich sitemaps, but may miss pages the sitemap omits) |
+| `timeout` | number | `120` | Custom timeout in seconds |
+| `ignoreQueryParameters` | boolean | `null` | Coarse filter switch. `true` strips every non-preserved query param; `false` disables all URL filtering (raw URLs) |
+| `stripTrackingParams` | boolean | `null` | Strip known tracking query params (UTM, fbclid, etc.) from discovered URLs. `null` uses the server default |
+| `dropActionUrls` | boolean | `null` | Drop action/mutation URLs (add-to-cart, checkout, logout, etc.) from results entirely. `null` uses the server default |
+| `extraTrackingParams` | string[] | `—` | Additional query param names to treat as tracking (stripped by Tier B). Additive on top of the built-in list. Max 64 entries; keys are normalised (lowercase, `-` → `_`) |
+| `extraActionParams` | string[] | `—` | Additional query param names to treat as action params (dropped by Tier A). Additive on top of the built-in list. Max 64 entries; keys are normalised |
+| `preserveParams` | string[] | `—` | Query param names to always keep, even when tracking/action filters are active. Additive on top of the built-in preserve list. Max 64 entries; keys are normalised |
 
 ## Sitemap behavior
 

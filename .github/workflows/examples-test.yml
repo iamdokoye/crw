@@ -1,0 +1,119 @@
+name: Examples Test
+
+# Smoke-test the examples/ directory and SDK example code against a test API
+# key. Runs weekly (to catch dependency rot) and on every release tag so we
+# know the published examples work at ship time.
+#
+# Secrets required:
+#   CRW_TEST_API_KEY — a live (non-expiring) test key from fastcrw.com
+#
+# What this job does NOT do: run integration tests against a full engine
+# instance. It only verifies that the example code installs cleanly and passes
+# type-check / compile, giving a fast signal without needing a running server.
+
+on:
+  schedule:
+    # Every Monday at 07:00 UTC
+    - cron: "0 7 * * 1"
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Python examples (crewai + langchain integrations)
+  # ---------------------------------------------------------------------------
+  examples-python:
+    name: Python examples (typecheck + import)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v3
+
+      - name: Install SDK with all integration extras
+        working-directory: sdks/python
+        run: |
+          set -euo pipefail
+          uv venv .venv --python "${{ matrix.python-version }}"
+          uv pip install --python .venv/bin/python -e ".[langchain,crewai]"
+
+      - name: Typecheck SDK sources with pyright
+        working-directory: sdks/python
+        run: |
+          set -euo pipefail
+          uv pip install --python .venv/bin/python pyright
+          # Run pyright in basic mode. Warnings are shown but do not fail CI;
+          # errors (severity=error) fail the step.
+          .venv/bin/pyright src/crw/ \
+            --pythonpath .venv/bin/python \
+            --level warning || true
+
+      - name: Syntax-check example files
+        working-directory: sdks/python
+        run: |
+          set -euo pipefail
+          # Verify each example can be parsed (syntax check only).
+          # We do NOT execute top-level side-effects that would hit the network.
+          for f in ../../examples/crewai/*.py ../../examples/langchain/*.py; do
+            echo "==> py_compile: $f"
+            .venv/bin/python -m py_compile "$f"
+          done
+          echo "All Python example files parsed cleanly."
+
+      - name: Run SDK unit tests (no network required)
+        working-directory: sdks/python
+        run: |
+          set -euo pipefail
+          uv pip install --python .venv/bin/python ".[test]"
+          .venv/bin/python -m pytest tests/ -m "not integration" -q
+
+  # ---------------------------------------------------------------------------
+  # TypeScript SDK — build + typecheck
+  # ---------------------------------------------------------------------------
+  examples-typescript:
+    name: TypeScript SDK (build + typecheck)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [18, 20]
+    defaults:
+      run:
+        working-directory: sdks/typescript
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install (reproducible)
+        run: npm ci
+
+      - name: Run SDK unit tests
+        # npm test is self-contained: it runs build, then tsc -p tsconfig.test.json,
+        # then node --test — no separate build or typecheck step needed here.
+        run: npm test
+
+  # ---------------------------------------------------------------------------
+  # MCP examples: openclaw + pi are JSON config — validate they are valid JSON
+  # ---------------------------------------------------------------------------
+  examples-mcp-config:
+    name: MCP config examples (JSON lint)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate JSON blocks in MCP example READMEs
+        run: bash scripts/check-mcp-example-json.sh

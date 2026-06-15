@@ -335,7 +335,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <pre><code class="language-python">import requests
 
 resp = requests.post(
-    &quot;https://fastcrw.com/api/v1/scrape&quot;,
+    &quot;https://api.fastcrw.com/v1/scrape&quot;,
     headers={&quot;Authorization&quot;: &quot;Bearer YOUR_API_KEY&quot;},
     json={
         &quot;url&quot;: &quot;https://example.com/product/123&quot;,
@@ -355,7 +355,7 @@ resp = requests.post(
 print(resp.json()[&quot;data&quot;][&quot;json&quot;])
 </code></pre>
 <p>::tab{title=&quot;Node.js&quot;}</p>
-<pre><code class="language-javascript">const resp = await fetch(&quot;https://fastcrw.com/api/v1/scrape&quot;, {
+<pre><code class="language-javascript">const resp = await fetch(&quot;https://api.fastcrw.com/v1/scrape&quot;, {
   method: &quot;POST&quot;,
   headers: {
     &quot;Authorization&quot;: &quot;Bearer YOUR_API_KEY&quot;,
@@ -380,7 +380,7 @@ const body = await resp.json();
 console.log(body.data.json);
 </code></pre>
 <p>::tab{title=&quot;cURL&quot;}</p>
-<pre><code class="language-bash">curl -X POST https://fastcrw.com/api/v1/scrape \
+<pre><code class="language-bash">curl -X POST https://api.fastcrw.com/v1/scrape \
   -H &quot;Authorization: Bearer YOUR_API_KEY&quot; \
   -H &quot;Content-Type: application/json&quot; \
   -d &#39;{
@@ -459,13 +459,19 @@ console.log(body.data.json);
 <td><code>llmProvider</code></td>
 <td>string</td>
 <td>server default</td>
-<td><code>anthropic</code> or <code>openai</code></td>
+<td><code>anthropic</code>, <code>openai</code>, <code>deepseek</code>, <code>azure</code>, or <code>openai-compatible</code></td>
 </tr>
 <tr>
 <td><code>llmModel</code></td>
 <td>string</td>
 <td>server default</td>
 <td>Extraction model override</td>
+</tr>
+<tr>
+<td><code>baseUrl</code></td>
+<td>string</td>
+<td>--</td>
+<td>OpenAI-compatible endpoint base, e.g. <code>https://api.deepseek.com/v1</code> (also used by Azure). crw appends <code>/chat/completions</code> automatically if you omit it.</td>
 </tr>
 <tr>
 <td><code>onlyMainContent</code></td>
@@ -510,7 +516,7 @@ On self-hosted deployments, JSON extraction requires either <code>[extraction.ll
 </ol>
 <p>If the underlying page scrape is weak, the JSON extraction will also be weak.</p>
 <h2 id="byok-and-provider-control">BYOK and provider control</h2>
-<p>Use <code>llmApiKey</code>, <code>llmProvider</code>, and <code>llmModel</code> only when you need per-request control. For most users, server defaults are the right starting point once <code>[extraction.llm]</code> is configured.</p>
+<p><strong>Self-hosted / BYOK:</strong> set <code>[extraction.llm]</code> in <code>config.toml</code> for a server-wide default, or pass <code>llmApiKey</code> + <code>llmProvider</code> + <code>llmModel</code> per request to override it. Supported providers: <code>anthropic</code>, <code>openai</code>, <code>deepseek</code>, <code>azure</code>, and <code>openai-compatible</code>. Use <code>baseUrl</code> for any OpenAI-compatible endpoint (DeepSeek, Azure, local models).</p>
 <h2 id="common-production-patterns">Common production patterns</h2>
 <ul>
 <li>Validate the target with markdown first, then add extraction.</li>
@@ -578,6 +584,7 @@ On self-hosted deployments, JSON extraction requires either <code>[extraction.ll
           <div class="footer-col-links">
             <a href="https://github.com/us/crw" target="_blank" rel="noopener">GitHub</a>
             <a href="https://github.com/us/crw/issues" target="_blank" rel="noopener">Issues</a>
+            <a href="https://discord.gg/VNxv2DuBB" target="_blank" rel="noopener">Discord</a>
           </div>
         </div>
         <div class="footer-col">

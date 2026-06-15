@@ -66,7 +66,7 @@ Start with this request:
 import requests
 
 resp = requests.post(
-    "https://fastcrw.com/api/v1/scrape",
+    "https://api.fastcrw.com/v1/scrape",
     headers={"Authorization": "Bearer YOUR_API_KEY"},
     json={
         "url": "https://example.com/product/123",
@@ -87,7 +87,7 @@ print(resp.json()["data"]["json"])
 ```
 ::tab{title="Node.js"}
 ```javascript
-const resp = await fetch("https://fastcrw.com/api/v1/scrape", {
+const resp = await fetch("https://api.fastcrw.com/v1/scrape", {
   method: "POST",
   headers: {
     "Authorization": "Bearer YOUR_API_KEY",
@@ -113,7 +113,7 @@ console.log(body.data.json);
 ```
 ::tab{title="cURL"}
 ```bash
-curl -X POST https://fastcrw.com/api/v1/scrape \
+curl -X POST https://api.fastcrw.com/v1/scrape \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -161,8 +161,9 @@ curl -X POST https://fastcrw.com/api/v1/scrape \
 | `jsonSchema` | object | required | JSON schema describing the fields you want back |
 | `extract` | object | -- | Firecrawl-compatible wrapper; `extract.schema` is accepted |
 | `llmApiKey` | string | -- | Per-request BYOK credential |
-| `llmProvider` | string | server default | `anthropic` or `openai` |
+| `llmProvider` | string | server default | `anthropic`, `openai`, `deepseek`, `azure`, or `openai-compatible` |
 | `llmModel` | string | server default | Extraction model override |
+| `baseUrl` | string | -- | OpenAI-compatible endpoint base, e.g. `https://api.deepseek.com/v1` (also used by Azure). crw appends `/chat/completions` automatically if you omit it. |
 | `onlyMainContent` | boolean | `true` | Keep extraction focused on the main content block |
 | `cssSelector` | string | -- | Narrow the page before extraction |
 | `xpath` | string | -- | Narrow the page before extraction |
@@ -198,7 +199,7 @@ If the underlying page scrape is weak, the JSON extraction will also be weak.
 
 ## BYOK and provider control
 
-Use `llmApiKey`, `llmProvider`, and `llmModel` only when you need per-request control. For most users, server defaults are the right starting point once `[extraction.llm]` is configured.
+**Self-hosted / BYOK:** set `[extraction.llm]` in `config.toml` for a server-wide default, or pass `llmApiKey` + `llmProvider` + `llmModel` per request to override it. Supported providers: `anthropic`, `openai`, `deepseek`, `azure`, and `openai-compatible`. Use `baseUrl` for any OpenAI-compatible endpoint (DeepSeek, Azure, local models).
 
 ## Common production patterns
 

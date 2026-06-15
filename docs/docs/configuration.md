@@ -56,21 +56,72 @@ default_max_pages = 100
 job_ttl_secs = 3600
 # proxy = "http://proxy:8080"                 # HTTP proxy
 # proxy = "socks5://user:pass@proxy:1080"     # SOCKS5 proxy (also supports http://, https://)
-# stealth = false               # inject browser-like headers + rotate UA globally
+
+# [crawler.stealth]
+# enabled = true             # inject browser-like headers + rotate UA globally
+# inject_headers = true      # send Accept, Sec-Fetch-*, etc. on every HTTP request
+# jitter_factor = 0.2        # ±20% random jitter on rate-limit intervals
+# user_agents = []           # custom UA pool; empty = use built-in Chrome/Firefox/Safari pool
 
 [extraction]
 default_format = "markdown"
 only_main_content = true
 
+# Per-domain CSS selector overrides applied before readability narrowing.
+# Map key is the exact host (no wildcards). User-supplied request `selector` wins.
+# [extraction.domain_selectors]
+# "example.com" = "article, main"
+
+# LLM-assisted extraction fallback. Fires when DOM-based extraction scores below
+# `quality_threshold`. Disabled by default — requires [extraction.llm] to be set.
+# [extraction.llm_fallback]
+# enable = false
+# quality_threshold = 0.3    # score below this triggers the LLM fallback
+# max_html_bytes = 100000    # truncate HTML before sending to LLM
+# always_run = false         # true = LLM on every page (higher cost, higher recall)
+
 [extraction.llm]
-provider = "anthropic"       # "anthropic", "openai", "azure", or "openai-compatible"
+provider = "anthropic"       # "anthropic", "openai", "deepseek", "azure", or "openai-compatible"
 api_key = ""
 model = "claude-sonnet-4-20250514"
 max_tokens = 4096
 max_html_bytes = 100000      # content fed to LLM is truncated at this byte count
 max_concurrency = 4          # bounded fan-out for per-result summaries in /v1/search
-# base_url = ""              # for OpenAI-compatible endpoints (DeepSeek, Azure, Ollama, …)
+# base_url = ""              # for OpenAI-compatible endpoints (DeepSeek, Azure, …)
+# azure_api_version = ""     # required when provider = "azure"
 # require_byok_header = ""   # tenant guard: reject LLM requests missing this header AND without llmApiKey
+
+# /v1/search endpoint — proxies to a SearXNG instance.
+# Absence of searxng_url disables /v1/search with HTTP 503 (error_code: "search_disabled").
+# [search]
+# enabled = true               # set false to disable /v1/search even if searxng_url is set
+# searxng_url = "http://localhost:8080"
+# timeout_ms = 15000
+# default_limit = 5
+# max_limit = 20
+# rerank_enabled = true        # RRF+BM25 re-rank for LLM answer/summarize path
+
+# /v1/map URL filter — strips tracking params and drops action URLs from map results.
+# [map.url_filter]
+# strip_tracking_params = true
+# drop_action_urls = true
+# gov_tld_drop_actions = false   # when true, .gov/.mil hosts also run action-URL drop
+# extra_tracking_params = []     # additive on top of built-in list
+# extra_action_params = []
+# extra_preserve_params = []
+
+# Document (PDF) parsing controls.
+# [document]
+# enabled = true
+# max_pages = 0              # 0 = no limit
+# attempt_scanned = false    # best-effort text from image PDFs (no OCR)
+# max_upload_bytes = 52428800   # 50 MiB — POST /v2/parse upload cap
+# max_concurrent_parses = 4    # process-wide cap on concurrent PDF parses (primary DoS guard)
+# upload_concurrency = 4        # max concurrent upload-body buffers (each up to max_upload_bytes)
+# parse_timeout_ms = 30000      # wall-clock timeout per parse; 0 disables
+# max_decompressed_bytes = 104857600  # 100 MiB decompression-bomb guard; 0 disables
+# sandbox = false            # isolate each parse in a child process (Unix only)
+# sandbox_memory_bytes = 536870912   # RLIMIT_AS for sandbox child (Unix); 512 MiB
 
 [auth]
 # api_keys = ["fc-key-1234"]
@@ -81,8 +132,8 @@ max_concurrency = 4          # bounded fan-out for per-result summaries in /v1/s
 Enable globally to make CRW look like a real browser on every HTTP request:
 
 ```toml
-[crawler]
-stealth = true
+[crawler.stealth]
+enabled = true
 ```
 
 When enabled:
@@ -90,6 +141,31 @@ When enabled:
 - 12 browser-like headers are injected: `Accept`, `Accept-Language`, `Accept-Encoding`, `Sec-Ch-Ua`, `Sec-Ch-Ua-Mobile`, `Sec-Ch-Ua-Platform`, `Sec-Fetch-Dest`, `Sec-Fetch-Mode`, `Sec-Fetch-Site`, `Sec-Fetch-User`, `Priority`, `Upgrade-Insecure-Requests`
 
 Override per-request by setting `stealth: true/false` in the scrape payload.
+
+### Stealth profile (`config.stealth.toml`)
+
+For higher-yield scraping against bot-detecting sites, CRW ships a ready-made `config.stealth.toml` overlay that also wires in a [browserless v2](https://github.com/browserless/browserless) Chrome backend with its anti-fingerprint plugin enabled. Use it when `[crawler.stealth]` alone is not enough and you need a full stealth Chrome session.
+
+```bash
+# Start browserless via Docker Compose (stealth profile)
+docker compose --profile stealth up -d
+
+# Run crw-server on the host, loading the stealth overlay
+CRW_CONFIG=config.stealth crw-server
+```
+
+What the overlay changes beyond `[crawler.stealth]` (key settings):
+
+| Setting | Value | Effect |
+|---------|-------|--------|
+| `renderer.chrome.ws_url` | `ws://localhost:9224/chromium?token=crwtest&stealth=true` | Routes Chrome sessions to browserless with anti-fingerprint plugin. `crwtest` is a placeholder — set `BROWSERLESS_TOKEN` in `.env` and update this URL to match. |
+| `renderer.chrome_intercept_resources` | `true` | Blocks fonts/images in Chrome to cut per-page latency |
+| `renderer.chrome_nav_budget_ms` | `12 000` | Longer nav budget for heavy JS sites |
+| `renderer.http_timeout_ms` | `4 000` | Tighter HTTP timeout (fast fail to browser fallback) |
+| `renderer.lightpanda_timeout_ms` | `2 500` | Tighter LightPanda budget so Chrome always has residual time within the request deadline |
+| `server.rate_limit_rps` | `0` | Disables global rate limit for local/private deploys |
+
+> **License note:** browserless v2 is SSPL-3.0. If you expose this stack to third parties as a service, review SSPL §13 compliance before deploying. The default `chrome` profile (chromedp / headless-shell, Apache-2/BSD) carries no such obligation.
 
 ## Environment variables
 
@@ -104,7 +180,7 @@ Use the `CRW_` prefix with `__` as a nesting separator:
 | `crawler.max_concurrency` | `CRW_CRAWLER__MAX_CONCURRENCY` |
 | `crawler.requests_per_second` | `CRW_CRAWLER__REQUESTS_PER_SECOND` |
 | `server.rate_limit_rps` | `CRW_SERVER__RATE_LIMIT_RPS` |
-| `crawler.stealth` | `CRW_CRAWLER__STEALTH` |
+| `crawler.stealth.enabled` | `CRW_CRAWLER__STEALTH__ENABLED` |
 | `crawler.proxy` | `CRW_CRAWLER__PROXY` |
 | `renderer.proxy_base_user` | `CRW_RENDERER__PROXY_BASE_USER` |
 | `renderer.proxy_base_pass` | `CRW_RENDERER__PROXY_BASE_PASS` |

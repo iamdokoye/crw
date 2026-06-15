@@ -93,7 +93,7 @@ Connect to [fastcrw.com](https://fastcrw.com) or any remote CRW instance:
 ```bash
 # Cloud server
 claude mcp add \
-  -e CRW_API_URL=https://fastcrw.com/api \
+  -e CRW_API_URL=https://api.fastcrw.com \
   -e CRW_API_KEY=YOUR_API_KEY \
   crw -- npx crw-mcp
 
@@ -153,7 +153,7 @@ This yields a ~4.2 MB binary (vs ~17 MB for the default embedded build) because 
 | `crw_check_crawl_status` | Poll crawl status and get results | `GET /v1/crawl/:id` | All modes |
 | `crw_map` | Discover all URLs on a site | `POST /v1/map` | All modes |
 | `crw_search` | Search the web → titles, URLs, descriptions | `POST /v1/search` | Always in proxy mode; embedded only when a SearXNG backend is configured |
-| `crw_parse_file` | Parse a local PDF (base64) → markdown | `POST /v1/parse` | All modes |
+| `crw_parse_file` | Parse a local PDF (base64) → markdown | `POST /v2/parse` (multipart) | All modes |
 
 > **Output bounding:** Tool results are bounded by default to keep agent context small. Content fields (markdown/html/etc.) are truncated to ~15 000 chars; `crw_map` returns at most 100 URLs. Truncated responses include `truncated: true` and `totalDiscovered` markers. Pass `maxLength: 0` (scrape / check_status / parse_file) or `limit: 0` (map) to opt out.
 
@@ -166,7 +166,7 @@ This yields a ~4.2 MB binary (vs ~17 MB for the default embedded build) because 
 | `goto` | Navigate the session browser to an `http(s)` URL and wait for load. Creates a session on first call. |
 | `tree` | Snapshot the current page as an indented accessibility tree (`[nodeId] role: name`). Requires a prior `goto`. |
 
-More interaction tools (`click`, `fill_form`, `evaluate`) are on the roadmap. Session state is automatically swept after an idle TTL.
+See [crw-browse](/docs/crw-browse) for the full list of 14 interaction tools, including click, fill, type_text, evaluate, screenshot, and more. Session state is automatically swept after an idle TTL.
 
 Install and launch:
 
@@ -191,7 +191,7 @@ claude mcp add crw -- npx crw-mcp
 
 # fastcrw.com cloud
 claude mcp add \
-  -e CRW_API_URL=https://fastcrw.com/api \
+  -e CRW_API_URL=https://api.fastcrw.com \
   -e CRW_API_KEY=YOUR_API_KEY \
   crw -- npx crw-mcp
 ```
@@ -257,7 +257,6 @@ In **proxy mode** `crw_search` is always advertised. In **embedded mode** it is 
 | `query` | string | **yes** | The search query |
 | `limit` | integer | no | Max results (default: 5) |
 | `lang` | string | no | Language code (e.g. `"en"`, `"tr"`) |
-| `country` | string | no | Country code (e.g. `"us"`, `"tr"`) |
 | `tbs` | string | no | Time-based filter (e.g. `"qdr:d"` for past day) |
 | `sources` | string[] | no | Restrict results to specific sources |
 | `categories` | string[] | no | SearXNG categories (e.g. `["general","news"]`) |

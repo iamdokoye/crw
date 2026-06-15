@@ -4,17 +4,17 @@ CRW integrates with popular AI agent frameworks and workflow tools. Since CRW ex
 
 ## CrewAI
 
-Published PyPI package: [`crewai-crw`](https://pypi.org/project/crewai-crw/)
+CrewAI support is bundled as an **extra** in the `crw` Python package — no separate package needed.
 
 ```bash
-pip install crewai crewai-crw
+pip install "crw[crewai]"
 ```
 
 Four ready-to-use tools — no custom `BaseTool` subclasses needed:
 
 ```python
 from crewai import Agent, Task, Crew
-from crewai_crw import (
+from crw.integrations.crewai import (
     CrwScrapeWebsiteTool,
     CrwCrawlWebsiteTool,
     CrwMapWebsiteTool,
@@ -26,13 +26,13 @@ scrape_tool = CrwScrapeWebsiteTool()
 
 # Or use fastCRW cloud
 scrape_tool = CrwScrapeWebsiteTool(
-    api_url="https://fastcrw.com/api",
-    api_key="your-api-key",
+    api_url="https://api.fastcrw.com",
+    api_key="crw_live_...",
 )
 
 # Or set env vars
-# export CRW_API_URL=https://fastcrw.com/api
-# export CRW_API_KEY=your-api-key
+# export CRW_API_URL=https://api.fastcrw.com
+# export CRW_API_KEY=crw_live_...
 
 researcher = Agent(
     role="Web Researcher",
@@ -50,18 +50,16 @@ crew = Crew(agents=[researcher], tasks=[task])
 result = crew.kickoff()
 ```
 
-Source: [github.com/us/crewai-crw](https://github.com/us/crewai-crw)
-
 ## LangChain
 
-Published PyPI package: [`langchain-crw`](https://pypi.org/project/langchain-crw/)
+LangChain support is bundled as an **extra** in the `crw` Python package — no separate package needed.
 
 ```bash
-pip install langchain-crw
+pip install "crw[langchain]"
 ```
 
 ```python
-from langchain_crw import CrwLoader
+from crw.integrations.langchain import CrwLoader
 
 # Self-hosted (default: localhost:3000)
 loader = CrwLoader(url="https://example.com", mode="scrape")
@@ -70,7 +68,7 @@ docs = loader.load()
 # Cloud (fastcrw.com)
 loader = CrwLoader(
     url="https://example.com",
-    api_url="https://fastcrw.com/api",
+    api_url="https://api.fastcrw.com",
     api_key="crw_live_...",
     mode="crawl",
     params={"max_depth": 3, "max_pages": 50},
@@ -81,13 +79,11 @@ docs = loader.load()
 loader = CrwLoader(
     mode="search",
     query="web scraping tools",
-    api_url="https://fastcrw.com/api",
+    api_url="https://api.fastcrw.com",
     api_key="crw_live_...",
 )
 docs = loader.load()
 ```
-
-Source: [github.com/us/langchain-crw](https://github.com/us/langchain-crw)
 
 ## Flowise (PR pending)
 
@@ -111,25 +107,9 @@ agent.print_response("Scrape https://example.com and summarize it")
 
 ## OpenClaw
 
-Published npm package: [`openclaw-plugin-crw`](https://www.npmjs.com/package/openclaw-plugin-crw)
+OpenClaw integrates with CRW via the **MCP server** — no separate plugin package is needed. Point OpenClaw at the `crw-mcp` binary and it gains Scrape, Crawl, Map, and Search tools automatically.
 
-```bash
-openclaw plugins install openclaw-plugin-crw
-```
-
-```json
-{
-  "plugins": {
-    "crw": {
-      "apiKey": "crw_live_..."
-    }
-  }
-}
-```
-
-Cloud is the default. For self-hosted, add `"apiUrl": "http://localhost:3000"`.
-
-Source: [github.com/us/openclaw-plugin-crw](https://github.com/us/openclaw-plugin-crw)
+See the [MCP documentation](/docs/mcp) for configuration details.
 
 ## n8n
 
@@ -151,6 +131,7 @@ CRW includes a built-in MCP server that works with any MCP-compatible platform. 
 - Claude Code, Claude Desktop
 - Cursor, Windsurf
 - Cline, Continue.dev
+- OpenClaw
 - OpenAI Codex CLI
 - Gemini CLI
 - VS Code GitHub Copilot Agent
@@ -189,7 +170,7 @@ result = app.scrape_url("https://example.com")
 ```python
 import requests
 
-response = requests.post("https://fastcrw.com/api/v1/scrape", json={
+response = requests.post("https://api.fastcrw.com/v1/scrape", json={
     "url": "https://example.com",
     "formats": ["markdown", "links"]
 })
@@ -200,7 +181,7 @@ print(data["markdown"])
 ## Node.js (Direct HTTP)
 
 ```javascript
-const response = await fetch("https://fastcrw.com/api/v1/scrape", {
+const response = await fetch("https://api.fastcrw.com/v1/scrape", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
@@ -236,33 +217,33 @@ Both options expose the same API, so your integration code works with either.
 
 ## Endpoint Support Matrix
 
-Not every integration supports every endpoint. Search is a cloud-only feature that requires the fastcrw.com API backend.
+Not every integration supports every endpoint. Search requires a cloud API backend or a SearXNG sidecar configured for the embedded MCP server.
 
 | Integration | Scrape | Crawl | Map | Search | Extract |
 |-------------|--------|-------|-----|--------|---------|
-| [CrewAI](https://pypi.org/project/crewai-crw/) | Yes | Yes | Yes | Yes (cloud) | -- |
-| [LangChain](https://pypi.org/project/langchain-crw/) | Yes | Yes | Yes | Yes (cloud) | -- |
-| [OpenClaw](https://www.npmjs.com/package/openclaw-plugin-crw) | Yes | Yes | Yes | Yes (cloud) | -- |
+| [CrewAI](https://pypi.org/project/crw/) (`crw[crewai]`) | Yes | Yes | Yes | Yes (cloud) | -- |
+| [LangChain](https://pypi.org/project/crw/) (`crw[langchain]`) | Yes | Yes | Yes | Yes (cloud) | -- |
 | [n8n](https://www.npmjs.com/package/n8n-nodes-crw) | Yes | Yes | Yes | Yes (cloud) | -- |
 | [Dify](https://github.com/us/dify-plugin-crw) | Yes | Yes | Yes | Yes (cloud) | -- |
-| MCP Server | Yes | Yes | Yes | -- | -- |
+| MCP Server (proxy mode) | Yes | Yes | Yes | Yes | -- |
+| MCP Server (embedded, no SearXNG) | Yes | Yes | Yes | -- | -- |
 | Firecrawl SDK (drop-in) | Yes | Yes | Yes | -- | Yes |
 | Direct HTTP | Yes | Yes | Yes | Yes (cloud) | Yes |
 
 :::note
-The MCP server is designed for self-hosted use and does not expose the search endpoint. Use the Python SDK, a framework integration, or direct HTTP calls for search.
+In MCP **proxy mode** (`--api-url` / `CRW_API_URL` set), `crw_search` is always advertised and the remote server handles it. In **embedded mode**, `crw_search` is only available when a SearXNG sidecar is configured.
 :::
 
 ## All Integrations
 
 | Framework | Type | Status | Package / PR |
 |-----------|------|--------|-------------|
-| [CrewAI](https://github.com/crewAIInc/crewAI) | PyPI package | **Published** | [`crewai-crw`](https://pypi.org/project/crewai-crw/) |
-| [LangChain](https://github.com/langchain-ai/langchain) | PyPI package | **Published** | [`langchain-crw`](https://pypi.org/project/langchain-crw/) |
-| [OpenClaw](https://github.com/openclaw/openclaw) | npm plugin | **Published** | [`openclaw-plugin-crw`](https://www.npmjs.com/package/openclaw-plugin-crw) |
+| [CrewAI](https://github.com/crewAIInc/crewAI) | Python extra | **Published** | [`crw[crewai]`](https://pypi.org/project/crw/) |
+| [LangChain](https://github.com/langchain-ai/langchain) | Python extra | **Published** | [`crw[langchain]`](https://pypi.org/project/crw/) |
+| [OpenClaw](https://github.com/openclaw/openclaw) | via MCP | **Works now** | [MCP docs](/docs/mcp) |
 | [n8n](https://github.com/n8n-io/n8n) | npm node | **Published** | [`n8n-nodes-crw`](https://www.npmjs.com/package/n8n-nodes-crw) |
 | [Flowise](https://github.com/FlowiseAI/Flowise) | Node | PR pending | [#6066](https://github.com/FlowiseAI/Flowise/pull/6066) |
 | [Agno](https://github.com/agno-agi/agno) | Toolkit | PR pending | [#7183](https://github.com/agno-agi/agno/pull/7183) |
-| [Dify](https://github.com/langgenius/dify) | Plugin | Ready | [GitHub](https://github.com/us/dify-plugin-crw) |
+| [Dify](https://github.com/langgenius/dify) | Plugin | Ready | [`dify-plugin-crw`](https://github.com/us/dify-plugin-crw) |
 | MCP (10+ platforms) | Built-in | **Shipped** | [MCP docs](/docs/mcp) |
 | Firecrawl SDK | Drop-in | **Works now** | API compatible |

@@ -76,7 +76,9 @@ Parameters:
 - `id` (required) — The crawl job ID from `crw_crawl`
 - `maxLength` — Truncate each page's content fields to this many chars. `0` = unbounded. Default: ~15 000
 
-Returns: `{ "status": "pending|running|completed|failed", "data": [...] }`
+Returns: `{ "status": "scraping|completed|failed", "data": [...] }`
+
+> **Browser Automation:** Full interactive browser control (JavaScript rendering, click, fill, etc.) requires the separate **crw-browse** MCP server binary (`command: crw-browse`). It exposes its own tools (`goto`, `tree`, and others) and is not part of this MCP server. Do not call `crw_browse` here — it is not a tool in crw-mcp and will return a JSON-RPC -32602 "Unknown tool" error.
 
 ### crw_search
 
@@ -86,7 +88,6 @@ Parameters:
 - `query` (required) — The search query
 - `limit` — Maximum number of results to return. Default: `5`
 - `lang` — Language code for results (e.g. `"en"`, `"tr"`)
-- `country` — Country code for results (e.g. `"us"`, `"tr"`)
 - `tbs` — Time filter: `qdr:h|qdr:d|qdr:w|qdr:m|qdr:y` (past hour/day/week/month/year)
 - `sources` — If set, group results by source: `web`, `news`, `images`
 - `categories` — Bias toward a category (e.g. `"pdf"`, `"github"`, `"research"`, or a native SearXNG category)

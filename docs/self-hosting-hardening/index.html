@@ -298,6 +298,56 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <li>Avoid exposing internal health or admin surfaces to the public internet.</li>
 <li>If browser rendering is enabled, isolate the renderer from internal systems it does not need to reach.</li>
 </ul>
+<h2 id="ssrf-protection">SSRF Protection</h2>
+<p>fastCRW validates every outbound URL before fetching it (<code>crw-core/src/url_safety.rs</code>). The guard is fail-closed and multi-layered:</p>
+<ul>
+<li><strong>Scheme</strong>: only <code>http</code> and <code>https</code> are permitted; <code>file://</code>, <code>ftp://</code>, and all other schemes are rejected.</li>
+<li><strong>Hostname blocklist</strong>: <code>localhost</code>, <code>metadata.google.internal</code>, and wildcard aliases (<code>*.localhost</code>, <code>*.localtest.me</code>, <code>*.lvh.me</code>, <code>*.nip.io</code>, <code>*.xip.io</code>, <code>*.sslip.io</code>) are all blocked before DNS resolution.</li>
+<li><strong>IP blocklist (pre-DNS)</strong>: literal IPs in loopback (127.x, ::1), private (10.x, 172.16-31.x, 192.168.x), link-local (169.254.x — AWS/GCP metadata), unspecified (0.0.0.0, ::), broadcast, carrier-grade NAT (100.64-127.x), multicast/reserved (≥224.x), and IPv4-mapped IPv6 equivalents (e.g. <code>::ffff:169.254.169.254</code>) are all rejected.</li>
+<li><strong>Post-DNS resolution</strong>: the resolved IP of every hostname is checked against the same blocklist, preventing DNS-rebinding. DNS failure is fail-closed — if the hostname cannot be resolved, the request is rejected.</li>
+<li><strong>Redirect chains</strong>: every hop in an HTTP redirect is re-validated through the same checks (<code>safe_redirect_policy</code>). A redirect chain is capped at 10 hops.</li>
+<li><strong>URL length</strong>: URLs longer than 2 048 characters and URLs containing null bytes are rejected.</li>
+</ul>
+<h3 id="crw_allow_loopback_for_tests-never-enable-in-production"><code>CRW_ALLOW_LOOPBACK_FOR_TESTS</code> — never enable in production</h3>
+<p>The env var <code>CRW_ALLOW_LOOPBACK_FOR_TESTS=1</code> disables the loopback and private-range checks so integration tests can target mock servers at <code>127.0.0.1:&lt;random&gt;</code>. It is <strong>not a runtime configuration option</strong> — it exists solely to make integration tests pass in CI without a public network. Setting it in a production process removes the SSRF guard for all outbound fetches and is never safe to do.</p>
+<h2 id="unauthenticated-admin-and-ops-endpoints">Unauthenticated Admin and Ops Endpoints</h2>
+<p>Three endpoints are registered in <code>crates/crw-server/src/app.rs</code> <strong>outside</strong> the authenticated <code>api_routes</code> block and therefore bypass the <code>auth_middleware</code> entirely, even when <code>[auth].api_keys</code> is configured:</p>
+<table>
+<thead>
+<tr>
+<th>Endpoint</th>
+<th>Method</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>/metrics</code></td>
+<td><code>GET</code></td>
+<td>Prometheus text format metrics</td>
+</tr>
+<tr>
+<td><code>/metrics/renderer-breakers</code></td>
+<td><code>GET</code></td>
+<td>JSON snapshot of all circuit-breaker states</td>
+</tr>
+<tr>
+<td><code>/admin/breakers/reset</code></td>
+<td><code>POST</code></td>
+<td>Resets all circuit breakers; returns count of host entries cleared</td>
+</tr>
+</tbody></table>
+<p>These endpoints have no authentication built in. Anyone who can reach the process on its listen port can read internal metrics or reset circuit breakers.</p>
+<p><strong>How to protect them:</strong></p>
+<p>Option 1 — network policy (preferred for most deployments): bind fastCRW to a non-public interface or port and allow only your monitoring system (Prometheus scraper, internal ops tooling) to reach it. In Docker Compose the default <code>ports</code> block should only publish to localhost (<code>127.0.0.1:&lt;port&gt;:&lt;port&gt;</code>), never <code>0.0.0.0</code>.</p>
+<p>Option 2 — reverse-proxy access control: if the process must be reachable on a shared interface, configure your reverse proxy to block or require HTTP Basic / mutual-TLS on the <code>/metrics</code> and <code>/admin</code> path prefixes before traffic reaches fastCRW. Example (nginx):</p>
+<pre><code class="language-nginx">location ~ ^/(metrics|admin)/ {
+    # Only allow your Prometheus scraper and ops CIDR
+    allow 10.0.0.0/8;
+    deny  all;
+}
+</code></pre>
+<p>Option 3 — firewall rule: drop inbound traffic to the fastCRW port except from trusted source IPs (iptables/nftables/cloud security group).</p>
+<p>All three options can be layered.</p>
 <h2 id="runtime-isolation">Runtime Isolation</h2>
 <p>Treat page fetching and browser rendering as higher-risk components than your application logic.</p>
 <ul>
@@ -311,6 +361,30 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <li>Inject secrets at runtime through your platform&#39;s secret store.</li>
 <li>Rotate keys during environment changes or incident response, not only on a fixed calendar.</li>
 </ul>
+<h3 id="rotating-searxng_secret_key-and-browserless_token">Rotating <code>SEARXNG_SECRET_KEY</code> and <code>BROWSERLESS_TOKEN</code></h3>
+<p>Both variables ship with <strong>publicly-known placeholder defaults</strong> in the repository. These defaults are intentional for local dev but must be replaced before any internet-facing or shared deployment.</p>
+<p><strong><code>SEARXNG_SECRET_KEY</code></strong> (<code>docker-compose.yml</code> line: <code>${SEARXNG_SECRET_KEY:-change-me-with-openssl-rand-hex-32-please}</code>):
+SearXNG uses this key to sign session cookies. Anyone who knows the default value can forge cookies against your SearXNG instance. Generate a real key and inject it:</p>
+<pre><code class="language-bash">echo &quot;SEARXNG_SECRET_KEY=$(openssl rand -hex 32)&quot; &gt;&gt; .env
+</code></pre>
+<p><strong><code>BROWSERLESS_TOKEN</code></strong> (<code>docker-compose.yml</code> and <code>docker-compose.stealth.yml</code>: <code>${BROWSERLESS_TOKEN:-crwtest}</code>):
+Browserless v2 requires this token in every CDP WebSocket URL (<code>?token=...</code>). The default <code>crwtest</code> is public. Without a real token, any process that can reach the browserless port can open Chrome sessions against your host. Generate and inject:</p>
+<pre><code class="language-bash">echo &quot;BROWSERLESS_TOKEN=$(openssl rand -hex 24)&quot; &gt;&gt; .env
+</code></pre>
+<p>Both commands append to an <code>.env</code> file that Docker Compose reads automatically. After setting the variables, restart the affected containers:</p>
+<pre><code class="language-bash">docker compose up -d --force-recreate searxng chrome-stealth
+</code></pre>
+<p>Rotate again whenever you rotate other credentials (deployment cutover, suspected exposure, team member offboarding).</p>
+<h2 id="agpl-30-13-network-use-obligations">AGPL-3.0 §13 — Network Use Obligations</h2>
+<p>fastCRW is licensed under AGPL-3.0 (<code>Cargo.toml</code>: <code>license = &quot;AGPL-3.0&quot;</code>). AGPL §13 extends the GPL copyleft to network use: <strong>if you run a modified version of fastCRW and allow third parties to interact with it over a network (including your own users calling your API), you must offer them the complete corresponding source code</strong> under the same license.</p>
+<p>What this means in practice:</p>
+<ul>
+<li><strong>Unmodified self-hosting</strong>: no source-offer obligation beyond what AGPL always requires. Point users at the upstream repository.</li>
+<li><strong>Modified self-hosting exposed to third parties</strong>: you must make the modified source available. The standard approach is a public fork or a <code>GET /source</code> endpoint that redirects to a tagged archive.</li>
+<li><strong>Internal use only</strong> (your own employees, no third-party network access): the network-use trigger does not apply. Standard GPL obligations still apply if you distribute binaries.</li>
+<li><strong>Commercial carve-out</strong>: if AGPL compliance is impractical for your use case (embedding in a proprietary product, offering a managed service without source disclosure), a commercial license is available — see the <a href="https://github.com/us/crw/blob/main/LICENSE">LICENSE</a> file and contact information in the repository.</li>
+</ul>
+<p><strong>What counts as a modification</strong>: any change to the Rust source in <code>crates/</code> or the build scripts that alters runtime behavior. Configuration-only changes (<code>.toml</code> files, <code>.env</code> files, <code>docker-compose.yml</code> overrides) do not constitute a modification of the software itself.</p>
 <h2 id="llm-features-and-trust-boundary">LLM features and trust boundary</h2>
 <p>CRW&#39;s <code>summary</code> format and <code>/v1/search</code> answer/summarize features need an LLM key. There are two deployment shapes; pick one and lock it down with the runtime guards listed below.</p>
 <p><strong>Solo / self-hosted (key in server config):</strong></p>
@@ -377,6 +451,9 @@ model    = &quot;gpt-4o-mini&quot;
 <h2 id="common-mistakes">Common Mistakes</h2>
 <ul>
 <li>Leaving <code>/health</code> broadly exposed when only an internal load balancer needs it.</li>
+<li>Exposing <code>/metrics</code>, <code>/metrics/renderer-breakers</code>, or <code>/admin/breakers/reset</code> to the public internet — these are unauthenticated and require network-level protection.</li>
+<li>Deploying with the default <code>SEARXNG_SECRET_KEY</code> (<code>change-me-with-openssl-rand-hex-32-please</code>) or <code>BROWSERLESS_TOKEN</code> (<code>crwtest</code>) — both are publicly known.</li>
+<li>Setting <code>CRW_ALLOW_LOOPBACK_FOR_TESTS=1</code> outside of a test environment — this removes SSRF protection for all outbound fetches.</li>
 <li>Running the service with broader filesystem or network access than the scraping workload requires.</li>
 <li>Keeping incident logs too thin to separate target-site anti-bot issues from engine regressions.</li>
 </ul>
@@ -428,6 +505,7 @@ model    = &quot;gpt-4o-mini&quot;
           <div class="footer-col-links">
             <a href="https://github.com/us/crw" target="_blank" rel="noopener">GitHub</a>
             <a href="https://github.com/us/crw/issues" target="_blank" rel="noopener">Issues</a>
+            <a href="https://discord.gg/VNxv2DuBB" target="_blank" rel="noopener">Discord</a>
           </div>
         </div>
         <div class="footer-col">
