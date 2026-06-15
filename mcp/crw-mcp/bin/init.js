@@ -124,7 +124,7 @@ Without flags, auto-detects installed agents and installs to all of them.
   } else {
     console.log("\nCloud mode (fastcrw.com):");
     console.log("  500 free one-time credits, managed infra — https://fastcrw.com");
-    console.log("  export CRW_API_KEY=fc-your-key");
+    console.log("  export CRW_API_KEY=crw_live_xxx");
     console.log("  export CRW_API_URL=https://api.fastcrw.com");
     console.log("  Terms of Service: https://fastcrw.com/terms");
   }
