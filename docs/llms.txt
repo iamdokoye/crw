@@ -2,6 +2,9 @@
 
 > CRW is a high-performance web scraper for agents and developer workflows. Start with one `scrape` request, then branch into `crawl`, `map`, `search`, extraction, or MCP as needed. Source: https://github.com/us/crw
 
+## Full context (single-fetch)
+- **All routes, MCP tools, patterns, formats, errors in one file**: https://docs.fastcrw.com/llms-full.txt
+
 ## For agents (single-fetch shortcuts)
 - Runnable quickstart inlined on the root page: https://docs.fastcrw.com/ (Python /v1/search example using stdlib only — copy-paste-and-run)
 - Machine-readable API contract: https://docs.fastcrw.com/openapi.json
@@ -12,10 +15,11 @@
 ## API endpoints (live HTML, agent-facing)
 
 - [POST /v1/search](https://docs.fastcrw.com/api-reference/search/): Web search via SearXNG, returns ranked results
-- [POST /v1/scrape](https://docs.fastcrw.com/api-reference/scrape/): Single-URL content extraction
-- [POST /v1/extract](https://docs.fastcrw.com/api-reference/extract/): Structured JSON extraction (first-class, token-priced, min 2 cr)
+- [POST /v1/scrape](https://docs.fastcrw.com/api-reference/scrape/): Single-URL content extraction; add `formats:["json"]` + `jsonSchema` for structured JSON extraction
 - [POST /v1/map](https://docs.fastcrw.com/api-reference/map/): URL discovery without scraping bodies
 - [POST /v1/crawl](https://docs.fastcrw.com/api-reference/crawl/) + GET /v1/crawl/{id}: Async multi-page crawl
+- [POST /v1/change-tracking/diff](https://docs.fastcrw.com/api-reference/change-tracking/): Stateless per-page diff; accepts single item or batch
+- [GET /v1/capabilities](https://docs.fastcrw.com/api-reference/capabilities/): Surface what this instance supports (renderers, search, features)
 - [API reference index](https://docs.fastcrw.com/api-reference/): One-page chooser
 
 ## Glossary
@@ -38,6 +42,7 @@
 
 ## Get Started
 - [Introduction](https://raw.githubusercontent.com/us/crw/main/docs/docs/introduction.md): The fastest way to understand what CRW does and where to start
+- [中文文档 (README.zh-CN.md)](https://github.com/us/crw/blob/main/README.zh-CN.md): Chinese README — same content, fully translated
 - [Quick Start](https://raw.githubusercontent.com/us/crw/main/docs/docs/quick-start.md): Make your first successful request in under a minute
 - [Authentication](https://raw.githubusercontent.com/us/crw/main/docs/docs/authentication.md): Hosted API keys and self-hosted Bearer auth
 - [API Playground](https://raw.githubusercontent.com/us/crw/main/docs/docs/playground.md): Interactive testing before you write code
@@ -53,7 +58,8 @@
 
 ## Integrations
 - [MCP Server](https://raw.githubusercontent.com/us/crw/main/docs/docs/mcp.md): Built-in MCP server for Claude, Codex, Cursor, and other hosts
-- [MCP Client Setup](https://raw.githubusercontent.com/us/crw/main/docs/docs/mcp-clients.md): Copy-paste setup for Claude Code, Codex, Cursor, Windsurf, Cline, and Continue
+- [MCP Client Setup](https://raw.githubusercontent.com/us/crw/main/docs/docs/mcp-clients.md): Copy-paste setup for Claude Code, Claude Desktop, OpenAI Codex CLI, Cursor, Windsurf, Cline, Continue, and Gemini CLI
+- [crw-browse](https://raw.githubusercontent.com/us/crw/main/docs/docs/crw-browse.md): Separate browser-automation MCP server (`command: crw-browse`) for real stateful browser control (click, navigate, accessibility tree); self-hosted, v0.4.0+
 - [SDK Examples](https://raw.githubusercontent.com/us/crw/main/docs/docs/sdk-examples.md): Copy-paste examples in multiple languages
 - [Framework Integrations](https://raw.githubusercontent.com/us/crw/main/docs/docs/integrations.md): CrewAI, LangChain, n8n, OpenClaw, and related integrations
 - [Agent Onboarding](https://raw.githubusercontent.com/us/crw/main/docs/docs/agent-onboarding.md): Machine-readable guidance for tool-using agents

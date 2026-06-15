@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claude Web Access in 5 Min — CRW Docs</title>
+  <meta name="description" content="This recipe walks from zero to a working Claude Code agent that can search the web and scrape pages on demand. You will run one install command, register the MCP server, then see the exact tool calls ">
+  <meta name="keywords" content="web scraper, web crawler, firecrawl alternative, crawl4ai alternative, self-hosted scraper, rust web scraper, mcp server, ai web scraping, rag pipeline, llm extraction, open source crawler, headless browser scraper">
+  <link rel="canonical" href="https://docs.fastcrw.com/recipe-mcp-5min">
+  <link rel="icon" href="/favicon.png?v=2" type="image/png">
+  <link rel="alternate" type="application/json" href="/openapi.json" title="OpenAPI 3.1 spec">
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt index">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://docs.fastcrw.com/recipe-mcp-5min">
+  <meta property="og:title" content="Claude Web Access in 5 Min — CRW | Web Scraper in Rust">
+  <meta property="og:description" content="This recipe walks from zero to a working Claude Code agent that can search the web and scrape pages on demand. You will run one install command, register the MCP server, then see the exact tool calls ">
+  <meta property="og:site_name" content="CRW">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Claude Web Access in 5 Min — CRW Docs">
+  <meta name="twitter:description" content="This recipe walks from zero to a working Claude Code agent that can search the web and scrape pages on demand. You will run one install command, register the MCP server, then see the exact tool calls ">
+
+  <!-- Structured Data (JSON-LD) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "CRW",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Linux, macOS, Windows (WSL)",
+    "description": "Open-source, self-hosted web scraper and crawler written in Rust. A fast, lightweight Firecrawl alternative with MCP server support for AI agents, LLM structured extraction, and Firecrawl-compatible workflows.",
+    "url": "https://docs.fastcrw.com/",
+    "downloadUrl": "https://crates.io/crates/crw-server",
+    "softwareVersion": "0.3.5",
+    "license": "https://opensource.org/licenses/AGPL-3.0",
+    "programmingLanguage": "Rust",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "featureList": [
+      "Firecrawl-compatible REST API",
+      "MCP server for Claude Code, Cursor, Windsurf",
+      "LLM structured extraction (Anthropic, OpenAI)",
+      "JavaScript rendering via LightPanda CDP",
+      "BFS web crawler with robots.txt and sitemap support",
+      "6 output formats: Markdown, HTML, JSON, plain text, links",
+      "CSS selector and XPath extraction",
+      "Chunking with BM25 and cosine ranking for RAG pipelines",
+      "Single static binary, low idle footprint"
+    ]
+  }
+  </script>
+
+  <!-- API Reference (JSON-LD) — surfaces endpoints to LLM crawlers -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "APIReference",
+    "name": "CRW REST API",
+    "url": "https://docs.fastcrw.com/",
+    "documentation": "https://docs.fastcrw.com/openapi.json",
+    "programmingModel": "REST",
+    "targetPlatform": ["Hosted: https://api.fastcrw.com", "Self-hosted: http://localhost:3000"],
+    "potentialAction": [
+      {"@type": "ConsumeAction", "name": "/v1/search", "target": "https://api.fastcrw.com/v1/search"},
+      {"@type": "ConsumeAction", "name": "/v1/scrape", "target": "https://api.fastcrw.com/v1/scrape"},
+      {"@type": "ConsumeAction", "name": "/v1/crawl",  "target": "https://api.fastcrw.com/v1/crawl"},
+      {"@type": "ConsumeAction", "name": "/v1/map",    "target": "https://api.fastcrw.com/v1/map"},
+      {"@type": "ConsumeAction", "name": "/v1/extract","target": "https://api.fastcrw.com/v1/extract"}
+    ]
+  }
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+  <noscript><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"></noscript>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css" id="hljs-theme">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+  <link rel="stylesheet" href="/css/style.css">  <link rel="modulepreload" href="/js/app.js">
+  <link rel="modulepreload" href="/js/search.js">
+  <link rel="modulepreload" href="/site.config.js">
+</head>
+<body>
+  <!--
+    Agent shell: a static, single-fetch quickstart for LLM crawlers and
+    `WebFetch`-style HTML→markdown pipelines. Off-screen for human users
+    (the SPA still drives #article). Do not remove without updating
+    docs/openapi.json and docs/llms.txt in lockstep.
+  -->
+  <section id="agent-shell" data-agent-shell aria-hidden="true">
+    <h1>CRW — open-source web scraper &amp; crawler (Firecrawl-compatible)</h1>
+    <blockquote>
+      Docs at <code>docs.fastcrw.com</code>. Hosted API at
+      <code>https://api.fastcrw.com</code>. Self-hosted at
+      <code>http://localhost:3000</code>.
+      Five endpoints: <code>/v1/search</code>, <code>/v1/scrape</code>,
+      <code>/v1/crawl</code>, <code>/v1/map</code>, <code>/v1/extract</code>.
+    </blockquote>
+
+    <h2 id="copy-paste-run">Quick: copy this and run</h2>
+    <p><strong>Auth (hosted only):</strong>
+      <code>Authorization: Bearer $CRW_API_KEY</code>.
+      Self-hosted (<code>http://localhost:3000</code>) needs no header.</p>
+    <p><strong>Body:</strong>
+      <code>{ "query": string, "limit": number (default 5, max 20), "lang"?: "en", "tbs"?: "qdr:d|w|m|y", "sources"?: ["web"|"news"|"images"] }</code></p>
+
+    <h3>Python (stdlib only — defaults to hosted, fails loudly if key is missing)</h3>
+<pre><code class="language-python">#!/usr/bin/env python3
+"""Search CRW and print top results as JSON."""
+import json, os, sys, urllib.request
+
+API_KEY = os.environ.get("CRW_API_KEY")
+# Default to the hosted API. Self-hosting? Set CRW_API_URL=http://localhost:3000
+BASE = os.environ.get("CRW_API_URL", "https://api.fastcrw.com")
+URL = f"{BASE}/v1/search"
+
+headers = {"Content-Type": "application/json"}
+if API_KEY:
+    headers["Authorization"] = f"Bearer {API_KEY}"
+elif BASE.startswith("https://api.fastcrw.com"):
+    sys.exit("error: CRW_API_KEY is required for the hosted API. "
+             "Get one at https://fastcrw.com (500 free credits) "
+             "or set CRW_API_URL=http://localhost:3000 to self-host.")
+
+req = urllib.request.Request(
+    URL,
+    data=json.dumps({"query": "renewable energy trends 2024", "limit": 3}).encode(),
+    headers=headers,
+    method="POST",
+)
+with urllib.request.urlopen(req) as r:
+    body = json.loads(r.read())  # body == {"success": true, "data": [...]}
+
+# Results live under body["data"]. Each row has `title`, `url`, `snippet`,
+# `description`, `position`, `score`, `category` — print the LLM-ready subset.
+print(json.dumps(
+    [{"title": x["title"], "url": x["url"], "snippet": x["snippet"]}
+     for x in body["data"]],
+    indent=2,
+))
+# Run with: python3 search.py  (file is python3-only — no `python` alias needed)
+</code></pre>
+
+    <h3>cURL</h3>
+<pre><code class="language-bash">curl -X POST https://api.fastcrw.com/v1/search \
+  -H "Authorization: Bearer $CRW_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"renewable energy trends 2024","limit":3}'
+</code></pre>
+
+    <h3>CLI (one-shot LLM-ready output)</h3>
+    <p>The <code>crw</code> CLI projects directly to the title/url/snippet
+      schema with <code>--json --fields</code> — no <code>jq</code> reshape
+      needed:</p>
+<pre><code class="language-bash"># Install: brew install us/crw/crw  (or: cargo install crw-cli)
+crw search "renewable energy trends 2024" --json --fields title,url,snippet --limit 3
+
+# Available fields: title, url, description, snippet, position, score, category
+# --json is shorthand for --format json (also accepts --format text|markdown)
+# Self-hosted: no auth. Hosted: export CRW_API_KEY=crw_live_...
+</code></pre>
+
+    <h3>Response shape</h3>
+<pre><code class="language-json">{
+  "success": true,
+  "data": [
+    {"url": "https://...", "title": "...",
+     "description": "...", "snippet": "...",
+     "position": 1, "score": 9.5}
+  ]
+}
+</code></pre>
+
+    <h2>Other endpoints</h2>
+    <ul>
+      <li><code>POST /v1/scrape</code> <code>{"url":"...","formats":["markdown"]}</code> — one URL → markdown</li>
+      <li><code>POST /v1/map</code> <code>{"url":"...","limit":50}</code> — discover URLs</li>
+      <li><code>POST /v1/crawl</code> <code>{"url":"...","maxPages":5}</code> — async multi-page; poll <code>GET /v1/crawl/{id}</code></li>
+      <li><code>POST /v1/scrape</code> with <code>formats:["json"]</code> + <code>jsonOptions.schema</code> — structured extract</li>
+    </ul>
+
+    <h2>Install (local setup only)</h2>
+    <p>
+      <code>pip install crw</code> ·
+      <code>npx crw-mcp</code> ·
+      <code>brew install us/crw/crw</code> ·
+      <code>curl -fsSL https://raw.githubusercontent.com/us/crw/main/install.sh | sh</code> ·
+      <code>docker run -p 3000:3000 ghcr.io/us/crw:latest</code>
+    </p>
+
+    <h2>Resources</h2>
+    <ul>
+      <li><a href="/openapi.json">OpenAPI spec</a></li>
+      <li><a href="/llms.txt">llms.txt</a></li>
+      <li><a href="https://context7.com/us/crw">Context7</a></li>
+      <li><a href="https://www.npmjs.com/package/crw-mcp">MCP Server (npm)</a></li>
+      <li><a href="https://pypi.org/project/crw/">Typed Python SDK</a></li>
+      <li><a href="/agent-onboarding/SKILL.md">Agent Skills (SKILL.md)</a></li>
+      <li><a href="https://github.com/us/homebrew-crw">CLI (Homebrew tap)</a></li>
+      <li><a href="https://github.com/us/crw">GitHub</a></li>
+    </ul>
+  </section>
+  <style>
+    [data-agent-shell] {
+      position: absolute;
+      left: -9999px;
+      top: auto;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+  </style>
+
+  <div class="reading-progress" id="reading-progress"></div>
+
+  <header class="navbar">
+    <div class="navbar-top">
+      <div class="navbar-left">
+        <button class="hamburger" id="hamburger" aria-label="Toggle sidebar">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+        <a href="https://fastcrw.com" class="logo">
+          <img src="/logo-icon.svg" alt="CRW" height="24" class="logo-img logo-light" />
+          <img src="/logo-dark.svg" alt="CRW" height="24" class="logo-img logo-dark" />
+          <span class="logo-text">fast<span class="logo-accent">crw</span></span>
+        </a>
+      </div>
+      <div class="navbar-center">
+        <button class="search-trigger" id="search-trigger" aria-label="Search">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <span class="search-placeholder">Search...</span>
+          <span class="search-shortcut">⌘K</span>
+        </button>
+      </div>
+      <div class="navbar-right">
+        <a href="https://github.com/us/crw" target="_blank" rel="noopener" class="navbar-github" id="navbar-github" aria-label="CRW on GitHub">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          <span>us/crw</span>
+        </a>
+        <a href="https://fastcrw.com" target="_blank" rel="noopener" class="navbar-link">Status</a>
+        <a href="https://fastcrw.com/register" target="_blank" rel="noopener" class="navbar-signup">Sign Up</a>
+        <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
+          <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </svg>
+          <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <div class="navbar-tabs" id="navbar-tabs"></div>
+  </header>
+
+  <div class="overlay" id="overlay"></div>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar">
+      <nav id="sidebar-nav"></nav>
+    </aside>
+
+    <main class="content" id="content">
+      <article id="article" role="main"><h1 id="give-claude-code-live-web-access-in-5-minutes">Give Claude Code Live Web Access in 5 Minutes</h1>
+<p>This recipe walks from zero to a working Claude Code agent that can search the web and scrape pages on demand. You will run one install command, register the MCP server, then see the exact tool calls Claude makes under the hood.</p>
+<p><strong>Time to complete:</strong> ~5 minutes<br><strong>Prerequisites:</strong> Node.js 18+, Claude Code installed<br><strong>Result:</strong> Claude Code gains <code>crw_search</code>, <code>crw_scrape</code>, <code>crw_crawl</code>, <code>crw_map</code>, <code>crw_check_crawl_status</code>, and <code>crw_parse_file</code></p>
+<hr>
+<h2 id="step-1-register-the-mcp-server">Step 1 — Register the MCP server</h2>
+<h3 id="option-a-local-embedded-mode-zero-setup-no-api-key">Option A: Local embedded mode (zero setup, no API key)</h3>
+<p>The MCP binary contains a full scraping engine. No server, no account needed.</p>
+<pre><code class="language-bash">claude mcp add crw -- npx crw-mcp
+</code></pre>
+<p>Claude Code writes this into your project <code>.claude/mcp.json</code> automatically. You are done. Start a new Claude Code session and the tools are available.</p>
+<blockquote>
+<p><strong>What you get:</strong> <code>crw_scrape</code>, <code>crw_crawl</code>, <code>crw_check_crawl_status</code>, <code>crw_map</code>, <code>crw_parse_file</code>. <code>crw_search</code> requires a SearXNG backend — use cloud mode to get it instantly.</p>
+</blockquote>
+<h3 id="option-b-cloud-mode-all-6-tools-including-crw_search">Option B: Cloud mode (all 6 tools, including <code>crw_search</code>)</h3>
+<p>Get a free API key at <a href="https://fastcrw.com">fastcrw.com</a> — 500 one-time lifetime credits, no monthly reset.</p>
+<pre><code class="language-bash">claude mcp add \
+  -e CRW_API_URL=https://api.fastcrw.com \
+  -e CRW_API_KEY=crw_live_xxxxxxxxxxxx \
+  crw -- npx crw-mcp
+</code></pre>
+<p>This registers the same <code>crw-mcp</code> binary in proxy mode. Tool calls are forwarded to <code>api.fastcrw.com</code>. All 6 tools are advertised, including <code>crw_search</code>.</p>
+<p><strong>Verify it works:</strong></p>
+<pre><code class="language-bash">claude mcp list
+# crw   npx crw-mcp   stdio
+</code></pre>
+<hr>
+<h2 id="step-2-verify-the-server-responds">Step 2 — Verify the server responds</h2>
+<pre><code class="language-bash">echo &#39;{&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:1,&quot;method&quot;:&quot;initialize&quot;,&quot;params&quot;:{&quot;clientInfo&quot;:{&quot;name&quot;:&quot;test&quot;},&quot;protocolVersion&quot;:&quot;2025-06-18&quot;}}&#39; \
+  | npx crw-mcp 2&gt;/dev/null
+</code></pre>
+<p>Expected output:</p>
+<pre><code class="language-json">{
+  &quot;jsonrpc&quot;: &quot;2.0&quot;,
+  &quot;id&quot;: 1,
+  &quot;result&quot;: {
+    &quot;protocolVersion&quot;: &quot;2025-06-18&quot;,
+    &quot;capabilities&quot;: { &quot;tools&quot;: {} },
+    &quot;serverInfo&quot;: { &quot;name&quot;: &quot;crw-mcp&quot;, &quot;version&quot;: &quot;0.16.0&quot; }
+  }
+}
+</code></pre>
+<hr>
+<h2 id="step-3-sample-agent-conversation">Step 3 — Sample agent conversation</h2>
+<p>Below is a realistic Claude Code session. The user asks about recent Rust async news. Claude uses <code>crw_search</code> to find current results, then <code>crw_scrape</code> to read the top article in full. The raw MCP JSON-RPC messages are shown so you can see exactly what Claude sends and receives.</p>
+<h3 id="user-prompt">User prompt</h3>
+<pre><code>What are the latest improvements to Rust&#39;s async ecosystem in 2025?
+Find current sources, not training data.
+</code></pre>
+<hr>
+<h3 id="turn-1-claude-calls-crw_search">Turn 1: Claude calls <code>crw_search</code></h3>
+<p>Claude recognizes it needs live data and calls the search tool first.</p>
+<p><strong>Tool call (JSON-RPC request Claude sends to <code>crw-mcp</code>):</strong></p>
+<pre><code class="language-json">{
+  &quot;jsonrpc&quot;: &quot;2.0&quot;,
+  &quot;id&quot;: 1,
+  &quot;method&quot;: &quot;tools/call&quot;,
+  &quot;params&quot;: {
+    &quot;name&quot;: &quot;crw_search&quot;,
+    &quot;arguments&quot;: {
+      &quot;query&quot;: &quot;Rust async ecosystem improvements 2025&quot;,
+      &quot;limit&quot;: 5,
+      &quot;lang&quot;: &quot;en&quot;,
+      &quot;tbs&quot;: &quot;qdr:y&quot;
+    }
+  }
+}
+</code></pre>
+<p><strong>Tool result (JSON-RPC response <code>crw-mcp</code> returns):</strong></p>
+<pre><code class="language-json">{
+  &quot;jsonrpc&quot;: &quot;2.0&quot;,
+  &quot;id&quot;: 1,
+  &quot;result&quot;: {
+    &quot;content&quot;: [
+      {
+        &quot;type&quot;: &quot;text&quot;,
+        &quot;text&quot;: &quot;{\&quot;success\&quot;:true,\&quot;data\&quot;:{\&quot;results\&quot;:[{\&quot;title\&quot;:\&quot;Async Rust in 2025: What&#39;s new in Tokio 1.40 and async-std\&quot;,\&quot;url\&quot;:\&quot;https://blog.rust-lang.org/2025/03/async-update\&quot;,\&quot;description\&quot;:\&quot;An overview of the improvements shipped in Tokio 1.40, including structured concurrency primitives and reduced poll overhead.\&quot;,\&quot;position\&quot;:1},{\&quot;title\&quot;:\&quot;async-trait is now stable: trait async fn lands in Rust 1.78\&quot;,\&quot;url\&quot;:\&quot;https://this-week-in-rust.org/blog/2025/01/async-trait-stable\&quot;,\&quot;description\&quot;:\&quot;RFC 3185 (async fn in traits) is now stable, eliminating the need for the async-trait crate in most cases.\&quot;,\&quot;position\&quot;:2},{\&quot;title\&quot;:\&quot;Rust async generators RFC merged\&quot;,\&quot;url\&quot;:\&quot;https://github.com/rust-lang/rfcs/pull/3513\&quot;,\&quot;description\&quot;:\&quot;The async generators RFC was merged in early 2025, enabling yield-based async iteration.\&quot;,\&quot;position\&quot;:3},{\&quot;title\&quot;:\&quot;Tokio 1.40 release notes\&quot;,\&quot;url\&quot;:\&quot;https://tokio.rs/blog/2025-02-tokio-1-40\&quot;,\&quot;description\&quot;:\&quot;Full changelog for Tokio 1.40 including task_local improvements, CancellationToken updates, and select! macro fixes.\&quot;,\&quot;position\&quot;:4},{\&quot;title\&quot;:\&quot;Embassy: async embedded Rust matures in 2025\&quot;,\&quot;url\&quot;:\&quot;https://embassy.dev/blog/2025-q1-update\&quot;,\&quot;description\&quot;:\&quot;Embassy embedded async framework now supports stable async fn in traits and ships without nightly.\&quot;,\&quot;position\&quot;:5}]}}&quot;
+      }
+    ]
+  }
+}
+</code></pre>
+<p>Claude now has 5 live search results with titles, URLs, and descriptions. It picks the most informative result to read in full.</p>
+<hr>
+<h3 id="turn-2-claude-calls-crw_scrape">Turn 2: Claude calls <code>crw_scrape</code></h3>
+<p><strong>Tool call (JSON-RPC request):</strong></p>
+<pre><code class="language-json">{
+  &quot;jsonrpc&quot;: &quot;2.0&quot;,
+  &quot;id&quot;: 2,
+  &quot;method&quot;: &quot;tools/call&quot;,
+  &quot;params&quot;: {
+    &quot;name&quot;: &quot;crw_scrape&quot;,
+    &quot;arguments&quot;: {
+      &quot;url&quot;: &quot;https://this-week-in-rust.org/blog/2025/01/async-trait-stable&quot;,
+      &quot;formats&quot;: [&quot;markdown&quot;],
+      &quot;onlyMainContent&quot;: true
+    }
+  }
+}
+</code></pre>
+<p><strong>Tool result (JSON-RPC response):</strong></p>
+<pre><code class="language-json">{
+  &quot;jsonrpc&quot;: &quot;2.0&quot;,
+  &quot;id&quot;: 2,
+  &quot;result&quot;: {
+    &quot;content&quot;: [
+      {
+        &quot;type&quot;: &quot;text&quot;,
+        &quot;text&quot;: &quot;{\&quot;success\&quot;:true,\&quot;data\&quot;:{\&quot;markdown\&quot;:\&quot;# async fn in traits is now stable\\n\\nRust 1.78 stabilizes `async fn` in traits (RFC 3185). You can now write:\\n\\n```rust\\ntrait Fetcher {\\n    async fn fetch(&amp;self, url: &amp;str) -&gt; Result&lt;String, Error&gt;;\\n}\\n```\\n\\nwithout adding the `async-trait` proc-macro crate as a dependency.\\n\\n## What changes\\n\\n- `async fn` in public trait methods works on stable.\\n- Return-position `impl Trait` (RPIT) in traits is also stable.\\n- The `async-trait` crate still works and is useful for object-safe traits (dyn Trait).\\n\\n## Migration\\n\\nRemove `#[async_trait]` attributes and the crate dependency for non-dyn traits. Dynamic dispatch still requires a workaround or the `async-trait` crate.\\n\\n## Credits\\n\\nThis feature was stabilized after 3 years of design work led by @nikomatsakis and the async working group.\&quot;,\&quot;metadata\&quot;:{\&quot;sourceURL\&quot;:\&quot;https://this-week-in-rust.org/blog/2025/01/async-trait-stable\&quot;,\&quot;title\&quot;:\&quot;async fn in traits is now stable\&quot;,\&quot;statusCode\&quot;:200,\&quot;renderedWith\&quot;:\&quot;http\&quot;,\&quot;elapsedMs\&quot;:450}}}&quot;
+      }
+    ]
+  }
+}
+</code></pre>
+<blockquote>
+<p><strong>Response shape note:</strong> In cloud/proxy mode (<code>CRW_API_URL=https://api.fastcrw.com</code>), <code>crw-mcp</code> forwards the call to the REST API and returns the full envelope — <code>{&quot;success&quot;:true,&quot;data&quot;:{...}}</code> — verbatim as <code>content[0].text</code>. In local embedded mode (<code>npx crw-mcp</code> with no <code>CRW_API_URL</code>), the MCP server returns the bare <code>ScrapeData</code> shape — <code>{&quot;markdown&quot;:&quot;...&quot;,&quot;metadata&quot;:{...}}</code> — directly, without the <code>success</code>/<code>data</code> wrapper.</p>
+</blockquote>
+<hr>
+<h3 id="claudes-final-answer-to-the-user">Claude&#39;s final answer to the user</h3>
+<blockquote>
+<p>Based on live sources fetched right now:</p>
+<p><strong>1. <code>async fn</code> in traits is stable (Rust 1.78)</strong>
+RFC 3185 landed — you can write <code>async fn</code> directly in trait definitions without the <code>async-trait</code> crate. Dynamic dispatch (<code>dyn Trait</code>) still needs a workaround.</p>
+<p><strong>2. Tokio 1.40 ships structured concurrency primitives</strong>
+<code>CancellationToken</code> updates and reduced poll overhead are the headlining changes in the February release.</p>
+<p><strong>3. Async generators RFC merged</strong>
+Yield-based async iteration via <code>async gen {}</code> blocks is coming after the RFC merged in early 2025.</p>
+<p><strong>4. Embassy runs on stable</strong>
+The embedded async framework no longer requires nightly after async fn in traits stabilized.</p>
+<p>Sources: blog.rust-lang.org, this-week-in-rust.org, tokio.rs, github.com/rust-lang/rfcs, embassy.dev</p>
+</blockquote>
+<hr>
+<h2 id="tool-reference-mcp">Tool reference (MCP)</h2>
+<p>All 6 tools registered by <code>crw-mcp</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>Required params</th>
+<th>Returns</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>crw_search</code></td>
+<td><code>query</code></td>
+<td><code>{ success, data: { results: [{title, url, description, position}] } }</code></td>
+</tr>
+<tr>
+<td><code>crw_scrape</code></td>
+<td><code>url</code></td>
+<td><code>{ success, data: { markdown, metadata: { sourceURL, title, statusCode, renderedWith } } }</code> (cloud); <code>{ markdown, metadata: {...} }</code> (embedded)</td>
+</tr>
+<tr>
+<td><code>crw_crawl</code></td>
+<td><code>url</code></td>
+<td><code>{ success, id }</code> — async job ID</td>
+</tr>
+<tr>
+<td><code>crw_check_crawl_status</code></td>
+<td><code>id</code></td>
+<td><code>{ status, data: [...], total, completed }</code></td>
+</tr>
+<tr>
+<td><code>crw_map</code></td>
+<td><code>url</code></td>
+<td><code>{ links: [&quot;url1&quot;, ...] }</code></td>
+</tr>
+<tr>
+<td><code>crw_parse_file</code></td>
+<td><code>contentBase64</code></td>
+<td><code>{ success, data: { markdown } }</code></td>
+</tr>
+</tbody></table>
+<p><strong>Key points:</strong></p>
+<ul>
+<li><code>crw_search</code> advertises a <code>country</code> field in its schema but the backend ignores it — use <code>lang</code> for language filtering instead. Use <code>tbs</code> for time filtering (<code>qdr:h|qdr:d|qdr:w|qdr:m|qdr:y</code>).</li>
+<li><code>crw_search</code> is only available in proxy/cloud mode, or in embedded mode when a SearXNG backend is configured.</li>
+<li>Crawl status values: <code>scraping</code> | <code>completed</code> | <code>failed</code>.</li>
+<li>All content fields default to a ~15 000 char limit. Pass <code>maxLength: 0</code> to disable truncation.</li>
+</ul>
+<hr>
+<h2 id="whats-next">What&#39;s next</h2>
+<ul>
+<li><a href="/docs/mcp">MCP Server overview</a> — two modes, all CLI flags, transport options</li>
+<li><a href="/docs/mcp-clients">MCP Client Setup</a> — Cursor, Windsurf, Cline, Continue, Gemini CLI configs</li>
+<li><a href="/docs/scraping">Scraping guide</a> — <code>formats</code>, <code>renderJs</code>, <code>onlyMainContent</code> in depth</li>
+<li><a href="/docs/crawling">Crawling guide</a> — <code>maxDepth</code>, <code>maxPages</code>, poll loop</li>
+</ul>
+</article>
+    </main>
+
+    <aside class="toc" id="toc">
+      <div class="toc-header">On this page</div>
+      <nav id="toc-nav"></nav>
+      <div id="toc-helper"></div>
+      <div class="toc-cta">
+        <div class="toc-cta-brand">
+          <img src="/logo-icon.svg" alt="CRW" height="18" class="logo-img logo-light" />
+          <img src="/logo-dark.svg" alt="CRW" height="18" class="logo-img logo-dark" />
+          <span>CRW</span>
+        </div>
+        <div class="toc-cta-title">Ready to scrape?</div>
+        <div class="toc-cta-desc">Sign up and get 500 free credits instantly. No credit card required.</div>
+        <a href="https://fastcrw.com/register" target="_blank" rel="noopener" class="toc-cta-btn primary">Get started — 500 free credits</a>
+        <a href="https://github.com/us/crw" target="_blank" rel="noopener" class="toc-cta-btn outline">View on GitHub</a>
+      </div>
+    </aside>
+  </div>
+
+  <footer class="footer" id="footer">
+    <div class="footer-inner">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <div class="footer-brand-logo">
+            <img src="/logo-icon.svg" alt="CRW" class="logo-img logo-light" />
+            <img src="/logo-dark.svg" alt="CRW" class="logo-img logo-dark" />
+            <span>CRW</span>
+          </div>
+          <div class="footer-tagline">The base layer for agentic web intelligence.</div>
+          <div class="footer-socials"><a href="https://github.com/us/crw" target="_blank" rel="noopener" class="footer-social" aria-label="GitHub"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg></a></div>
+        </div>
+        <div class="footer-col">
+          <div class="footer-col-title">Product</div>
+          <div class="footer-col-links">
+            <a href="#introduction">Documentation</a>
+            <a href="#rest-api">API Reference</a>
+            <a href="#mcp">MCP Server</a>
+            <a href="#changelog">Changelog</a>
+          </div>
+        </div>
+        <div class="footer-col">
+          <div class="footer-col-title">Community</div>
+          <div class="footer-col-links">
+            <a href="https://github.com/us/crw" target="_blank" rel="noopener">GitHub</a>
+            <a href="https://github.com/us/crw/issues" target="_blank" rel="noopener">Issues</a>
+            <a href="https://discord.gg/VNxv2DuBB" target="_blank" rel="noopener">Discord</a>
+          </div>
+        </div>
+        <div class="footer-col">
+          <div class="footer-col-title">Legal</div>
+          <div class="footer-col-links">
+            <a href="https://github.com/us/crw/blob/main/LICENSE" target="_blank" rel="noopener">License (AGPL-3.0)</a>
+          </div>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <div class="footer-copyright">&copy; 2026 CRW. All rights reserved.</div>
+        <div class="footer-status"><span class="footer-status-dot"></span> All systems operational</div>
+      </div>
+    </div>
+  </footer>
+
+  <div class="search-modal" id="search-modal">
+    <div class="search-modal-content">
+      <div class="search-input-wrapper">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="text" id="search-input" placeholder="Search documentation..." autocomplete="off">
+        <kbd>esc</kbd>
+      </div>
+      <div class="search-results" id="search-results"></div>
+    </div>
+  </div>
+
+  <script type="module" src="/js/theme.js"></script>
+  <script type="module" src="/js/search.js"></script>
+  <script type="module" src="/js/app.js"></script>
+  <script>window.__INITIAL_SLUG__ = "recipe-mcp-5min";</script>
+</body>
+</html>

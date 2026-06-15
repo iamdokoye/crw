@@ -301,6 +301,51 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <li>optional browser-backed rendering</li>
 <li>your own reverse proxy, logging, rate limits, and deployment choices</li>
 </ul>
+<h2 id="deployment-paths-compared">Deployment Paths Compared</h2>
+<p>Three deployment paths cover most self-hosted use cases. Choose based on how much JS rendering you need and how much you want to operate.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Single binary (<code>config.default</code>)</th>
+<th>Docker Compose (<code>config.docker</code>)</th>
+<th>Docker Compose stealth (<code>docker-compose.stealth.yml</code>)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Setup effort</strong></td>
+<td>Lowest — one binary, one TOML</td>
+<td>Medium — <code>docker compose up -d</code>, two or three sidecars</td>
+<td>Highest — compose + stealth override file, token rotation</td>
+</tr>
+<tr>
+<td><strong>JS rendering included</strong></td>
+<td>No — LightPanda must be started separately; Chrome disabled by default</td>
+<td>Yes — LightPanda bundled; Chrome via <code>--profile heavy</code></td>
+<td>Yes — browserless/chromium with anti-fingerprint plugin (<code>--profile stealth</code>), +2.5 pt success over vanilla Chrome</td>
+</tr>
+<tr>
+<td><strong>Search (<code>/v1/search</code>) included</strong></td>
+<td>No — <code>searxng_url</code> not set; returns <code>search_disabled</code> until you point it at your own SearXNG</td>
+<td>Yes — SearXNG sidecar auto-started; <code>/v1/search</code> and <code>crw_search</code> MCP tool work out of the box</td>
+<td>Yes — same as <code>config.docker</code></td>
+</tr>
+<tr>
+<td><strong>Rate limit default</strong></td>
+<td>10 req/s global</td>
+<td>Unlimited (0) — per-host limits still apply</td>
+<td>Unlimited (0)</td>
+</tr>
+<tr>
+<td><strong>Best for</strong></td>
+<td>Local dev, CI, minimal VPS where you control sidecars yourself</td>
+<td>Standard production VPS or server</td>
+<td>Production workloads on bot-protected targets; requires SSPL-3.0 license review before exposing to third parties</td>
+</tr>
+</tbody></table>
+<blockquote>
+<p><strong>Chrome vs stealth:</strong> The default <code>--profile heavy</code> uses <code>chromedp/headless-shell</code> (Apache-2/BSD, no license concerns). The <code>--profile stealth</code> uses <code>browserless/chromium</code> (SSPL-3.0) and raised success rate from 87.1 % to 89.6 % on a 1 000-URL Firecrawl benchmark. Check the license notice in <code>docker-compose.yml</code> before using the stealth profile in any service that exposes scraping to third parties.</p>
+</blockquote>
 <h2 id="recommended-rollout">Recommended Rollout</h2>
 <ol>
 <li>start with <code>scrape</code> on a real target</li>
@@ -384,6 +429,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
           <div class="footer-col-links">
             <a href="https://github.com/us/crw" target="_blank" rel="noopener">GitHub</a>
             <a href="https://github.com/us/crw/issues" target="_blank" rel="noopener">Issues</a>
+            <a href="https://discord.gg/VNxv2DuBB" target="_blank" rel="noopener">Discord</a>
           </div>
         </div>
         <div class="footer-col">

@@ -327,7 +327,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <pre><code class="language-python">import requests
 
 resp = requests.post(
-    &quot;https://fastcrw.com/api/v1/map&quot;,
+    &quot;https://api.fastcrw.com/v1/map&quot;,
     headers={&quot;Authorization&quot;: &quot;Bearer YOUR_API_KEY&quot;},
     json={
         &quot;url&quot;: &quot;https://example.com&quot;,
@@ -339,7 +339,7 @@ resp = requests.post(
 print(resp.json()[&quot;data&quot;][&quot;links&quot;])
 </code></pre>
 <p>::tab{title=&quot;Node.js&quot;}</p>
-<pre><code class="language-javascript">const resp = await fetch(&quot;https://fastcrw.com/api/v1/map&quot;, {
+<pre><code class="language-javascript">const resp = await fetch(&quot;https://api.fastcrw.com/v1/map&quot;, {
   method: &quot;POST&quot;,
   headers: {
     &quot;Authorization&quot;: &quot;Bearer YOUR_API_KEY&quot;,
@@ -356,7 +356,7 @@ const body = await resp.json();
 console.log(body.data.links);
 </code></pre>
 <p>::tab{title=&quot;cURL&quot;}</p>
-<pre><code class="language-bash">curl -X POST https://fastcrw.com/api/v1/map \
+<pre><code class="language-bash">curl -X POST https://api.fastcrw.com/v1/map \
   -H &quot;Authorization: Bearer YOUR_API_KEY&quot; \
   -H &quot;Content-Type: application/json&quot; \
   -d &#39;{
@@ -403,13 +403,55 @@ console.log(body.data.links);
 <td><code>useSitemap</code></td>
 <td>boolean</td>
 <td><code>true</code></td>
-<td>Read sitemap hints when available</td>
+<td>Read sitemap.xml hints when available</td>
+</tr>
+<tr>
+<td><code>crawlFallback</code></td>
+<td>boolean</td>
+<td><code>true</code></td>
+<td>After the sitemap phase, run a short-budget BFS crawl to fill gaps. Set to <code>false</code> for sitemap-only mode (faster on sites with rich sitemaps, but may miss pages the sitemap omits)</td>
 </tr>
 <tr>
 <td><code>timeout</code></td>
 <td>number</td>
-<td>server default</td>
+<td><code>120</code></td>
 <td>Custom timeout in seconds</td>
+</tr>
+<tr>
+<td><code>ignoreQueryParameters</code></td>
+<td>boolean</td>
+<td><code>null</code></td>
+<td>Coarse filter switch. <code>true</code> strips every non-preserved query param; <code>false</code> disables all URL filtering (raw URLs)</td>
+</tr>
+<tr>
+<td><code>stripTrackingParams</code></td>
+<td>boolean</td>
+<td><code>null</code></td>
+<td>Strip known tracking query params (UTM, fbclid, etc.) from discovered URLs. <code>null</code> uses the server default</td>
+</tr>
+<tr>
+<td><code>dropActionUrls</code></td>
+<td>boolean</td>
+<td><code>null</code></td>
+<td>Drop action/mutation URLs (add-to-cart, checkout, logout, etc.) from results entirely. <code>null</code> uses the server default</td>
+</tr>
+<tr>
+<td><code>extraTrackingParams</code></td>
+<td>string[]</td>
+<td><code>—</code></td>
+<td>Additional query param names to treat as tracking (stripped by Tier B). Additive on top of the built-in list. Max 64 entries; keys are normalised (lowercase, <code>-</code> → <code>_</code>)</td>
+</tr>
+<tr>
+<td><code>extraActionParams</code></td>
+<td>string[]</td>
+<td><code>—</code></td>
+<td>Additional query param names to treat as action params (dropped by Tier A). Additive on top of the built-in list. Max 64 entries; keys are normalised</td>
+</tr>
+<tr>
+<td><code>preserveParams</code></td>
+<td>string[]</td>
+<td><code>—</code></td>
+<td>Query param names to always keep, even when tracking/action filters are active. Additive on top of the built-in preserve list. Max 64 entries; keys are normalised</td>
 </tr>
 </tbody></table>
 <h2 id="sitemap-behavior">Sitemap behavior</h2>
@@ -494,6 +536,7 @@ console.log(body.data.links);
           <div class="footer-col-links">
             <a href="https://github.com/us/crw" target="_blank" rel="noopener">GitHub</a>
             <a href="https://github.com/us/crw/issues" target="_blank" rel="noopener">Issues</a>
+            <a href="https://discord.gg/VNxv2DuBB" target="_blank" rel="noopener">Discord</a>
           </div>
         </div>
         <div class="footer-col">

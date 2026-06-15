@@ -18,7 +18,8 @@ Use this file as the required template for future docs work.
   10. Common mistakes
   11. What to read next
 - Every example must be copy-pasteable.
-- Use `https://fastcrw.com/api` as the canonical hosted base URL.
+- Use `https://api.fastcrw.com` as the canonical hosted base URL.
+- **Two API namespaces:** ENGINE endpoints (`scrape`, `map`, `crawl`, `search`, `extract`, `parse`) live at `https://api.fastcrw.com`. SaaS control-plane endpoints (account balance, monitor CRUD) live at `https://fastcrw.com/api`. Self-hosted exposes the engine namespace only.
 - Use `http://localhost:3000` as the canonical self-hosted default.
 - Shared concepts live on one page and are linked, not re-explained differently across multiple pages.
 - Use `tabs` only for language-switched code examples.

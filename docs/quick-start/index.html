@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Quick Start — CRW Docs</title>
-  <meta name="description" content="Get one successful CRW response as fast as possible. The shortest path is the hosted API on fastcrw.com ; MCP and self-hosting come right after that.">
+  <meta name="description" content="Get your first successful CRW response in under three minutes. This page follows the API path; the optional MCP path (giving an AI assistant live web access) is at the bottom.">
   <meta name="keywords" content="web scraper, web crawler, firecrawl alternative, crawl4ai alternative, self-hosted scraper, rust web scraper, mcp server, ai web scraping, rag pipeline, llm extraction, open source crawler, headless browser scraper">
   <link rel="canonical" href="https://docs.fastcrw.com/quick-start">
   <link rel="icon" href="/favicon.png?v=2" type="image/png">
@@ -15,13 +15,13 @@
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://docs.fastcrw.com/quick-start">
   <meta property="og:title" content="Quick Start — CRW | Web Scraper in Rust">
-  <meta property="og:description" content="Get one successful CRW response as fast as possible. The shortest path is the hosted API on fastcrw.com ; MCP and self-hosting come right after that.">
+  <meta property="og:description" content="Get your first successful CRW response in under three minutes. This page follows the API path; the optional MCP path (giving an AI assistant live web access) is at the bottom.">
   <meta property="og:site_name" content="CRW">
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="Quick Start — CRW Docs">
-  <meta name="twitter:description" content="Get one successful CRW response as fast as possible. The shortest path is the hosted API on fastcrw.com ; MCP and self-hosting come right after that.">
+  <meta name="twitter:description" content="Get your first successful CRW response in under three minutes. This page follows the API path; the optional MCP path (giving an AI assistant live web access) is at the bottom.">
 
   <!-- Structured Data (JSON-LD) -->
   <script type="application/ld+json">
@@ -285,29 +285,31 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
       <article id="article" role="main"><div class="page-intro">
   <div class="page-kicker">Get Started</div>
   <h1 id="quick-start">Quick Start</h1>
-  <p class="page-subtitle">Get one successful CRW response as fast as possible. The shortest path is the hosted API on <code>fastcrw.com</code>; MCP and self-hosting come right after that.</p>
+  <p class="page-subtitle">Get your first successful CRW response in under three minutes. This page follows the API path; the optional MCP path (giving an AI assistant live web access) is at the bottom.</p>
   <div class="page-capabilities">
-    <div class="page-capability"><strong>Goal:</strong> first success in under a minute</div>
-    <div class="page-capability"><strong>Start with:</strong> cloud API</div>
-    <div class="page-capability"><strong>Then branch to:</strong> MCP or self-host</div>
+    <div class="page-capability"><strong>Goal:</strong> first success in under 3 minutes</div>
+    <div class="page-capability"><strong>Base URL:</strong> <code>https://api.fastcrw.com</code></div>
+    <div class="page-capability"><strong>Free tier:</strong> 500 credits, no card required</div>
   </div>
   <div class="page-actions">
     <a class="page-btn primary" href="https://fastcrw.com/register" target="_blank" rel="noopener">Get API key</a>
     <a class="page-btn secondary" href="https://fastcrw.com/playground" target="_blank" rel="noopener">Open Playground</a>
   </div>
-</div><h2 id="start-here">Start here</h2>
-<ol>
-<li>Get an API key.</li>
-<li>Copy the request below.</li>
-<li>Confirm you got a markdown response back.</li>
-</ol>
-<p>If you reach step 3, you are unblocked for almost every other page in this docs set.</p>
-<h2 id="authentication">Authentication</h2>
-<p>Create an account at <a href="https://fastcrw.com/register">fastcrw.com/register</a>, then send the key in the <code>Authorization</code> header:</p>
-<pre><code class="language-http">Authorization: Bearer YOUR_API_KEY
-</code></pre>
-<h2 id="first-request">First request</h2>
-<pre><code class="language-bash">curl -X POST https://fastcrw.com/api/v1/scrape \
+</div><h2 id="prerequisites">Prerequisites</h2>
+<p>:::info Prerequisites</p>
+<ul>
+<li><strong>Terminal</strong> — macOS Terminal, Linux shell, or Windows <a href="https://learn.microsoft.com/en-us/windows/wsl/install">WSL</a></li>
+<li><strong><code>curl</code></strong> — ships with macOS 10.15+ and most Linux distros; Windows users can use WSL or <a href="https://curl.se/windows/">download curl</a></li>
+<li><strong>A free account</strong> at <a href="https://fastcrw.com/register">fastcrw.com/register</a> — 500 credits, one-time, no card required</li>
+<li><strong>Node.js 18+</strong> — only for the MCP path (optional, described at the bottom of this page)
+:::</li>
+</ul>
+<h2 id="get-a-key">Get a key</h2>
+<p>Register at <a href="https://fastcrw.com/register">fastcrw.com/register</a>. Once you confirm your email, your API key appears on the dashboard. Your account starts with <strong>500 free credits</strong> — one credit equals one basic scrape request, so you have plenty to explore.</p>
+<p>Copy the key and keep it somewhere safe. You will paste it into the <code>Authorization</code> header below.</p>
+<h2 id="first-scrape">First scrape</h2>
+<p>Paste your key in place of <code>YOUR_API_KEY</code> and run:</p>
+<pre><code class="language-bash">curl -X POST https://api.fastcrw.com/v1/scrape \
   -H &quot;Authorization: Bearer YOUR_API_KEY&quot; \
   -H &quot;Content-Type: application/json&quot; \
   -d &#39;{
@@ -315,7 +317,13 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     &quot;formats&quot;: [&quot;markdown&quot;]
   }&#39;
 </code></pre>
-<h2 id="first-response">First response</h2>
+<p><strong>Windows (PowerShell / Command Prompt)</strong>:</p>
+<pre><code class="language-powershell">curl.exe -X POST https://api.fastcrw.com/v1/scrape ^
+  -H &quot;Authorization: Bearer YOUR_API_KEY&quot; ^
+  -H &quot;Content-Type: application/json&quot; ^
+  -d &quot;{\&quot;url\&quot;:\&quot;https://example.com\&quot;,\&quot;formats\&quot;:[\&quot;markdown\&quot;]}&quot;
+</code></pre>
+<p><strong>Expected response:</strong></p>
 <pre><code class="language-json">{
   &quot;success&quot;: true,
   &quot;data&quot;: {
@@ -324,90 +332,64 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
       &quot;title&quot;: &quot;Example Domain&quot;,
       &quot;sourceURL&quot;: &quot;https://example.com&quot;,
       &quot;statusCode&quot;: 200,
-      &quot;elapsedMs&quot;: 32
+      &quot;elapsedMs&quot;: 38
     }
   }
 }
 </code></pre>
-<p>That is the default CRW shape most users should start with: one URL, one markdown output, no extra knobs.</p>
-<h2 id="the-same-request-in-code">The same request in code</h2>
-<p>:::tabs
-::tab{title=&quot;cURL&quot;}</p>
-<pre><code class="language-bash">curl -X POST https://fastcrw.com/api/v1/scrape \
-  -H &quot;Authorization: Bearer YOUR_API_KEY&quot; \
-  -H &quot;Content-Type: application/json&quot; \
-  -d &#39;{&quot;url&quot;:&quot;https://example.com&quot;,&quot;formats&quot;:[&quot;markdown&quot;]}&#39;
+<h2 id="confirm-success">Confirm success</h2>
+<p>A good response has three signs:</p>
+<ol>
+<li><code>&quot;success&quot;: true</code> at the top level.</li>
+<li>A non-empty <code>&quot;markdown&quot;</code> string inside <code>data</code>.</li>
+<li><code>metadata.statusCode</code> of <code>200</code>.</li>
+</ol>
+<p>If you see all three, you are unblocked for almost every other page in this docs set. Check your remaining balance any time on the <a href="https://fastcrw.com/dashboard">fastcrw.com dashboard</a>.</p>
+<h2 id="something-went-wrong">Something went wrong?</h2>
+<table>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>Likely cause</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>401 Unauthorized</code></td>
+<td>Key missing or malformed</td>
+<td>Make sure the header is exactly <code>Authorization: Bearer YOUR_API_KEY</code> with the <code>Bearer </code> prefix and no extra spaces</td>
+</tr>
+<tr>
+<td><code>404 Not Found</code></td>
+<td>URL typo in the request path</td>
+<td>Check that you are calling <code>/v1/scrape</code>, not <code>/scrape</code> or <code>/api/scrape</code></td>
+</tr>
+<tr>
+<td><code>429 Too Many Requests</code></td>
+<td>You hit the rate limit (not out of credits)</td>
+<td>Wait a few seconds and retry; see <a href="rate-limits.md">Rate Limits</a> for burst and per-minute limits</td>
+</tr>
+<tr>
+<td><code>&quot;markdown&quot;: &quot;&quot;</code> (empty string)</td>
+<td>Page requires JavaScript to render</td>
+<td>Add <code>&quot;renderJs&quot;: true</code> to your request body and retry</td>
+</tr>
+<tr>
+<td><code>&quot;success&quot;: false</code> with an error message</td>
+<td>Request body issue</td>
+<td>Double-check JSON syntax — trailing commas and unquoted keys both cause parse errors</td>
+</tr>
+</tbody></table>
+<h2 id="whats-next">What&#39;s next</h2>
+<p>You now know how to call the engine. The next decision is which endpoint fits your use case:</p>
+<p>→ <strong><a href="choose-endpoint.md">Choose Your Endpoint</a></strong> — a quick decision tree across <code>scrape</code>, <code>map</code>, <code>crawl</code> (multi-page traversal), <code>search</code>, <code>extract</code>, and <code>parse</code>.</p>
+<h2 id="mcp-path-optional">MCP path (optional)</h2>
+<p>MCP (Model Context Protocol) is a standard that lets AI assistants call external tools — in this case, live web scraping — without you writing any glue code. If your goal is to give Claude, Cursor, Windsurf, or another MCP-compatible assistant live web access, this is the fastest way to do it.</p>
+<p><strong>Requires Node.js 18+</strong> (<a href="https://nodejs.org/en/download/">nodejs.org/en/download</a>).</p>
+<pre><code class="language-bash">claude mcp add crw -- npx -y crw-mcp
 </code></pre>
-<p>::tab{title=&quot;Python&quot;}</p>
-<pre><code class="language-python">import requests
-
-resp = requests.post(
-    &quot;https://fastcrw.com/api/v1/scrape&quot;,
-    headers={
-        &quot;Authorization&quot;: &quot;Bearer YOUR_API_KEY&quot;,
-        &quot;Content-Type&quot;: &quot;application/json&quot;,
-    },
-    json={
-        &quot;url&quot;: &quot;https://example.com&quot;,
-        &quot;formats&quot;: [&quot;markdown&quot;],
-    },
-)
-
-print(resp.json()[&quot;data&quot;][&quot;markdown&quot;])
-</code></pre>
-<p>::tab{title=&quot;Node.js&quot;}</p>
-<pre><code class="language-javascript">const resp = await fetch(&quot;https://fastcrw.com/api/v1/scrape&quot;, {
-  method: &quot;POST&quot;,
-  headers: {
-    &quot;Authorization&quot;: &quot;Bearer YOUR_API_KEY&quot;,
-    &quot;Content-Type&quot;: &quot;application/json&quot;
-  },
-  body: JSON.stringify({
-    url: &quot;https://example.com&quot;,
-    formats: [&quot;markdown&quot;]
-  })
-});
-
-const body = await resp.json();
-console.log(body.data.markdown);
-</code></pre>
-<p>:::</p>
-<h2 id="pick-the-next-page">Pick the next page</h2>
-<p>:::cards
-::card{icon=&quot;code&quot; title=&quot;Need a known URL?&quot; href=&quot;#scraping&quot; description=&quot;Stay with scrape and add formats, selectors, JS rendering, or extraction.&quot;}
-::card{icon=&quot;search&quot; title=&quot;Need unknown URLs?&quot; href=&quot;#search&quot; description=&quot;Use search first, then scrape only the results you care about.&quot;}
-::card{icon=&quot;map&quot; title=&quot;Need discovery on one site?&quot; href=&quot;#map&quot; description=&quot;Use map when you need reachability before you recurse.&quot;}
-::card{icon=&quot;globe&quot; title=&quot;Need multiple pages?&quot; href=&quot;#crawling&quot; description=&quot;Use crawl for bounded recursion after you validate the target section.&quot;}
-:::</p>
-<h2 id="mcp-path">MCP path</h2>
-<p>If your real goal is to give an AI tool live web access, go straight to MCP:</p>
-<pre><code class="language-bash">claude mcp add crw -- npx crw-mcp
-</code></pre>
-<p>For Codex, Cursor, Windsurf, and others, continue in <a href="/mcp">MCP Server</a>.</p>
-<h2 id="self-host-path">Self-host path</h2>
-<p>If you want a local or private deployment instead of the hosted API:</p>
-<pre><code class="language-bash">docker run -p 3000:3000 ghcr.io/us/crw
-</code></pre>
-<p>Then call the local API:</p>
-<pre><code class="language-bash">curl -X POST http://localhost:3000/v1/scrape \
-  -H &quot;Content-Type: application/json&quot; \
-  -d &#39;{&quot;url&quot;:&quot;https://example.com&quot;,&quot;formats&quot;:[&quot;markdown&quot;]}&#39;
-</code></pre>
-<p>Use <a href="/self-hosting">Self-Hosting</a> for the full deployment path and <a href="/installation">Installation</a> for package-level install options.</p>
-<h2 id="common-mistakes">Common mistakes</h2>
-<ul>
-<li>Using too many options in the first request. Start with <code>formats: [&quot;markdown&quot;]</code>.</li>
-<li>Turning on JS rendering before checking whether plain HTTP already works.</li>
-<li>Jumping into <code>crawl</code> before validating the target with <code>scrape</code>.</li>
-<li>Treating <code>search</code> as self-hosted. In these docs, <code>search</code> is the hosted/cloud path unless noted otherwise.</li>
-</ul>
-<h2 id="what-to-read-next">What to read next</h2>
-<ul>
-<li><a href="/scraping">Scrape</a> for the canonical single-page flow</li>
-<li><a href="/search">Search</a> for discovery-first workflows</li>
-<li><a href="/authentication">Authentication</a> for key handling</li>
-<li><a href="/self-hosting">Self-Hosting</a> if you want to move off the hosted path</li>
-</ul>
+<p>Once registered, your AI assistant gains six web tools (<code>crw_scrape</code>, <code>crw_crawl</code>, <code>crw_map</code>, <code>crw_search</code> (SearXNG-backed search; available when a SearXNG backend is configured), <code>crw_parse_file</code>, and more). On the next conversation turn the assistant can call them automatically whenever it needs to fetch a live page or run a crawl. No further setup is needed for the embedded mode.</p>
+<p>For client-specific config files (Codex, Cursor, Windsurf, Cline, Continue.dev) and the proxy mode that connects to the fastcrw.com cloud, see <a href="mcp.md">MCP Server</a>.</p>
 </article>
     </main>
 
@@ -455,6 +437,7 @@ console.log(body.data.markdown);
           <div class="footer-col-links">
             <a href="https://github.com/us/crw" target="_blank" rel="noopener">GitHub</a>
             <a href="https://github.com/us/crw/issues" target="_blank" rel="noopener">Issues</a>
+            <a href="https://discord.gg/VNxv2DuBB" target="_blank" rel="noopener">Discord</a>
           </div>
         </div>
         <div class="footer-col">

@@ -285,30 +285,31 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
       <article id="article" role="main"><h1 id="docker">Docker</h1>
 <p>Run crw with Docker Compose for the easiest setup with JS rendering included.</p>
 <h2 id="pre-built-image">Pre-built Image</h2>
-<pre><code class="language-bash">docker pull ghcr.io/us/crw:latest
-docker run -p 3000:3000 ghcr.io/us/crw:latest
+<pre><code class="language-bash">docker pull ghcr.io/us/crw:0.16.0
+docker run -p 3000:3000 ghcr.io/us/crw:0.16.0
 </code></pre>
-<p>Available tags: <code>latest</code>, <code>0.0.1</code>, <code>0.0</code></p>
+<p>Available tags: <code>latest</code>, <code>0.16</code> (tracks the current minor), <code>0.16.0</code> (pinned).
+Use a pinned tag in production — <code>latest</code> rolls forward on every release.</p>
 <h2 id="docker-compose">Docker Compose</h2>
 <pre><code class="language-bash">git clone https://github.com/us/crw.git
 cd crw
 docker compose up
 </code></pre>
 <blockquote>
-<p><strong>Build memory.</strong> The <code>crw</code> image builds from source with a release LTO link
-(<code>-C lto -C codegen-units=1</code> in the release profile), which is memory-hungry.
-Give Docker <strong>≥ 8 GB RAM</strong> for the build — on a 4 GB Docker VM the final
-<code>crw-server</code> link gets OOM-killed (<code>failed to solve: ResourceExhausted: cannot allocate memory</code>). If you&#39;re capped at 4 GB, serialize the build so only one
-codegen unit links at a time: <code>CARGO_BUILD_JOBS=1 docker compose build crw</code>,
-then <code>docker compose up -d</code>. This is a one-time build cost — the runtime image
-is small.</p>
+<p><strong>Build memory.</strong> The container build uses thin LTO across 16 codegen units
+(<code>CARGO_PROFILE_RELEASE_LTO=thin</code>, <code>CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16</code>),
+which keeps peak link memory well below the workspace default (fat LTO + 1 unit).
+Give Docker <strong>≥ 4 GB RAM</strong> for the build. If you&#39;re capped lower, serialize
+the link step: <code>CARGO_BUILD_JOBS=1 docker compose build crw</code>, then
+<code>docker compose up -d</code>. This is a one-time build cost — the runtime image is small.</p>
 </blockquote>
 <p>The bundled <code>docker-compose.yml</code> starts these services:</p>
 <table>
 <thead>
 <tr>
 <th>Service</th>
-<th>Port</th>
+<th>Internal Port</th>
+<th>Published to host?</th>
 <th>Default?</th>
 <th>Description</th>
 </tr>
@@ -316,34 +317,41 @@ is small.</p>
 <tbody><tr>
 <td><strong>crw</strong></td>
 <td>3000</td>
+<td>✅ <code>0.0.0.0:3000</code></td>
 <td>✅</td>
 <td>API server (loads <code>config.docker.toml</code>)</td>
 </tr>
 <tr>
 <td><strong>searxng</strong></td>
 <td>8080</td>
+<td>❌ internal only²</td>
 <td>✅</td>
 <td>SearXNG meta-search backend for <code>/v1/search</code></td>
 </tr>
 <tr>
 <td><strong>lightpanda</strong></td>
 <td>9222</td>
+<td>❌ internal only</td>
 <td>✅</td>
 <td>Lightweight headless browser for JS rendering</td>
 </tr>
 <tr>
 <td><strong>chrome</strong></td>
 <td>9222</td>
+<td>❌ internal only</td>
 <td><code>--profile heavy</code></td>
 <td>Full Chromium fallback for complex SPAs</td>
 </tr>
 <tr>
 <td><strong>chrome-stealth</strong></td>
-<td>3000</td>
+<td>3000¹</td>
+<td>✅ <code>127.0.0.1:9224</code> (loopback)</td>
 <td><code>--profile stealth</code></td>
 <td>Anti-fingerprint Chromium (browserless, SSPL-licensed)</td>
 </tr>
 </tbody></table>
+<p>¹ <code>chrome-stealth</code> listens on container port 3000 (browserless default) and is published to the host as <code>127.0.0.1:9224</code> — loopback only, for a host-run <code>crw-server</code> during development. The composed <code>crw</code> service reaches it via the Docker bridge as <code>chrome-stealth:3000</code> and does not use the host port.</p>
+<p>² <code>searxng:8080</code> is internal to the Compose network only — <code>localhost:8080</code> on the host will not connect. Search traffic flows exclusively through crw&#39;s <code>/v1/search</code> endpoint. For direct debug access, add <code>ports: [&quot;127.0.0.1:8888:8080&quot;]</code> in <code>docker-compose.override.yml</code>.</p>
 <p>The <code>crw</code> service reads its configuration from the mounted <code>config.docker.toml</code> (via
 <code>CRW_CONFIG=config.docker</code>), which already points each renderer and the search backend at the matching
 service name on Compose&#39;s default bridge network (<code>lightpanda:9222</code>, <code>chrome:9222</code>, <code>searxng:8080</code>). You
@@ -377,20 +385,113 @@ first pull). A <code>target_unreachable</code> or <code>timeout</code> error in 
 hasn&#39;t finished booting yet — the server logs the configured search host at startup so you can confirm it.</p>
 </blockquote>
 <h2 id="dockerfile">Dockerfile</h2>
-<p>Multi-stage build for minimal image size:</p>
-<pre><code class="language-dockerfile">FROM rust:1.93-bookworm AS builder
-WORKDIR /app
-COPY . .
-RUN cargo build --release --bin crw-server --features crw-server/cdp
+<p>Multi-stage cross-compilation build for minimal image size. The builder runs natively
+on the build platform (no QEMU for compiles) and cross-compiles to <code>linux/arm64</code> via
+the <code>aarch64-linux-gnu-gcc</code> cross linker. Only the final runtime layer (ca-certificates)
+uses QEMU, so multi-arch builds are fast:</p>
+<pre><code class="language-dockerfile">FROM --platform=$BUILDPLATFORM rust:1.93-bookworm AS builder
+ARG TARGETARCH
+# Install Rust target + cross linker for arm64, then record the triple.
+# Override LTO to thin + 16 codegen units (lower peak RAM vs. workspace fat LTO).
+ENV CARGO_PROFILE_RELEASE_LTO=thin \
+    CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16
+RUN cargo build --release --target &quot;$(cat /rust_target)&quot; \
+      -p crw-server --features cdp -p crw-mcp -p crw-cli
 
 FROM debian:bookworm-slim
 RUN apt-get update &amp;&amp; apt-get install -y ca-certificates &amp;&amp; rm -rf /var/lib/apt/lists/*
-COPY --from=builder /app/target/release/crw-server /usr/local/bin/crw-server
-COPY config.default.toml /app/config.default.toml
+COPY --from=builder /out/crw /out/crw-server /out/crw-mcp /usr/local/bin/
+COPY config.default.toml config.docker.toml /app/
 WORKDIR /app
 EXPOSE 3000
 CMD [&quot;crw-server&quot;]
 </code></pre>
+<h2 id="container-security">Container Security</h2>
+<p>The bundled <code>docker-compose.yml</code> applies defense-in-depth hardening to every service.
+Here is what is in place and what you must change before production:</p>
+<h3 id="what-the-compose-file-already-enforces">What the Compose file already enforces</h3>
+<pre><code class="language-yaml">services:
+  crw:
+    read_only: true            # immutable root FS — nothing a parser drops survives a restart
+    tmpfs:
+      - /tmp                   # the only writable scratch (sandbox children land here)
+    cap_drop:
+      - ALL                    # engine needs no Linux capabilities
+    security_opt:
+      - no-new-privileges:true # child processes can never elevate via setuid
+    mem_limit: 2g
+    memswap_limit: 2g          # no swap escape hatch
+    pids_limit: 512            # bounds fork-bombs and runaway worker spawning
+</code></pre>
+<p>The same <code>read_only</code>, <code>cap_drop: ALL</code>, and <code>no-new-privileges</code> flags are applied to the
+<code>searxng</code> service as well.</p>
+<blockquote>
+<p><strong>Non-root user.</strong> The runtime image runs as root by default (the Dockerfile does not
+add a dedicated user). Combined with <code>cap_drop: ALL</code> and <code>no-new-privileges:true</code>, the
+process has no usable Linux capabilities even as UID 0 inside the container. For strict
+CIS/hardening requirements, add a <code>USER crw</code> layer in a derived Dockerfile and mount
+writable paths explicitly.</p>
+</blockquote>
+<h3 id="secrets-you-must-change-before-production">Secrets you must change before production</h3>
+<p>Two secrets ship with publicly-known placeholder values. They are safe for local
+development (the affected ports are not published to the host by default), but must be
+rotated before any internet-facing deployment:</p>
+<table>
+<thead>
+<tr>
+<th>Secret</th>
+<th>Service</th>
+<th>Default (do not use in prod)</th>
+<th>How to override</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>SEARXNG_SECRET_KEY</code></td>
+<td><code>searxng</code></td>
+<td><code>change-me-with-openssl-rand-hex-32-please</code></td>
+<td>See below</td>
+</tr>
+<tr>
+<td><code>BROWSERLESS_TOKEN</code></td>
+<td><code>chrome-stealth</code></td>
+<td><code>crwtest</code></td>
+<td>See below</td>
+</tr>
+</tbody></table>
+<p>Generate strong values and write them to a <code>.env</code> file in the project root (never
+commit this file):</p>
+<pre><code class="language-bash"># Run once; .env is git-ignored by default
+echo &quot;SEARXNG_SECRET_KEY=$(openssl rand -hex 32)&quot; &gt;&gt; .env
+echo &quot;BROWSERLESS_TOKEN=$(openssl rand -hex 24)&quot; &gt;&gt; .env
+</code></pre>
+<p>Docker Compose reads <code>.env</code> automatically. The Compose file picks up the values via:</p>
+<pre><code class="language-yaml"># searxng service
+- SEARXNG_SECRET_KEY=${SEARXNG_SECRET_KEY:-change-me-with-openssl-rand-hex-32-please}
+
+# chrome-stealth service
+- TOKEN=${BROWSERLESS_TOKEN:-crwtest}
+</code></pre>
+<p>The <code>:-fallback</code> syntax means an unset variable falls back to the placeholder — the
+warning above is intentional, not a bug. Once <code>.env</code> is present, the placeholder is
+never used.</p>
+<h3 id="additional-hardening-tips">Additional hardening tips</h3>
+<ul>
+<li><strong>Read-only bind mounts</strong>: <code>config.docker.toml</code> and <code>settings.yml</code> are already
+mounted <code>:ro</code>. Keep all host mounts read-only unless a service explicitly requires
+write access.</li>
+<li><strong>Drop published ports you don&#39;t need</strong>: <code>searxng:8080</code> is not published to the host
+by default. The <code>chrome-stealth</code> service binds only to <code>127.0.0.1:9224</code>. Audit
+<code>ports:</code> entries before exposing to a public interface.</li>
+<li><strong>Reverse proxy TLS</strong>: Run crw behind nginx/Caddy with TLS termination and
+<code>CRW_AUTH__API_KEYS</code> set. Do not expose port 3000 directly to the internet.</li>
+</ul>
+<h2 id="lightpanda-restart-policy">LightPanda Restart Policy</h2>
+<p>LightPanda uses <code>restart: unless-stopped</code> and this is <strong>load-bearing</strong>. LightPanda can
+OOM or segfault on adversarial pages (heavy SPA bundles, Cloudflare Turnstile). Without
+auto-restart the circuit breaker stays open permanently and every JS request falls
+through to Chrome — defeating the lightweight tier.</p>
+<p>If you remove <code>restart: unless-stopped</code> from the <code>lightpanda</code> service, expect all JS
+rendering to be handled by Chrome (or fail entirely if Chrome is not enabled).</p>
 <h2 id="custom-configuration">Custom Configuration</h2>
 <p>Override settings via environment variables:</p>
 <pre><code class="language-yaml">services:
@@ -408,15 +509,21 @@ CMD [&quot;crw-server&quot;]
 </code></pre>
 <h2 id="production-tips">Production Tips</h2>
 <h3 id="resource-limits">Resource Limits</h3>
+<p>Use <code>mem_limit</code> / <code>memswap_limit</code> / <code>pids_limit</code> — these are the standalone Compose
+(non-Swarm) knobs and work with <code>docker compose up</code> without a Swarm cluster. The
+<code>deploy.resources</code> block (Swarm syntax) is silently ignored by standalone Compose.</p>
 <pre><code class="language-yaml">services:
   crw:
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-          cpus: &quot;1.0&quot;
+    mem_limit: 2g
+    memswap_limit: 2g    # prevents swap escape — set equal to mem_limit
+    pids_limit: 512
 </code></pre>
-<p>crw uses ~3 MB idle and ~66 MB under heavy load (50 concurrent requests), so 256 MB is generous.</p>
+<p>The bundled <code>docker-compose.yml</code> already includes these limits (sized for the PDF
+sandbox: <code>base + 2 × 512 MiB sandbox children ≈ 1.3 GiB &lt; 2 GiB</code>). Adjust down
+if the PDF parser (<code>[document]</code>) is disabled or <code>max_concurrent_parses</code> is reduced.</p>
+<p>crw uses ~3 MB idle and ~66 MB under heavy load (50 concurrent requests). The 2 GB
+ceiling in the bundled file is dominated by the PDF sandbox children, not the engine
+itself.</p>
 <h3 id="health-check">Health Check</h3>
 <pre><code class="language-yaml">services:
   crw:
@@ -430,7 +537,7 @@ CMD [&quot;crw-server&quot;]
 <pre><code class="language-yaml">services:
   crw:
     volumes:
-      - ./my-config.toml:/app/config.default.toml:ro
+      - ./my-config.toml:/app/config.docker.toml:ro
 </code></pre>
 <h3 id="logging">Logging</h3>
 <pre><code class="language-yaml">services:
@@ -490,6 +597,7 @@ CMD [&quot;crw-server&quot;]
           <div class="footer-col-links">
             <a href="https://github.com/us/crw" target="_blank" rel="noopener">GitHub</a>
             <a href="https://github.com/us/crw/issues" target="_blank" rel="noopener">Issues</a>
+            <a href="https://discord.gg/VNxv2DuBB" target="_blank" rel="noopener">Discord</a>
           </div>
         </div>
         <div class="footer-col">

@@ -33,7 +33,7 @@ class CrwLoader(BaseLoader):
 
         .. code-block:: bash
 
-            pip install langchain-crw
+            pip install 'crw[langchain]'
 
         CRW is cloud-first: by default it uses the managed cloud
         (``api.fastcrw.com``). Sign up for 500 free credits at
@@ -43,7 +43,7 @@ class CrwLoader(BaseLoader):
     Instantiate:
         .. code-block:: python
 
-            from langchain_crw import CrwLoader
+            from crw.integrations.langchain import CrwLoader
 
             # Cloud (default) — reads CRW_API_KEY from the environment
             loader = CrwLoader(url="https://example.com", mode="scrape")

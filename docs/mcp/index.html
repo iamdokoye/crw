@@ -368,7 +368,7 @@ CRW_CRAWLER__USER_AGENT=&quot;MyBot/1.0&quot;
 <p>Connect to <a href="https://fastcrw.com">fastcrw.com</a> or any remote CRW instance:</p>
 <pre><code class="language-bash"># Cloud server
 claude mcp add \
-  -e CRW_API_URL=https://fastcrw.com/api \
+  -e CRW_API_URL=https://api.fastcrw.com \
   -e CRW_API_KEY=YOUR_API_KEY \
   crw -- npx crw-mcp
 
@@ -499,7 +499,7 @@ claude mcp add \
 <tr>
 <td><code>crw_parse_file</code></td>
 <td>Parse a local PDF (base64) → markdown</td>
-<td><code>POST /v1/parse</code></td>
+<td><code>POST /v2/parse</code> (multipart)</td>
 <td>All modes</td>
 </tr>
 </tbody></table>
@@ -524,7 +524,7 @@ claude mcp add \
 <td>Snapshot the current page as an indented accessibility tree (<code>[nodeId] role: name</code>). Requires a prior <code>goto</code>.</td>
 </tr>
 </tbody></table>
-<p>More interaction tools (<code>click</code>, <code>fill_form</code>, <code>evaluate</code>) are on the roadmap. Session state is automatically swept after an idle TTL.</p>
+<p>See <a href="/docs/crw-browse">crw-browse</a> for the full list of 14 interaction tools, including click, fill, type_text, evaluate, screenshot, and more. Session state is automatically swept after an idle TTL.</p>
 <p>Install and launch:</p>
 <pre><code class="language-bash"># From crates.io
 cargo install crw-browse
@@ -541,7 +541,7 @@ claude mcp add crw -- npx crw-mcp
 
 # fastcrw.com cloud
 claude mcp add \
-  -e CRW_API_URL=https://fastcrw.com/api \
+  -e CRW_API_URL=https://api.fastcrw.com \
   -e CRW_API_KEY=YOUR_API_KEY \
   crw -- npx crw-mcp
 </code></pre>
@@ -762,12 +762,6 @@ codex mcp add crw -- npx crw-mcp
 <td>Language code (e.g. <code>&quot;en&quot;</code>, <code>&quot;tr&quot;</code>)</td>
 </tr>
 <tr>
-<td><code>country</code></td>
-<td>string</td>
-<td>no</td>
-<td>Country code (e.g. <code>&quot;us&quot;</code>, <code>&quot;tr&quot;</code>)</td>
-</tr>
-<tr>
 <td><code>tbs</code></td>
 <td>string</td>
 <td>no</td>
@@ -956,6 +950,7 @@ codex mcp add crw -- npx crw-mcp
           <div class="footer-col-links">
             <a href="https://github.com/us/crw" target="_blank" rel="noopener">GitHub</a>
             <a href="https://github.com/us/crw/issues" target="_blank" rel="noopener">Issues</a>
+            <a href="https://discord.gg/VNxv2DuBB" target="_blank" rel="noopener">Discord</a>
           </div>
         </div>
         <div class="footer-col">

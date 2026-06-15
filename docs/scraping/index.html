@@ -313,7 +313,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <li>Self-hosted: only required when <code>auth.api_keys</code> is configured</li>
 </ul>
 <h3 id="installation">Installation</h3>
-<p>CRW is HTTP-first. You can start with cURL immediately and then move to your existing Python or Node.js HTTP client without installing a dedicated SDK.</p>
+<p>CRW is HTTP-first. You can start with cURL immediately and then move to your existing Python or Node.js HTTP client without installing a dedicated SDK. See the <a href="#basic-usage">Basic usage</a> tabs below for ready-to-run Python (<code>requests</code>), Node.js (<code>fetch</code>), and cURL examples.</p>
 <h3 id="basic-usage">Basic usage</h3>
 <p>Start with this request:</p>
 <pre><code class="language-json">{
@@ -328,7 +328,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <pre><code class="language-python">import requests
 
 resp = requests.post(
-    &quot;https://fastcrw.com/api/v1/scrape&quot;,
+    &quot;https://api.fastcrw.com/v1/scrape&quot;,
     headers={
         &quot;Authorization&quot;: &quot;Bearer YOUR_API_KEY&quot;,
         &quot;Content-Type&quot;: &quot;application/json&quot;,
@@ -343,7 +343,7 @@ resp = requests.post(
 print(resp.json()[&quot;data&quot;][&quot;markdown&quot;])
 </code></pre>
 <p>::tab{title=&quot;Node.js&quot;}</p>
-<pre><code class="language-javascript">const resp = await fetch(&quot;https://fastcrw.com/api/v1/scrape&quot;, {
+<pre><code class="language-javascript">const resp = await fetch(&quot;https://api.fastcrw.com/v1/scrape&quot;, {
   method: &quot;POST&quot;,
   headers: {
     &quot;Authorization&quot;: &quot;Bearer YOUR_API_KEY&quot;,
@@ -360,7 +360,7 @@ const body = await resp.json();
 console.log(body.data.markdown);
 </code></pre>
 <p>::tab{title=&quot;cURL&quot;}</p>
-<pre><code class="language-bash">curl -X POST https://fastcrw.com/api/v1/scrape \
+<pre><code class="language-bash">curl -X POST https://api.fastcrw.com/v1/scrape \
   -H &quot;Authorization: Bearer YOUR_API_KEY&quot; \
   -H &quot;Content-Type: application/json&quot; \
   -d &#39;{
@@ -405,7 +405,7 @@ console.log(body.data.markdown);
 <td><code>formats</code></td>
 <td>string[]</td>
 <td><code>[&quot;markdown&quot;]</code></td>
-<td><code>markdown</code>, <code>html</code>, <code>rawHtml</code>, <code>plainText</code>, <code>links</code>, <code>json</code>, <code>summary</code></td>
+<td><code>markdown</code>, <code>html</code>, <code>rawHtml</code>, <code>plainText</code>, <code>links</code>, <code>json</code>, <code>summary</code>, <code>changeTracking</code></td>
 </tr>
 <tr>
 <td><code>onlyMainContent</code></td>
@@ -429,7 +429,7 @@ console.log(body.data.markdown);
 <td><code>renderer</code></td>
 <td>string</td>
 <td><code>auto</code></td>
-<td>Pin to a specific renderer: <code>auto</code>, <code>lightpanda</code>, <code>chrome</code>, or <code>playwright</code>. Non-<code>auto</code> values hard-pin (no fallback) and imply <code>renderJs:true</code> unless <code>renderJs:false</code> is set explicitly. See <a href="/js-rendering">JS rendering</a></td>
+<td>Pin to a specific renderer: <code>auto</code>, <code>lightpanda</code>, <code>chrome</code>, <code>chrome_proxy</code>, or <code>playwright</code>. Non-<code>auto</code> values hard-pin (no fallback) and imply <code>renderJs:true</code> unless <code>renderJs:false</code> is set explicitly. See <a href="/js-rendering">JS rendering</a></td>
 </tr>
 <tr>
 <td><code>includeTags</code></td>
@@ -525,7 +525,7 @@ console.log(body.data.markdown);
 <td><code>llmProvider</code></td>
 <td>string</td>
 <td>server default</td>
-<td><code>anthropic</code>, <code>openai</code>, <code>azure</code>, or <code>openai-compatible</code></td>
+<td><code>anthropic</code>, <code>openai</code>, <code>deepseek</code>, <code>azure</code>, or <code>openai-compatible</code></td>
 </tr>
 <tr>
 <td><code>llmModel</code></td>
@@ -550,6 +550,24 @@ console.log(body.data.markdown);
 <td>number</td>
 <td><code>[extraction.llm].max_html_bytes</code> (100 KB)</td>
 <td>Per-request byte cap on content sent to the LLM for <code>summary</code>. Clamped to 200 KB server-side.</td>
+</tr>
+<tr>
+<td><code>deadlineMs</code></td>
+<td>number</td>
+<td><code>8000</code></td>
+<td>End-to-end request deadline in milliseconds. Must be in <code>(0, 60000]</code>. Requests above 8 000 ms land in a separate slow-path histogram and are excluded from the standard SLO p95 metric.</td>
+</tr>
+<tr>
+<td><code>debug</code></td>
+<td>boolean</td>
+<td><code>false</code></td>
+<td>When <code>true</code>, includes a <code>debugExtraction</code> field in the response with a trace of every extraction candidate considered and why one was selected.</td>
+</tr>
+<tr>
+<td><code>parsers</code></td>
+<td>object[]</td>
+<td>PDF auto-parsed</td>
+<td>Firecrawl-compatible document parser directives. Omit for the default (PDFs auto-converted to markdown). Pass <code>[]</code> to disable PDF parsing. Pass <code>[{&quot;type&quot;:&quot;pdf&quot;,&quot;maxPages&quot;:10}]</code> to cap pages. Accepted fields: <code>type</code> (<code>&quot;pdf&quot;</code>), <code>mode</code> (<code>&quot;auto&quot;</code> | <code>&quot;fast&quot;</code> | <code>&quot;ocr&quot;</code>), <code>maxPages</code>.</td>
 </tr>
 <tr>
 <td><code>actions</code></td>
@@ -679,6 +697,7 @@ console.log(body.data.markdown);
           <div class="footer-col-links">
             <a href="https://github.com/us/crw" target="_blank" rel="noopener">GitHub</a>
             <a href="https://github.com/us/crw/issues" target="_blank" rel="noopener">Issues</a>
+            <a href="https://discord.gg/VNxv2DuBB" target="_blank" rel="noopener">Discord</a>
           </div>
         </div>
         <div class="footer-col">

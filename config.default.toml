@@ -93,6 +93,16 @@ job_ttl_secs = 3600
 # proxy_list = []
 # proxy_rotation = "sticky_per_host"
 
+# Stealth mode — make the crawler look like a real browser on every HTTP request.
+# User-Agent is rotated from a built-in Chrome/Firefox/Safari pool; 12 browser-like
+# headers (Accept, Sec-Fetch-*, etc.) are injected. Override per-request with
+# `stealth: true/false` in the scrape body. Env: CRW_CRAWLER__STEALTH__ENABLED.
+# [crawler.stealth]
+# enabled = true
+# inject_headers = true    # send Accept, Sec-Fetch-*, etc. on every HTTP request
+# jitter_factor = 0.2      # ±20% random jitter on rate-limit intervals
+# user_agents = []         # custom UA pool; empty = use built-in pool
+
 [extraction]
 default_format = "markdown"
 only_main_content = true
@@ -145,7 +155,7 @@ always_run = false
 # return HTTP 400 with a clear error pointing back here.
 #
 # [extraction.llm]
-# provider = "anthropic"        # "anthropic" | "openai" | "deepseek" | "azure"
+# provider = "anthropic"        # "anthropic" | "openai" | "deepseek" | "azure" | "openai-compatible"
 # api_key = "sk-..."            # or use CRW_EXTRACTION__LLM__API_KEY env var
 # model = "claude-sonnet-4-20250514"
 # max_tokens = 4096

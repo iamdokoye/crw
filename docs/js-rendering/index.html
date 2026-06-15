@@ -387,6 +387,10 @@ CRW_RENDERER__FORCE_JS=true
 <td>Hard-pin to Chrome — no fallback</td>
 </tr>
 <tr>
+<td><code>chrome_proxy</code></td>
+<td>Hard-pin to residential-proxy Chrome tier — no fallback</td>
+</tr>
+<tr>
 <td><code>playwright</code></td>
 <td>Hard-pin to Playwright — no fallback</td>
 </tr>
@@ -394,11 +398,11 @@ CRW_RENDERER__FORCE_JS=true
 <h3 id="pinned-implies-js">Pinned implies JS</h3>
 <p>A non-<code>auto</code> <code>renderer</code> value implies <code>renderJs:true</code>. If you set <code>renderJs:false</code> explicitly, the request stays HTTP-only and the pin is silently ignored — <code>renderJs:false</code> always wins. This means the availability check is also skipped when <code>renderJs:false</code> is set, so combinations like <code>{&quot;mode&quot;:&quot;none&quot;,&quot;renderJs&quot;:false,&quot;renderer&quot;:&quot;chrome&quot;}</code> are accepted.</p>
 <h3 id="errors-and-validation">Errors and validation</h3>
-<p>If the named renderer isn&#39;t available in the server&#39;s pool, the request returns HTTP 400 immediately with <code>errorCode: &quot;invalid_request&quot;</code> and a message listing the configured renderers:</p>
+<p>If the named renderer isn&#39;t available in the server&#39;s pool, the request returns HTTP 400 immediately with <code>error_code: &quot;invalid_request&quot;</code> and a message listing the configured renderers:</p>
 <pre><code class="language-json">{
   &quot;success&quot;: false,
   &quot;error&quot;: &quot;renderer &#39;chrome&#39; not available; configured renderers: [lightpanda]. Update server config or omit the &#39;renderer&#39; field.&quot;,
-  &quot;errorCode&quot;: &quot;invalid_request&quot;
+  &quot;error_code&quot;: &quot;invalid_request&quot;
 }
 </code></pre>
 <p>For <code>/v1/crawl</code>, this validation runs <strong>once at job acceptance</strong> — bad combinations return 400 before the job is queued.</p>
@@ -574,6 +578,7 @@ ws_url = &quot;ws://chrome:9222&quot;
           <div class="footer-col-links">
             <a href="https://github.com/us/crw" target="_blank" rel="noopener">GitHub</a>
             <a href="https://github.com/us/crw/issues" target="_blank" rel="noopener">Issues</a>
+            <a href="https://discord.gg/VNxv2DuBB" target="_blank" rel="noopener">Discord</a>
           </div>
         </div>
         <div class="footer-col">

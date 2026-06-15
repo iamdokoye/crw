@@ -359,7 +359,7 @@ If you only remember one rule, remember this one: local embedded mode is the eas
 </code></pre>
 <h3 id="fastcrwcom-cloud">fastcrw.com cloud</h3>
 <pre><code class="language-bash">claude mcp add \
-  -e CRW_API_URL=https://fastcrw.com/api \
+  -e CRW_API_URL=https://api.fastcrw.com \
   -e CRW_API_KEY=YOUR_API_KEY \
   crw -- npx crw-mcp
 </code></pre>
@@ -386,7 +386,7 @@ command = &quot;npx&quot;
 args = [&quot;crw-mcp&quot;]
 
 [mcp_servers.crw.env]
-CRW_API_URL = &quot;https://fastcrw.com/api&quot;
+CRW_API_URL = &quot;https://api.fastcrw.com&quot;
 CRW_API_KEY = &quot;YOUR_API_KEY&quot;
 </code></pre>
 <p>:::note
@@ -431,7 +431,7 @@ Codex uses the same stdio MCP server as Claude Code. The only difference is wher
       &quot;command&quot;: &quot;npx&quot;,
       &quot;args&quot;: [&quot;crw-mcp&quot;],
       &quot;env&quot;: {
-        &quot;CRW_API_URL&quot;: &quot;https://fastcrw.com/api&quot;,
+        &quot;CRW_API_URL&quot;: &quot;https://api.fastcrw.com&quot;,
         &quot;CRW_API_KEY&quot;: &quot;YOUR_API_KEY&quot;
       }
     }
@@ -458,7 +458,7 @@ Codex uses the same stdio MCP server as Claude Code. The only difference is wher
       &quot;command&quot;: &quot;npx&quot;,
       &quot;args&quot;: [&quot;crw-mcp&quot;],
       &quot;env&quot;: {
-        &quot;CRW_API_URL&quot;: &quot;https://fastcrw.com/api&quot;,
+        &quot;CRW_API_URL&quot;: &quot;https://api.fastcrw.com&quot;,
         &quot;CRW_API_KEY&quot;: &quot;YOUR_API_KEY&quot;
       }
     }
@@ -485,7 +485,7 @@ Codex uses the same stdio MCP server as Claude Code. The only difference is wher
       &quot;command&quot;: &quot;npx&quot;,
       &quot;args&quot;: [&quot;crw-mcp&quot;],
       &quot;env&quot;: {
-        &quot;CRW_API_URL&quot;: &quot;https://fastcrw.com/api&quot;,
+        &quot;CRW_API_URL&quot;: &quot;https://api.fastcrw.com&quot;,
         &quot;CRW_API_KEY&quot;: &quot;YOUR_API_KEY&quot;
       }
     }
@@ -538,7 +538,7 @@ Windsurf has a total MCP tool limit. CRW stays lightweight: local embedded mode 
       &quot;alwaysAllow&quot;: [&quot;crw_scrape&quot;, &quot;crw_map&quot;, &quot;crw_search&quot;],
       &quot;disabled&quot;: false,
       &quot;env&quot;: {
-        &quot;CRW_API_URL&quot;: &quot;https://fastcrw.com/api&quot;,
+        &quot;CRW_API_URL&quot;: &quot;https://api.fastcrw.com&quot;,
         &quot;CRW_API_KEY&quot;: &quot;YOUR_API_KEY&quot;
       }
     }
@@ -561,7 +561,7 @@ Windsurf has a total MCP tool limit. CRW stays lightweight: local embedded mode 
     args:
       - crw-mcp
     env:
-      CRW_API_URL: https://fastcrw.com/api
+      CRW_API_URL: https://api.fastcrw.com
       CRW_API_KEY: YOUR_API_KEY
 </code></pre>
 <p>MCP tools in Continue only work in Agent mode, not plain chat mode.</p>
@@ -586,7 +586,7 @@ Windsurf has a total MCP tool limit. CRW stays lightweight: local embedded mode 
       &quot;command&quot;: &quot;npx&quot;,
       &quot;args&quot;: [&quot;crw-mcp&quot;],
       &quot;env&quot;: {
-        &quot;CRW_API_URL&quot;: &quot;https://fastcrw.com/api&quot;,
+        &quot;CRW_API_URL&quot;: &quot;https://api.fastcrw.com&quot;,
         &quot;CRW_API_KEY&quot;: &quot;YOUR_API_KEY&quot;
       }
     }
@@ -617,7 +617,7 @@ Windsurf has a total MCP tool limit. CRW stays lightweight: local embedded mode 
       &quot;command&quot;: &quot;npx&quot;,
       &quot;args&quot;: [&quot;crw-mcp&quot;],
       &quot;env&quot;: {
-        &quot;CRW_API_URL&quot;: &quot;https://fastcrw.com/api&quot;,
+        &quot;CRW_API_URL&quot;: &quot;https://api.fastcrw.com&quot;,
         &quot;CRW_API_KEY&quot;: &quot;YOUR_API_KEY&quot;
       }
     }
@@ -704,6 +704,7 @@ Windsurf has a total MCP tool limit. CRW stays lightweight: local embedded mode 
           <div class="footer-col-links">
             <a href="https://github.com/us/crw" target="_blank" rel="noopener">GitHub</a>
             <a href="https://github.com/us/crw/issues" target="_blank" rel="noopener">Issues</a>
+            <a href="https://discord.gg/VNxv2DuBB" target="_blank" rel="noopener">Discord</a>
           </div>
         </div>
         <div class="footer-col">

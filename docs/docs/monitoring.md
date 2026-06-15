@@ -24,6 +24,14 @@ Reach for `monitoring` instead of polling `/v1/scrape` yourself when you want th
 **Self-hosted users**: the full scheduler + notification control plane is part of the hosted product. The open-core engine ships the **stateless `changeTracking` primitive** (diff one scrape against a snapshot you supply) plus an optional, feature-gated **`monitor` mode** (SQLite scheduler, default OFF). See [self-hosting monitoring](#monitoring) below.
 :::
 
+:::info Two-namespace split
+**Monitor CRUD** (`/v1/monitor` and all sub-resources) is a **SaaS-only control-plane feature** served at `https://fastcrw.com/api`. It is not present in the open-source engine — no `/v1/monitor` route ships in `crw-server`.
+
+**Engine endpoints** (scrape, crawl, map, search, change-tracking) are served at `https://api.fastcrw.com` on the hosted product and at your own origin when self-hosting.
+
+**Self-hosted installs** have no monitor API. Use the stateless `changeTracking` primitive or build the engine with the optional `monitor` Cargo feature (SQLite scheduler) as described in [Self-hosting monitoring](#self-hosting-monitoring) below.
+:::
+
 ## Endpoints
 
 All monitor endpoints require a Bearer API key on the hosted API.
@@ -250,6 +258,244 @@ curl -s -X POST "http://localhost:3000/v1/change-tracking/diff" \
 :::note
 The `monitor` feature pulls in SQLite/HMAC dependencies only when enabled — the default engine build stays dependency-light. Self-host monitoring uses UTC schedules and your own LLM key (BYOK) for judging.
 :::
+
+## Change Tracking
+
+Change tracking is a **stateless** primitive: you supply the current scraped content and the previous snapshot; the engine returns the diff and the new snapshot to persist as the next baseline. The engine stores nothing.
+
+Two entry points exist depending on whether you are running a single-page scrape or driving a custom orchestration loop:
+
+| Entry point | When to use |
+| --- | --- |
+| `"changeTracking"` in `formats` on `/v1/scrape` | Single-URL scrape + diff in one call |
+| `POST /v1/change-tracking/diff` (engine) | Batch diffs, custom crawl loops, separate fetch and diff steps |
+
+### `changeTracking` format on `/v1/scrape`
+
+Add `"changeTracking"` to `formats` and pass a sibling `changeTracking` object with the options. The alias `"change-tracking"` is also accepted on the wire.
+
+```json
+{
+  "url": "https://example.com/pricing",
+  "formats": ["markdown", "changeTracking"],
+  "changeTracking": {
+    "modes": ["gitDiff"],
+    "previous": {
+      "markdown": "Starter $19\n\nPro $49",
+      "contentHash": "a3f8..."
+    }
+  }
+}
+```
+
+The `changeTracking` field is **not** valid as an object inside the `formats` array — it must be the plain string `"changeTracking"` there; options ride on the top-level sibling field.
+
+#### `changeTracking` options
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `modes` | string[] | `["gitDiff"]` | Diff surfaces to compute. `"gitDiff"` = markdown unified diff + AST; `"json"` = per-field structured diff; `["gitDiff","json"]` = mixed (both). Alias `"git-diff"` accepted on input; canonical serialization is `"gitDiff"`. |
+| `previous` | object | — | Prior `ChangeTrackingSnapshot` to diff against. `null` or omitted = first observation. |
+| `schema` | object | — | JSON Schema describing fields to track (`json` / `mixed` mode). |
+| `prompt` | string | — | Natural-language extraction prompt (alternative to `schema`; `json` / `mixed` mode). |
+| `tag` | string | — | Opaque caller label echoed back on the result (e.g. a target or monitor ID). |
+| `contentType` | string | — | MIME type of the fetched resource. Binary types (`application/pdf`, `image/*`, `application/octet-stream`) are hashed by extracted text only — no text diff is produced. Unset = treat as text. |
+
+> **Judge fields are top-level — not inside `changeTracking`.**
+> To use the meaningful-change judge from `/v1/scrape`, set `goal` and `judgeEnabled` as top-level fields of the scrape request body — siblings of `url`, `formats`, and `changeTracking` — not inside the `changeTracking` object:
+>
+> ```json
+> {
+>   "url": "https://example.com",
+>   "formats": ["changeTracking"],
+>   "changeTracking": { "modes": ["gitDiff"], "previous": { "..." : "..." } },
+>   "goal": "Alert when pricing changes",
+>   "judgeEnabled": true
+> }
+> ```
+
+### `POST /v1/change-tracking/diff`
+
+A dedicated stateless endpoint served at the **engine** base URL: `https://api.fastcrw.com` (hosted) or your own origin when self-hosting.
+
+```
+POST https://api.fastcrw.com/v1/change-tracking/diff
+Content-Type: application/json
+Authorization: Bearer $CRW_API_KEY
+```
+
+The endpoint accepts two wire shapes on one route, discriminated by the presence of the `batch` key.
+
+#### Single item
+
+```json
+{
+  "modes": ["gitDiff"],
+  "previous": { "markdown": "Starter $19", "contentHash": "a3f8..." },
+  "current":  { "markdown": "Starter $24" }
+}
+```
+
+Response: `{ "success": true, "data": <ChangeTrackingResult> }`
+
+#### Batch
+
+Supply a `batch` array. Top-level `modes`, `schema`, `prompt`, and `contentType` act as shared defaults; individual items may override them.
+
+```json
+{
+  "modes": ["gitDiff"],
+  "batch": [
+    {
+      "url": "https://example.com/pricing",
+      "previous": { "markdown": "Starter $19", "contentHash": "a3f8..." },
+      "current":  { "markdown": "Starter $24" }
+    },
+    {
+      "url": "https://example.com/docs",
+      "previous": { "markdown": "# Intro", "contentHash": "b9c1..." },
+      "current":  { "markdown": "# Intro" }
+    }
+  ]
+}
+```
+
+Response: `{ "success": true, "data": [<ChangeTrackingResult>, ...] }` — an array in the same order as `batch`.
+
+The `batch` array must contain at least one item; an empty array returns `400 Bad Request`.
+
+#### Request fields
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `current` | object | required | Current scrape content: `{ markdown?, json? }`. At least one sub-field is expected. |
+| `current.markdown` | string | — | Current markdown text (used by `gitDiff` and `mixed` modes). |
+| `current.json` | object | — | Current extracted JSON (used by `json` and `mixed` modes; caller pre-extracts it). |
+| `previous` | object | — | Prior snapshot (see `ChangeTrackingSnapshot` shape below). Omit for first observation. |
+| `modes` | string[] | `["gitDiff"]` | Same as the `changeTracking.modes` option above. |
+| `schema` | object | — | JSON Schema for `json` / `mixed` mode field tracking. |
+| `prompt` | string | — | Natural-language extraction prompt for `json` / `mixed` mode. |
+| `contentType` | string | — | MIME type; binary content is hashed only, no diff emitted. |
+| `tag` | string | — | Opaque label echoed on the result. |
+| `url` | string | — | Informational URL label (batch items only; not used in diff computation). |
+| `batch` | object[] | — | Array of items; presence selects batch mode. |
+| `goal` | string | — | Plain-language goal for the meaningful-change judge. Accepted on both `DiffRequest` (shared default) and individual `DiffItem` entries for forward-compatibility. Not yet applied at the engine layer — judging is wired in M2. |
+| `judgeEnabled` | boolean | — | Force judging on or off. Accepted for forward-compatibility alongside `goal`; not yet applied at the engine layer — judging is wired in M2. |
+
+### `ChangeTrackingSnapshot`
+
+The snapshot is the baseline the engine diffs the current scrape against, and also the value you must persist between checks as the next baseline. The engine returns the current snapshot on every result.
+
+```json
+{
+  "markdown": "Starter $19\n\nPro $49",
+  "json": { "price": "$19" },
+  "contentHash": "a3f8c2d...",
+  "capturedAt": "2026-06-15T12:00:00Z"
+}
+```
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `markdown` | string | Normalized markdown stored for `gitDiff` / `mixed` mode. Omitted in `json`-only snapshots. |
+| `json` | object | Extracted JSON stored for `json` / `mixed` mode. Omitted in `gitDiff`-only snapshots. |
+| `contentHash` | string | Hex SHA-256 of the content — normalized markdown in `gitDiff`/`mixed` mode; canonicalized JSON in `json`-only mode. The SaaS store-skip short-circuit keys off this hash. Always supply the hash returned from the previous result; the engine does not re-derive it from a string you provide. |
+| `capturedAt` | string | Optional ISO 8601 timestamp. Caller-stamped; echoed back untouched. |
+
+### `ChangeTrackingResult`
+
+Returned in `ScrapeData.changeTracking` (when `changeTracking` is in `formats`) and in `data` of `POST /v1/change-tracking/diff`.
+
+```json
+{
+  "status": "changed",
+  "firstObservation": false,
+  "contentHash": "b7e2a1f...",
+  "snapshot": { "markdown": "Starter $24", "contentHash": "b7e2a1f..." },
+  "diff": {
+    "text": "--- previous\n+++ current\n@@ -1 +1 @@\n-Starter $19\n+Starter $24\n",
+    "json": {
+      "files": [
+        {
+          "from": "previous",
+          "to": "current",
+          "additions": 1,
+          "deletions": 1,
+          "chunks": [
+            {
+              "content": "@@ -1,1 +1,1 @@",
+              "oldStart": 1, "oldLines": 1, "newStart": 1, "newLines": 1,
+              "changes": [
+                { "type": "del", "content": "Starter $19", "ln": 1 },
+                { "type": "add", "content": "Starter $24", "ln": 1 }
+              ]
+            }
+          ]
+        }
+      ],
+      "additions": 1,
+      "deletions": 1
+    }
+  }
+  // tag and truncated are omitted when absent/false
+}
+```
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `status` | string | `"same"` or `"changed"`. First observations always return `"changed"`. |
+| `firstObservation` | boolean | `true` when no `previous` was supplied. The caller maps this to `new` at the set level. |
+| `contentHash` | string | Mode-aware SHA-256 of the current content (see `ChangeTrackingSnapshot.contentHash`). |
+| `snapshot` | object | The current snapshot to persist as the next baseline. Always present. |
+| `diff` | object | The diff envelope; `null` when `status == "same"` or for binary content. |
+| `diff.text` | string | Unified text diff (present in `gitDiff` and `mixed` modes). |
+| `diff.json` | object | Mode-polymorphic: the parse-diff AST (`gitDiff`-only) or the per-field path map (`json` / `mixed`). |
+| `judgment` | object | LLM meaningful-change judgment; populated by the orchestration layer, not the engine directly. `null` when judging is not enabled or has not run. |
+| `tag` | string | Echoed caller label from the request. |
+| `truncated` | boolean | `true` when the diff AST was capped at the `max_diff_changes` limit (5 000 change-lines). The full snapshot is retained; only the AST is trimmed. |
+
+#### `diff.json` — `gitDiff`-only mode (parse-diff AST)
+
+When `modes` is `["gitDiff"]` (or omitted), `diff.json` is a parse-diff-style AST:
+
+```json
+{
+  "files": [ { "from": "previous", "to": "current", "additions": 1, "deletions": 1, "chunks": [...] } ],
+  "additions": 1,
+  "deletions": 1
+  // truncated only appears when true (AST was capped at max_diff_changes)
+}
+```
+
+Each chunk entry in `changes[]` carries `type` (`"add"` / `"del"` / `"normal"`), `content` (the line without newline), and line numbers (`ln` for `add` (new-file line) and `del` (old-file line); `ln1` (old-file) + `ln2` (new-file) for `normal` context lines).
+
+#### `diff.json` — `json` and `mixed` modes (per-field map)
+
+When `modes` includes `"json"`, `diff.json` is a flat object keyed by dot-notation / bracket-notation JSON path, with each entry carrying `{ "previous": <value>, "current": <value> }`. Added fields have `"previous": null`; removed fields have `"current": null`.
+
+```json
+{
+  "plans[0].price": { "previous": "$19", "current": "$24" },
+  "plans[1].name":  { "previous": "Pro",  "current": null }
+}
+```
+
+In `mixed` mode, both `diff.text` and `diff.json` (per-field map) are present.
+
+### Normalization and hashing
+
+The engine normalizes markdown before hashing and diffing so cosmetic churn never flips a page from `same` to `changed`:
+
+- CRLF and bare CR normalized to LF
+- Trailing whitespace stripped from every line
+- Runs of two or more blank lines collapsed to one
+- Leading and trailing blank lines trimmed
+
+The `contentHash` is the hex SHA-256 of the normalized markdown (`gitDiff` / `mixed`) or the canonicalized JSON string with object keys sorted recursively (`json`-only). Whitespace-only edits and JSON key-order changes do not produce a `"changed"` result.
+
+### Binary and non-text content
+
+When `contentType` indicates a binary resource (e.g. `application/pdf`, `image/png`, `application/octet-stream`), the engine hashes the extracted text and returns `"same"` or `"changed"` with no `diff` object. Text types (anything matching `text/*`, `*json*`, `*xml*`, `*html*`, `*markdown*`, `*javascript*`, `*csv*`, `*yaml*`) are always diffed. Omitting `contentType` defaults to text behavior.
 
 ## Common mistakes
 

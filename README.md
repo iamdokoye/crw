@@ -79,13 +79,14 @@ curl -X POST https://api.fastcrw.com/v1/scrape \
 ```
 
 ```bash
-# /v1/extract — structured JSON from a URL via a JSON Schema
-curl -X POST https://api.fastcrw.com/v1/extract \
+# /v1/scrape + formats:["json"] — structured JSON extraction via a JSON Schema
+curl -X POST https://api.fastcrw.com/v1/scrape \
   -H "Authorization: Bearer $CRW_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "url":"https://example.com",
-    "schema":{
+    "formats":["json"],
+    "jsonSchema":{
       "type":"object",
       "properties":{"title":{"type":"string"}}
     }
@@ -245,7 +246,6 @@ production hardening, auth, reverse proxy, and resource tuning.
 | `GET` | `/v1/crawl/:id` | Check crawl status and retrieve results |
 | `DELETE` | `/v1/crawl/:id` | Cancel a running crawl job |
 | `POST` | `/v1/map` | Discover all URLs on a site |
-| `POST` | `/v1/extract` | Structured JSON extraction from a URL via JSON Schema |
 | `POST` | `/v1/search` | Web search via SearXNG sidecar, with optional content scraping |
 | `POST` | `/v1/change-tracking/diff` | Diff a scrape against a supplied snapshot (the [monitoring](https://us.github.io/crw/monitoring) primitive) — single or batch |
 | `GET` | `/health` | Health check (no auth required) |
@@ -329,19 +329,26 @@ urls = client.map("https://example.com")
 results = client.search("AI news", limit=10, sources=["web", "news"])
 ```
 
-Requires Python 3.9+. Local mode auto-downloads `crw-mcp` on first use.
+Requires Python 3.10+. Local mode auto-downloads `crw-mcp` on first use.
 
-### Community SDKs
+Framework extras:
 
-- [`crewai-crw`](https://pypi.org/project/crewai-crw/) — CRW scraping tools for CrewAI agents
-- [`langchain-crw`](https://pypi.org/project/langchain-crw/) — CRW document loader for LangChain
+```bash
+pip install crw[crewai]    # CRW scraping tools for CrewAI agents
+pip install crw[langchain] # CRW document loader for LangChain
+```
 
-**Node.js:** no official SDK yet — use the REST API directly or `npx crw-mcp`
-for MCP. [SDK examples →](https://docs.fastcrw.com/sdk-examples/)
+### TypeScript / Node.js
+
+```bash
+npm install crw-sdk
+```
+
+[SDK examples →](https://docs.fastcrw.com/sdk-examples/)
 
 ### Frameworks & platforms
 
-[CrewAI](https://pypi.org/project/crewai-crw/) · [LangChain](https://pypi.org/project/langchain-crw/)
+[CrewAI](https://pypi.org/project/crw/) · [LangChain](https://pypi.org/project/crw/)
 · [Agno](https://github.com/agno-agi/agno/pull/7183) · [Dify](https://github.com/langgenius/dify)
 · [n8n](https://fastcrw.com/blog/n8n-web-scraping-crw) · [Flowise](https://github.com/FlowiseAI/Flowise/pull/6066)
 

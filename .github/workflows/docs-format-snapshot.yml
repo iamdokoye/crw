@@ -1,0 +1,32 @@
+name: Docs Format Snapshot
+
+# Asserts that the docs tables for OutputFormat and RequestedRenderer list
+# exactly the variants defined in crates/crw-core/src/types.rs.
+#
+# Triggers on: any push to main, any PR that touches the Rust types or either
+# doc. Does NOT modify docs-guards.sh or docs-guards.yml.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - "crates/crw-core/src/types.rs"
+      - "docs/docs/output-formats.md"
+      - "docs/docs/js-rendering.md"
+      - "scripts/check-format-tables.sh"
+
+permissions:
+  contents: read
+
+jobs:
+  format-snapshot:
+    name: OutputFormat / RequestedRenderer table drift check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check OutputFormat and RequestedRenderer table parity
+        run: bash scripts/check-format-tables.sh

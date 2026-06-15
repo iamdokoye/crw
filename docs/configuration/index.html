@@ -335,29 +335,80 @@ default_max_pages = 100
 job_ttl_secs = 3600
 # proxy = &quot;http://proxy:8080&quot;                 # HTTP proxy
 # proxy = &quot;socks5://user:pass@proxy:1080&quot;     # SOCKS5 proxy (also supports http://, https://)
-# stealth = false               # inject browser-like headers + rotate UA globally
+
+# [crawler.stealth]
+# enabled = true             # inject browser-like headers + rotate UA globally
+# inject_headers = true      # send Accept, Sec-Fetch-*, etc. on every HTTP request
+# jitter_factor = 0.2        # ±20% random jitter on rate-limit intervals
+# user_agents = []           # custom UA pool; empty = use built-in Chrome/Firefox/Safari pool
 
 [extraction]
 default_format = &quot;markdown&quot;
 only_main_content = true
 
+# Per-domain CSS selector overrides applied before readability narrowing.
+# Map key is the exact host (no wildcards). User-supplied request `selector` wins.
+# [extraction.domain_selectors]
+# &quot;example.com&quot; = &quot;article, main&quot;
+
+# LLM-assisted extraction fallback. Fires when DOM-based extraction scores below
+# `quality_threshold`. Disabled by default — requires [extraction.llm] to be set.
+# [extraction.llm_fallback]
+# enable = false
+# quality_threshold = 0.3    # score below this triggers the LLM fallback
+# max_html_bytes = 100000    # truncate HTML before sending to LLM
+# always_run = false         # true = LLM on every page (higher cost, higher recall)
+
 [extraction.llm]
-provider = &quot;anthropic&quot;       # &quot;anthropic&quot;, &quot;openai&quot;, &quot;azure&quot;, or &quot;openai-compatible&quot;
+provider = &quot;anthropic&quot;       # &quot;anthropic&quot;, &quot;openai&quot;, &quot;deepseek&quot;, &quot;azure&quot;, or &quot;openai-compatible&quot;
 api_key = &quot;&quot;
 model = &quot;claude-sonnet-4-20250514&quot;
 max_tokens = 4096
 max_html_bytes = 100000      # content fed to LLM is truncated at this byte count
 max_concurrency = 4          # bounded fan-out for per-result summaries in /v1/search
-# base_url = &quot;&quot;              # for OpenAI-compatible endpoints (DeepSeek, Azure, Ollama, …)
+# base_url = &quot;&quot;              # for OpenAI-compatible endpoints (DeepSeek, Azure, …)
+# azure_api_version = &quot;&quot;     # required when provider = &quot;azure&quot;
 # require_byok_header = &quot;&quot;   # tenant guard: reject LLM requests missing this header AND without llmApiKey
+
+# /v1/search endpoint — proxies to a SearXNG instance.
+# Absence of searxng_url disables /v1/search with HTTP 503 (error_code: &quot;search_disabled&quot;).
+# [search]
+# enabled = true               # set false to disable /v1/search even if searxng_url is set
+# searxng_url = &quot;http://localhost:8080&quot;
+# timeout_ms = 15000
+# default_limit = 5
+# max_limit = 20
+# rerank_enabled = true        # RRF+BM25 re-rank for LLM answer/summarize path
+
+# /v1/map URL filter — strips tracking params and drops action URLs from map results.
+# [map.url_filter]
+# strip_tracking_params = true
+# drop_action_urls = true
+# gov_tld_drop_actions = false   # when true, .gov/.mil hosts also run action-URL drop
+# extra_tracking_params = []     # additive on top of built-in list
+# extra_action_params = []
+# extra_preserve_params = []
+
+# Document (PDF) parsing controls.
+# [document]
+# enabled = true
+# max_pages = 0              # 0 = no limit
+# attempt_scanned = false    # best-effort text from image PDFs (no OCR)
+# max_upload_bytes = 52428800   # 50 MiB — POST /v2/parse upload cap
+# max_concurrent_parses = 4    # process-wide cap on concurrent PDF parses (primary DoS guard)
+# upload_concurrency = 4        # max concurrent upload-body buffers (each up to max_upload_bytes)
+# parse_timeout_ms = 30000      # wall-clock timeout per parse; 0 disables
+# max_decompressed_bytes = 104857600  # 100 MiB decompression-bomb guard; 0 disables
+# sandbox = false            # isolate each parse in a child process (Unix only)
+# sandbox_memory_bytes = 536870912   # RLIMIT_AS for sandbox child (Unix); 512 MiB
 
 [auth]
 # api_keys = [&quot;fc-key-1234&quot;]
 </code></pre>
 <h2 id="stealth-mode">Stealth mode</h2>
 <p>Enable globally to make CRW look like a real browser on every HTTP request:</p>
-<pre><code class="language-toml">[crawler]
-stealth = true
+<pre><code class="language-toml">[crawler.stealth]
+enabled = true
 </code></pre>
 <p>When enabled:</p>
 <ul>
@@ -365,6 +416,57 @@ stealth = true
 <li>12 browser-like headers are injected: <code>Accept</code>, <code>Accept-Language</code>, <code>Accept-Encoding</code>, <code>Sec-Ch-Ua</code>, <code>Sec-Ch-Ua-Mobile</code>, <code>Sec-Ch-Ua-Platform</code>, <code>Sec-Fetch-Dest</code>, <code>Sec-Fetch-Mode</code>, <code>Sec-Fetch-Site</code>, <code>Sec-Fetch-User</code>, <code>Priority</code>, <code>Upgrade-Insecure-Requests</code></li>
 </ul>
 <p>Override per-request by setting <code>stealth: true/false</code> in the scrape payload.</p>
+<h3 id="stealth-profile-configstealthtoml">Stealth profile (<code>config.stealth.toml</code>)</h3>
+<p>For higher-yield scraping against bot-detecting sites, CRW ships a ready-made <code>config.stealth.toml</code> overlay that also wires in a <a href="https://github.com/browserless/browserless">browserless v2</a> Chrome backend with its anti-fingerprint plugin enabled. Use it when <code>[crawler.stealth]</code> alone is not enough and you need a full stealth Chrome session.</p>
+<pre><code class="language-bash"># Start browserless via Docker Compose (stealth profile)
+docker compose --profile stealth up -d
+
+# Run crw-server on the host, loading the stealth overlay
+CRW_CONFIG=config.stealth crw-server
+</code></pre>
+<p>What the overlay changes beyond <code>[crawler.stealth]</code> (key settings):</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Value</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>renderer.chrome.ws_url</code></td>
+<td><code>ws://localhost:9224/chromium?token=crwtest&amp;stealth=true</code></td>
+<td>Routes Chrome sessions to browserless with anti-fingerprint plugin. <code>crwtest</code> is a placeholder — set <code>BROWSERLESS_TOKEN</code> in <code>.env</code> and update this URL to match.</td>
+</tr>
+<tr>
+<td><code>renderer.chrome_intercept_resources</code></td>
+<td><code>true</code></td>
+<td>Blocks fonts/images in Chrome to cut per-page latency</td>
+</tr>
+<tr>
+<td><code>renderer.chrome_nav_budget_ms</code></td>
+<td><code>12 000</code></td>
+<td>Longer nav budget for heavy JS sites</td>
+</tr>
+<tr>
+<td><code>renderer.http_timeout_ms</code></td>
+<td><code>4 000</code></td>
+<td>Tighter HTTP timeout (fast fail to browser fallback)</td>
+</tr>
+<tr>
+<td><code>renderer.lightpanda_timeout_ms</code></td>
+<td><code>2 500</code></td>
+<td>Tighter LightPanda budget so Chrome always has residual time within the request deadline</td>
+</tr>
+<tr>
+<td><code>server.rate_limit_rps</code></td>
+<td><code>0</code></td>
+<td>Disables global rate limit for local/private deploys</td>
+</tr>
+</tbody></table>
+<blockquote>
+<p><strong>License note:</strong> browserless v2 is SSPL-3.0. If you expose this stack to third parties as a service, review SSPL §13 compliance before deploying. The default <code>chrome</code> profile (chromedp / headless-shell, Apache-2/BSD) carries no such obligation.</p>
+</blockquote>
 <h2 id="environment-variables">Environment variables</h2>
 <p>Use the <code>CRW_</code> prefix with <code>__</code> as a nesting separator:</p>
 <table>
@@ -403,8 +505,8 @@ stealth = true
 <td><code>CRW_SERVER__RATE_LIMIT_RPS</code></td>
 </tr>
 <tr>
-<td><code>crawler.stealth</code></td>
-<td><code>CRW_CRAWLER__STEALTH</code></td>
+<td><code>crawler.stealth.enabled</code></td>
+<td><code>CRW_CRAWLER__STEALTH__ENABLED</code></td>
 </tr>
 <tr>
 <td><code>crawler.proxy</code></td>
@@ -540,6 +642,7 @@ stealth = true
           <div class="footer-col-links">
             <a href="https://github.com/us/crw" target="_blank" rel="noopener">GitHub</a>
             <a href="https://github.com/us/crw/issues" target="_blank" rel="noopener">Issues</a>
+            <a href="https://discord.gg/VNxv2DuBB" target="_blank" rel="noopener">Discord</a>
           </div>
         </div>
         <div class="footer-col">

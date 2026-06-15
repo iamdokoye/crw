@@ -21,7 +21,7 @@ CRW is built around **Firecrawl-compatible workflows**, not a blanket "drop-in r
 | `success` semantics | `success: false` when target returns HTTP 4xx/5xx with minimal content; `success: true` with `warning` when target returns error status but has real content |
 | JS waiting | Numeric delay only; no selector-based wait primitive |
 | `extract` format | Accepted as alias for `json`. Use `formats: ["json"]` with `jsonSchema` for structured extraction |
-| SDKs | Raw HTTP examples only, no official language SDK package |
+| SDKs | Official packages: `crw` (Python 0.16.0) and `crw-sdk` (TypeScript 0.16.0) |
 
 Treat this page as the source of truth during migrations.
 

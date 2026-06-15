@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Introduction — CRW Docs</title>
-  <meta name="description" content="Turn websites into usable data with one API. Start with a single scrape request, then move into search , map , crawl , extract , browse (interactive browser automation), or MCP only when your workflow">
+  <meta name="description" content="Turn websites into usable data with one API. Start with a single scrape request, then move into search , map , crawl , extract , or MCP only when your workflow actually needs them. Interactive browser">
   <meta name="keywords" content="web scraper, web crawler, firecrawl alternative, crawl4ai alternative, self-hosted scraper, rust web scraper, mcp server, ai web scraping, rag pipeline, llm extraction, open source crawler, headless browser scraper">
   <link rel="canonical" href="https://docs.fastcrw.com/introduction">
   <link rel="icon" href="/favicon.png?v=2" type="image/png">
@@ -15,13 +15,13 @@
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://docs.fastcrw.com/introduction">
   <meta property="og:title" content="Introduction — CRW | Web Scraper in Rust">
-  <meta property="og:description" content="Turn websites into usable data with one API. Start with a single scrape request, then move into search , map , crawl , extract , browse (interactive browser automation), or MCP only when your workflow">
+  <meta property="og:description" content="Turn websites into usable data with one API. Start with a single scrape request, then move into search , map , crawl , extract , or MCP only when your workflow actually needs them. Interactive browser">
   <meta property="og:site_name" content="CRW">
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="Introduction — CRW Docs">
-  <meta name="twitter:description" content="Turn websites into usable data with one API. Start with a single scrape request, then move into search , map , crawl , extract , browse (interactive browser automation), or MCP only when your workflow">
+  <meta name="twitter:description" content="Turn websites into usable data with one API. Start with a single scrape request, then move into search , map , crawl , extract , or MCP only when your workflow actually needs them. Interactive browser">
 
   <!-- Structured Data (JSON-LD) -->
   <script type="application/ld+json">
@@ -282,10 +282,10 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
     </aside>
 
     <main class="content" id="content">
-      <article id="article" role="main"><div class="page-intro">
+      <article id="article" role="main"><p align="right"><a href="https://github.com/us/crw/blob/main/README.zh-CN.md">中文文档 (README.zh-CN.md)</a></p><div class="page-intro">
   <div class="page-kicker">Get Started</div>
   <h1 id="crw-docs">CRW Docs</h1>
-  <p class="page-subtitle">Turn websites into usable data with one API. Start with a single <code>scrape</code> request, then move into <code>search</code>, <code>map</code>, <code>crawl</code>, <code>extract</code>, <code>browse</code> (interactive browser automation), or MCP only when your workflow actually needs them.</p>
+  <p class="page-subtitle">Turn websites into usable data with one API. Start with a single <code>scrape</code> request, then move into <code>search</code>, <code>map</code>, <code>crawl</code>, <code>extract</code>, or MCP only when your workflow actually needs them. Interactive browser automation is handled by the companion <code>crw-browse</code> service.</p>
   <div class="page-capabilities">
     <div class="page-capability"><strong>Fastest first win:</strong> one URL, one markdown response</div>
     <div class="page-capability"><strong>Works for:</strong> agents, ETL, RAG, structured extraction</div>
@@ -299,7 +299,45 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
   <div class="playground-kicker">30-second example</div>
   <div class="playground-title">The shortest path to a successful response</div>
   <div class="playground-copy">If this request works, you already understand the core CRW model: known URL in, clean content out. Everything else in the docs builds on that.</div>
-</div><pre><code class="language-bash">curl -X POST https://fastcrw.com/api/v1/scrape \
+</div><h2 id="does-this-work-for-me">Does this work for me?</h2>
+<table>
+<thead>
+<tr>
+<th>I want to…</th>
+<th>Use</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Scrape a known URL → markdown / JSON</td>
+<td><strong>scrape</strong></td>
+</tr>
+<tr>
+<td>Discover all pages under a domain</td>
+<td><strong>map</strong></td>
+</tr>
+<tr>
+<td>Crawl and scrape many pages in one job</td>
+<td><strong>crawl</strong></td>
+</tr>
+<tr>
+<td>Find relevant URLs via web search</td>
+<td><strong>search</strong></td>
+</tr>
+<tr>
+<td>Pull structured data with an LLM</td>
+<td><strong>extract</strong></td>
+</tr>
+<tr>
+<td>Drive a real browser, click, fill forms</td>
+<td><strong>crw-browse</strong> (companion service)</td>
+</tr>
+<tr>
+<td>Give my AI agent live web access</td>
+<td><strong>MCP</strong></td>
+</tr>
+</tbody></table>
+<p>All five core verbs share the same API key and base URL. You can mix them in a single workflow.</p>
+<pre><code class="language-bash">curl -X POST https://api.fastcrw.com/v1/scrape \
   -H &quot;Authorization: Bearer YOUR_API_KEY&quot; \
   -H &quot;Content-Type: application/json&quot; \
   -d &#39;{
@@ -310,12 +348,13 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <pre><code class="language-json">{
   &quot;success&quot;: true,
   &quot;data&quot;: {
-    &quot;markdown&quot;: &quot;# Example Domain\n\nThis domain is for use in illustrative examples...&quot;,
+    &quot;markdown&quot;: &quot;# Example Domain\n\nThis domain is for use in illustrative examples in documents.&quot;,
     &quot;metadata&quot;: {
       &quot;title&quot;: &quot;Example Domain&quot;,
       &quot;sourceURL&quot;: &quot;https://example.com&quot;,
       &quot;statusCode&quot;: 200,
-      &quot;elapsedMs&quot;: 32
+      &quot;renderedWith&quot;: &quot;http&quot;,
+      &quot;elapsedMs&quot;: 218
     }
   }
 }
@@ -324,7 +363,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <p>:::cards
 ::card{icon=&quot;code&quot; title=&quot;Scrape a page&quot; href=&quot;#scraping&quot; description=&quot;Use one URL and get markdown, HTML, links, or JSON back.&quot;}
 ::card{icon=&quot;search&quot; title=&quot;Search the web&quot; href=&quot;#search&quot; description=&quot;Find URLs first, then scrape only the results you care about.&quot;}
-::card{icon=&quot;cursor&quot; title=&quot;Browse interactively&quot; href=&quot;#mcp&quot; description=&quot;Drive a real browser from your agent — multi-step flows, clicks, stateful sessions (v0.4.0).&quot;}
+::card{icon=&quot;cursor&quot; title=&quot;crw-browse (companion)&quot; href=&quot;/docs/mcp#browser-automation-crw-browse&quot; description=&quot;Separate companion service for multi-step browser automation — clicks, form fills, stateful sessions. Not part of the core API verbs.&quot;}
 ::card{icon=&quot;plug&quot; title=&quot;Add MCP tools&quot; href=&quot;#mcp&quot; description=&quot;Give Claude, Cursor, Codex, and other hosts live web access.&quot;}
 :::</p>
 <h2 id="choose-your-path">Choose your path</h2>
@@ -444,6 +483,7 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
           <div class="footer-col-links">
             <a href="https://github.com/us/crw" target="_blank" rel="noopener">GitHub</a>
             <a href="https://github.com/us/crw/issues" target="_blank" rel="noopener">Issues</a>
+            <a href="https://discord.gg/VNxv2DuBB" target="_blank" rel="noopener">Discord</a>
           </div>
         </div>
         <div class="footer-col">

@@ -19,17 +19,22 @@ export default {
     {
       label: "Start",
       href: "/quick-start",
-      match: ["introduction", "quick-start", "authentication", "playground", "rest-api", "installation"],
+      match: ["introduction", "quick-start", "choose-endpoint", "authentication", "playground", "rest-api", "installation"],
     },
     {
       label: "Endpoints",
       href: "/scraping",
-      match: ["scraping", "search", "map", "crawling", "extract"],
+      match: ["scraping", "search", "map", "crawling", "extract", "pdf-parsing"],
     },
     {
       label: "MCP",
       href: "/mcp",
-      match: ["mcp", "mcp-clients", "sdk-examples", "integrations", "agent-onboarding"],
+      match: ["mcp", "mcp-clients", "crw-browse", "sdk-reference", "sdk-examples", "integrations", "agent-onboarding"],
+    },
+    {
+      label: "Guides",
+      href: "/recipe-rag",
+      match: ["recipe-rag", "recipe-mcp-5min", "recipe-monitoring", "recipe-js-spa", "recipe-batch", "recipe-product-catalog", "recipe-pdf", "migrate-from-firecrawl", "troubleshooting"],
     },
     {
       label: "Self-Host",
@@ -39,7 +44,7 @@ export default {
     {
       label: "Reference",
       href: "/response-shapes",
-      match: ["response-shapes", "output-formats", "rate-limits", "error-codes", "credit-costs", "compatibility", "changelog", "architecture", "crates"],
+      match: ["response-shapes", "output-formats", "rate-limits", "error-codes", "credit-costs", "compatibility", "v2-api", "capabilities", "glossary", "changelog", "architecture", "crates"],
     },
   ],
 
@@ -56,6 +61,7 @@ export default {
       children: [
         { title: "Introduction", slug: "introduction", icon: "rocket" },
         { title: "Quick Start", slug: "quick-start", icon: "play" },
+        { title: "Choose Your Endpoint", slug: "choose-endpoint", icon: "git-branch" },
         { title: "Authentication", slug: "authentication", icon: "key" },
         { title: "API Playground", slug: "playground", icon: "play" },
         { title: "API Overview", slug: "rest-api", icon: "server" },
@@ -75,6 +81,7 @@ export default {
         { title: "Map", slug: "map", icon: "map" },
         { title: "Crawl", slug: "crawling", icon: "globe" },
         { title: "Extract", slug: "extract", icon: "zap" },
+        { title: "PDF Parsing", slug: "pdf-parsing", icon: "file-text" },
         { title: "Monitoring", slug: "monitoring", icon: "bell" },
       ],
     },
@@ -83,9 +90,25 @@ export default {
       children: [
         { title: "MCP Server", slug: "mcp", icon: "plug" },
         { title: "MCP Client Setup", slug: "mcp-clients", icon: "settings" },
+        { title: "Browser Automation (crw-browse)", slug: "crw-browse", icon: "globe" },
+        { title: "SDK Reference", slug: "sdk-reference", icon: "book" },
         { title: "SDK Examples", slug: "sdk-examples", icon: "code" },
         { title: "Framework Integrations", slug: "integrations", icon: "layers" },
         { title: "Agent Onboarding", slug: "agent-onboarding", icon: "book" },
+      ],
+    },
+    {
+      title: "Guides & Recipes",
+      children: [
+        { title: "Build a RAG Knowledge Base", slug: "recipe-rag", icon: "book" },
+        { title: "Claude Web Access in 5 Min", slug: "recipe-mcp-5min", icon: "zap" },
+        { title: "Monitor a Page → Slack", slug: "recipe-monitoring", icon: "bell" },
+        { title: "Scrape a JS-Heavy SPA", slug: "recipe-js-spa", icon: "code" },
+        { title: "Batch-Scrape a URL List", slug: "recipe-batch", icon: "layers" },
+        { title: "Product Catalog Extraction", slug: "recipe-product-catalog", icon: "zap" },
+        { title: "Parse PDF Reports", slug: "recipe-pdf", icon: "file-text" },
+        { title: "Migrate from Firecrawl", slug: "migrate-from-firecrawl", icon: "git-branch" },
+        { title: "Troubleshooting / FAQ", slug: "troubleshooting", icon: "info" },
       ],
     },
     {
@@ -108,6 +131,9 @@ export default {
         { title: "Error Codes", slug: "error-codes", icon: "info" },
         { title: "Credit Costs", slug: "credit-costs", icon: "list" },
         { title: "Compatibility", slug: "compatibility", icon: "check" },
+        { title: "v2 API Reference", slug: "v2-api", icon: "server" },
+        { title: "Capabilities", slug: "capabilities", icon: "check" },
+        { title: "Glossary", slug: "glossary", icon: "book" },
         { title: "Changelog", slug: "changelog", icon: "list" },
         { title: "Architecture", slug: "architecture", icon: "layers" },
         { title: "Crates", slug: "crates", icon: "box" },
@@ -129,6 +155,7 @@ export default {
       { title: "Community", links: [
         { label: "GitHub", href: "https://github.com/us/crw", external: true },
         { label: "Issues", href: "https://github.com/us/crw/issues", external: true },
+        { label: "Discord", href: "https://discord.gg/VNxv2DuBB", external: true },
       ]},
       { title: "Legal", links: [
         { label: "License (AGPL-3.0)", href: "https://github.com/us/crw/blob/main/LICENSE", external: true },
@@ -136,6 +163,7 @@ export default {
     ],
     socials: [
       { icon: "github", href: "https://github.com/us/crw" },
+      { icon: "discord", href: "https://discord.gg/VNxv2DuBB" },
     ],
   },
 };

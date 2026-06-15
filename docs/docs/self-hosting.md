@@ -26,6 +26,20 @@ curl -X POST http://localhost:3000/v1/scrape \
 - optional browser-backed rendering
 - your own reverse proxy, logging, rate limits, and deployment choices
 
+## Deployment Paths Compared
+
+Three deployment paths cover most self-hosted use cases. Choose based on how much JS rendering you need and how much you want to operate.
+
+| | Single binary (`config.default`) | Docker Compose (`config.docker`) | Docker Compose stealth (`docker-compose.stealth.yml`) |
+|---|---|---|---|
+| **Setup effort** | Lowest — one binary, one TOML | Medium — `docker compose up -d`, two or three sidecars | Highest — compose + stealth override file, token rotation |
+| **JS rendering included** | No — LightPanda must be started separately; Chrome disabled by default | Yes — LightPanda bundled; Chrome via `--profile heavy` | Yes — browserless/chromium with anti-fingerprint plugin (`--profile stealth`), +2.5 pt success over vanilla Chrome |
+| **Search (`/v1/search`) included** | No — `searxng_url` not set; returns `search_disabled` until you point it at your own SearXNG | Yes — SearXNG sidecar auto-started; `/v1/search` and `crw_search` MCP tool work out of the box | Yes — same as `config.docker` |
+| **Rate limit default** | 10 req/s global | Unlimited (0) — per-host limits still apply | Unlimited (0) |
+| **Best for** | Local dev, CI, minimal VPS where you control sidecars yourself | Standard production VPS or server | Production workloads on bot-protected targets; requires SSPL-3.0 license review before exposing to third parties |
+
+> **Chrome vs stealth:** The default `--profile heavy` uses `chromedp/headless-shell` (Apache-2/BSD, no license concerns). The `--profile stealth` uses `browserless/chromium` (SSPL-3.0) and raised success rate from 87.1 % to 89.6 % on a 1 000-URL Firecrawl benchmark. Check the license notice in `docker-compose.yml` before using the stealth profile in any service that exposes scraping to third parties.
+
 ## Recommended Rollout
 
 1. start with `scrape` on a real target

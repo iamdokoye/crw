@@ -75,6 +75,7 @@ When `mode = "auto"` and you have multiple renderers configured (e.g., LightPand
 | omitted / `auto` | Use the configured fallback chain (existing behavior) |
 | `lightpanda` | Hard-pin to LightPanda — no fallback |
 | `chrome` | Hard-pin to Chrome — no fallback |
+| `chrome_proxy` | Hard-pin to residential-proxy Chrome tier — no fallback |
 | `playwright` | Hard-pin to Playwright — no fallback |
 
 ### Pinned implies JS
@@ -83,13 +84,13 @@ A non-`auto` `renderer` value implies `renderJs:true`. If you set `renderJs:fals
 
 ### Errors and validation
 
-If the named renderer isn't available in the server's pool, the request returns HTTP 400 immediately with `errorCode: "invalid_request"` and a message listing the configured renderers:
+If the named renderer isn't available in the server's pool, the request returns HTTP 400 immediately with `error_code: "invalid_request"` and a message listing the configured renderers:
 
 ```json
 {
   "success": false,
   "error": "renderer 'chrome' not available; configured renderers: [lightpanda]. Update server config or omit the 'renderer' field.",
-  "errorCode": "invalid_request"
+  "error_code": "invalid_request"
 }
 ```
 
