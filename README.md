@@ -261,6 +261,10 @@ The Firecrawl compatibility matrix (field-by-field diff) lives in
 
 ## Benchmark
 
+<p align="center">
+  <img src=".github/benchmarks/bench-dashboard.png" alt="fastCRW vs Crawl4AI vs Firecrawl — truth-recall and p90 latency on Firecrawl's public dataset" width="100%">
+</p>
+
 Reproduce it yourself first — the canonical harness is `diagnose_3way.py`
 (matches truth text against `md + strip_md_links(md)`, applied identically
 to all three tools — a fairness control, not a looser number):
@@ -304,6 +308,13 @@ because the recall is worth the tail.
 
 Full result of record:
 [`bench/server-runs/RESULT_3WAY_1000_FULL.md`](bench/server-runs/RESULT_3WAY_1000_FULL.md).
+
+**Two tunable modes, one engine.** The table above is the default full ladder
+(*recall-mode*) — highest truth-recall, the long tail that recovers what others
+miss. A config-only *fast mode* (LightPanda-only, no Chrome tier) trades coverage
+for latency: certified **p90 4348 ms** (`diagnose_3way.py`, N=1000) — beating both
+competitors' tails — when you'd rather have the fastest p90 than the deepest
+recall. Same binary, same API; pick accuracy or latency per workload.
 
 ---
 
