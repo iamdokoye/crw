@@ -26,6 +26,14 @@ Built in Rust because every millisecond of agent latency compounds.
 </p>
 
 <p align="center">
+  <a href="https://crates.io/crates/crw-server"><img src="https://img.shields.io/crates/d/crw-server.svg?label=crates.io%20downloads" alt="crates.io downloads"></a>
+  <a href="https://www.npmjs.com/package/crw-sdk"><img src="https://img.shields.io/npm/dm/crw-sdk.svg?label=npm%20sdk" alt="npm sdk downloads"></a>
+  <a href="https://www.npmjs.com/package/crw-mcp"><img src="https://img.shields.io/npm/dm/crw-mcp.svg?label=npm%20mcp" alt="npm mcp downloads"></a>
+  <a href="https://pepy.tech/project/crw"><img src="https://static.pepy.tech/badge/crw/month" alt="PyPI downloads"></a>
+  <a href="https://github.com/us/crw/releases"><img src="https://img.shields.io/github/downloads/us/crw/total?label=binary%20downloads" alt="binary downloads"></a>
+</p>
+
+<p align="center">
   <a href="https://twitter.com/fastcrw"><img src="https://img.shields.io/badge/Follow%20on%20X-000000?style=for-the-badge&logo=x&logoColor=white" alt="Follow on X" /></a>
   <a href="https://www.linkedin.com/company/fastcrw"><img src="https://img.shields.io/badge/Follow%20on%20LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white" alt="Follow on LinkedIn" /></a>
   <a href="https://discord.gg/kkFh2SC8"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join our Discord" /></a>
