@@ -2,6 +2,20 @@
 
 All notable changes to CRW are documented here.
 
+## [0.17.0](https://github.com/us/crw/compare/v0.16.0...v0.17.0) (2026-06-18)
+
+
+### Features
+
+* **renderer:** add opt-in Camoufox stealth renderer tier ([744beda](https://github.com/us/crw/commit/744beda540fad3e17b6d9c1d2127cad30ab83767))
+* **skills:** add crw agent skill set ([0ddbe01](https://github.com/us/crw/commit/0ddbe010fdfe484f2c58db773569d85989441372))
+
+
+### Bug Fixes
+
+* **mcp,sdk:** drop phantom search country param, export CrwApiError ([58b8e5c](https://github.com/us/crw/commit/58b8e5cd67347c3f4f7c8ebd341236873ba201b9))
+* **pdf:** bound sandbox child address space to prevent false pdf_too_large ([06acb83](https://github.com/us/crw/commit/06acb8331490713967cf95bd40005c5af839373b))
+
 ## [0.16.0](https://github.com/us/crw/compare/v0.15.2...v0.16.0) (2026-06-14)
 
 
