@@ -43,6 +43,12 @@ Works with: [Claude Code](https://docs.fastcrw.com/mcp-clients/#claude-code) · 
 
 ---
 
+<p align="center">
+  <img src=".github/benchmarks/bench-dashboard.png" alt="fastCRW vs Crawl4AI vs Firecrawl on Firecrawl's public 1,000-URL dataset — fastCRW leads on truth-recall, p50, and fast-mode p90 latency" width="100%">
+</p>
+
+<p align="center"><sub>Firecrawl's own 1,000-URL public dataset (<code>diagnose_3way.py</code>) — fastCRW leads on truth-recall, median latency, and fast-mode p90. <a href="#benchmark">Full numbers and one-command repro ↓</a></sub></p>
+
 ## Why fastCRW?
 
 - **Rust-native, single static binary** — no Redis, no Node.js, no Python venv, no headless-browser sidecar in the request path. One binary, one config file, one process.
@@ -302,10 +308,6 @@ The Firecrawl compatibility matrix (field-by-field diff) lives in
 
 ## Benchmark
 
-<p align="center">
-  <img src=".github/benchmarks/bench-dashboard.png" alt="fastCRW vs Crawl4AI vs Firecrawl — truth-recall and p50 latency on Firecrawl's public dataset" width="100%">
-</p>
-
 Reproduce it yourself first — the canonical harness is `diagnose_3way.py`
 (matches truth text against `md + strip_md_links(md)`, applied identically
 to all three tools — a fairness control, not a looser number):
@@ -458,9 +460,13 @@ Contributions are welcome — issues and PRs both.
 The pre-commit hook runs the same checks as CI (`cargo fmt`, `cargo clippy`,
 `cargo test`). Run manually with `make check`.
 
-<a href="https://github.com/us/crw/graphs/contributors">
-  <img alt="contributors" src="https://contrib.rocks/image?repo=us/crw"/>
-</a>
+### Contributors
+
+<p>
+  <a href="https://github.com/us"><img src="https://github.com/us.png?size=64" width="64" height="64" alt="us"/></a>
+  <a href="https://github.com/adambenhassen"><img src="https://github.com/adambenhassen.png?size=64" width="64" height="64" alt="adambenhassen"/></a>
+  <a href="https://github.com/mj520"><img src="https://github.com/mj520.png?size=64" width="64" height="64" alt="mj520"/></a>
+</p>
 
 ---
 
