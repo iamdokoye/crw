@@ -48,8 +48,6 @@ services:
       # Nigerian proxy — set CRW_CRAWLER__PROXY in Coolify, e.g.:
       # http://user:pass@proxy.webshare.io:80
       - CRW_CRAWLER__PROXY=${CRW_CRAWLER__PROXY:-}
-    volumes:
-      - ./config.docker.toml:/app/config.docker.toml:ro
     # ── Host protection (defense-in-depth for untrusted PDF/scrape input) ──
     # `mem_limit` is the hard ceiling: no matter what a malicious upload does,
     # this container (and its sandboxed PDF-parse children, which share this
