@@ -6,6 +6,7 @@ services:
     depends_on:
       lightpanda:
         condition: service_started
+        required: false           # optional — crw starts even if lightpanda is unhealthy
       # `chrome` is opt-in via `--profile heavy`. Compose treats a missing
       # service as "not started", so listing it here is harmless when the
       # profile is off — but keeping it makes `--profile heavy up` order
@@ -24,6 +25,7 @@ services:
       # search request after `compose up` doesn't race the cold start.
       searxng:
         condition: service_healthy
+        required: false           # optional — crw starts even if searxng is unhealthy
     environment:
       - RUST_LOG=info
       - CRW_CONFIG=config.docker
@@ -37,6 +39,15 @@ services:
       - CRW_RENDERER__CHROME_CONTEXT_POOL_ENABLED=${CRW_RENDERER__CHROME_CONTEXT_POOL_ENABLED:-true}
       - CRW_RENDERER__CHROME_BACKEND=${CRW_RENDERER__CHROME_BACKEND:-vanilla}
       - CRW_RENDERER__CHROME_POOL__SIZE=${CRW_RENDERER__CHROME_POOL__SIZE:-4}
+      # Search disabled — no SearXNG sidecar required
+      - CRW_SEARCH__ENABLED=false
+      # Chrome backend — set CRW_RENDERER__CHROME__WS_URL in Coolify to point at
+      # your Browserless instance, e.g.:
+      # wss://browserless.oikusdat.com/chromium?token=TOKEN&stealth=true
+      - CRW_RENDERER__CHROME__WS_URL=${CRW_RENDERER__CHROME__WS_URL:-ws://chrome:9222}
+      # Nigerian proxy — set CRW_CRAWLER__PROXY in Coolify, e.g.:
+      # http://user:pass@proxy.webshare.io:80
+      - CRW_CRAWLER__PROXY=${CRW_CRAWLER__PROXY:-}
     volumes:
       - ./config.docker.toml:/app/config.docker.toml:ro
     # ── Host protection (defense-in-depth for untrusted PDF/scrape input) ──
