@@ -354,6 +354,24 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <li>add auth, TLS, and edge controls before broader access</li>
 <li>add JS rendering only when targets actually need it</li>
 </ol>
+<h2 id="optional-camoufox-stealth-sidecar">Optional: Camoufox stealth sidecar</h2>
+<p>For targets that block the CDP renderers on fingerprint / bot-challenge grounds
+(e.g. a Cloudflare <code>403</code>), you can run an optional <a href="https://github.com/daijro/camoufox">Camoufox</a>
+stealth tier. It is a REST sidecar — separate from the CDP browsers — and is
+<strong>off by default</strong>: it requires a <code>--features camoufox</code> build and never joins
+the <code>auto</code> chain unless you opt in.</p>
+<pre><code class="language-bash"># 1. run the camofox-browser sidecar (default port 9377)
+docker run -p 9377:9377 -e CAMOFOX_PORT=9377 jo-inc/camofox-browser
+
+# 2. point CRW at it (config.toml)
+#    [renderer.camoufox]
+#    base_url = &quot;http://127.0.0.1:9377&quot;
+#    # include_in_auto = true   # optional: add as the last auto-failover tier
+</code></pre>
+<p>Reach it per request with <code>&quot;renderer&quot;: &quot;camoufox&quot;</code>, pin every request with
+<code>mode = &quot;camoufox&quot;</code>, or set <code>include_in_auto = true</code>. It is a heavier
+(Firefox-class) render than the CDP tiers, so enable it only for the requests
+that need it. Full details: <a href="/js-rendering">JS rendering → Camoufox</a>.</p>
 <h2 id="when-self-hosting-is-the-right-choice">When Self-Hosting Is The Right Choice</h2>
 <p>Choose self-hosting when you want:</p>
 <ul>

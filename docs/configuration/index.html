@@ -299,7 +299,7 @@ request_timeout_secs = 120
 rate_limit_rps = 10              # Max requests/second (global). 0 = unlimited.
 
 [renderer]
-mode = &quot;auto&quot;               # auto | lightpanda | playwright | chrome | none
+mode = &quot;auto&quot;               # auto | lightpanda | playwright | chrome | camoufox | none
 page_timeout_ms = 30000
 pool_size = 4
 # render_js_default = true  # alias: force_js = true
@@ -580,6 +580,10 @@ CRW_CONFIG=config.stealth crw-server
 <tr>
 <td><code>chrome</code></td>
 <td>Always use Chrome via CDP</td>
+</tr>
+<tr>
+<td><code>camoufox</code></td>
+<td>Opt-in Camoufox stealth tier (REST). Requires <code>--features camoufox</code> + a <code>[renderer.camoufox]</code> endpoint</td>
 </tr>
 <tr>
 <td><code>none</code></td>

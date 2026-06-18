@@ -315,6 +315,10 @@ pool_size = 4
 <td>Always use Chrome for JS rendering</td>
 </tr>
 <tr>
+<td><code>camoufox</code></td>
+<td>Opt-in stealth tier (REST). Requires <code>--features camoufox</code> + a configured <code>[renderer.camoufox]</code> endpoint</td>
+</tr>
+<tr>
 <td><code>none</code></td>
 <td>HTTP only, never render JS</td>
 </tr>
@@ -393,6 +397,10 @@ CRW_RENDERER__FORCE_JS=true
 <tr>
 <td><code>playwright</code></td>
 <td>Hard-pin to Playwright — no fallback</td>
+</tr>
+<tr>
+<td><code>camoufox</code></td>
+<td>Hard-pin to the opt-in Camoufox stealth tier (REST) — no fallback. Requires a build with <code>--features camoufox</code> and a configured <code>[renderer.camoufox]</code> endpoint</td>
 </tr>
 </tbody></table>
 <h3 id="pinned-implies-js">Pinned implies JS</h3>
@@ -499,6 +507,84 @@ ws_url = &quot;ws://chrome:9222&quot;
 <li>Execute <code>Runtime.evaluate(&quot;document.documentElement.outerHTML&quot;)</code> to get rendered HTML</li>
 <li>Close the tab via <code>Target.closeTarget</code></li>
 </ol>
+<h2 id="camoufox-stealth-tier-opt-in">Camoufox stealth tier (opt-in)</h2>
+<p>Camoufox is an <strong>optional</strong> stealth renderer for targets that block the CDP
+tiers on <strong>fingerprint / bot-challenge</strong> grounds (e.g. a Cloudflare <code>403</code> that
+Chrome can&#39;t get past). It is a <a href="https://github.com/daijro/camoufox">Camoufox</a>
+(Firefox-based, anti-fingerprint) browser driven through the
+<a href="https://github.com/jo-inc/camofox-browser"><code>camofox-browser</code></a> REST sidecar —
+<strong>not</strong> CDP.</p>
+<p>It is <strong>off by default and changes nothing</strong> unless you opt in. Even a
+configured endpoint stays out of the <code>auto</code> failover chain until you ask for it.</p>
+<h3 id="requirements">Requirements</h3>
+<ol>
+<li><p>A build with the feature compiled in: <code>--features camoufox</code> (the default
+build does not include it).</p>
+</li>
+<li><p>A running camofox-browser sidecar (default port <code>9377</code>):</p>
+<pre><code class="language-bash">docker run -p 9377:9377 -e CAMOFOX_PORT=9377 jo-inc/camofox-browser
+</code></pre>
+</li>
+<li><p>The endpoint in your config:</p>
+<pre><code class="language-toml">[renderer.camoufox]
+base_url = &quot;http://127.0.0.1:9377&quot;
+# api_key = &quot;...&quot;             # sent as `Authorization: Bearer` — only needed
+#                             # if you front the sidecar with an auth proxy
+# include_in_auto = false     # default: stay OUT of the auto ladder
+# camoufox_timeout_ms = 60000 # per-request REST budget (default 60s)
+</code></pre>
+</li>
+</ol>
+<h3 id="three-ways-to-use-it">Three ways to use it</h3>
+<table>
+<thead>
+<tr>
+<th>How</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Per-request <code>&quot;renderer&quot;: &quot;camoufox&quot;</code></td>
+<td>Hard-pin a single request to Camoufox. Works as soon as the endpoint is configured.</td>
+</tr>
+<tr>
+<td>Config <code>mode = &quot;camoufox&quot;</code></td>
+<td>Pin <strong>every</strong> request to Camoufox.</td>
+</tr>
+<tr>
+<td><code>include_in_auto = true</code></td>
+<td>Add Camoufox as the <strong>last</strong> tier of the <code>auto</code> failover chain (tried only after the cheaper tiers fail).</td>
+</tr>
+</tbody></table>
+<p>With the default <code>include_in_auto = false</code>, a configured endpoint is <strong>only</strong>
+reachable via an explicit pin (<code>renderer = &quot;camoufox&quot;</code>) or <code>mode = &quot;camoufox&quot;</code> —
+it never silently joins <code>auto</code>.</p>
+<h3 id="how-it-works">How it works</h3>
+<p>The renderer talks to the sidecar over HTTP, not CDP:</p>
+<ol>
+<li><code>POST /tabs</code> — create a fresh, isolated session and navigate to the URL.</li>
+<li><code>POST /tabs/{id}/evaluate</code> — run <code>document.documentElement.outerHTML</code> to get
+the fully JS-rendered DOM.</li>
+<li><code>DELETE /sessions/{id}</code> — always tear the session down (even on error), so
+no server-side session leaks.</li>
+</ol>
+<p>The returned HTML flows through the <strong>same</strong> post-render pipeline as every other
+tier (<code>only_main_content</code>, tag filters, markdown), so your output shape is
+unchanged. Each request gets a fresh session (no cookie carry-over). If the page
+comes back as a bot wall / challenge, the tier reports a retryable error so the
+chain can react.</p>
+<h3 id="trade-offs">Trade-offs</h3>
+<ul>
+<li><strong>Cost:</strong> a full Firefox-class render plus a REST round-trip — heavier and
+slower than the CDP tiers, and it counts as the most expensive renderer
+internally. You only pay this on the requests you opt in.</li>
+<li><strong>Ops:</strong> it&#39;s a separate (Node) process to run and monitor — it breaks the
+pure single-binary story for deployments that enable it.</li>
+<li><strong>Resilience:</strong> the <code>Fetch</code>-based resource blocking the CDP path uses does not
+apply on this tier (the sidecar loads the page itself).</li>
+</ul>
+<p>If the sidecar is unreachable, the tier reports unavailable (health-probed) and
+is skipped rather than failing every request.</p>
 <h2 id="cloud-vs-self-hosted">Cloud vs Self-hosted</h2>
 <ul>
 <li><strong>Cloud</strong>: JS rendering is always available. The managed infrastructure runs a LightPanda sidecar alongside the engine. Available on <a href="https://fastcrw.com">fastcrw.com</a> (cloud).</li>
