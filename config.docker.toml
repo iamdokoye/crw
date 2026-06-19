@@ -54,7 +54,7 @@ chrome_timeout_ms = 30000
 chrome_intercept_resources = true
 # Hard ceiling for chrome post-navigate phase. Inner race; on hit a
 # partial-DOM snapshot is returned with truncated=true.
-chrome_nav_budget_ms = 12000
+chrome_nav_budget_ms = 35000
 
 # Phase 4 §B5: bounded browser-context pool. Validated 2026-05-11
 # (PROGRESS.md gap-closure): cookie/storage isolation T1 PASS, B2 sanity
