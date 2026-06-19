@@ -176,7 +176,13 @@ async fn run_crawl_inner(opts: CrawlOptions<'_>) {
             .pick_proxy_for_url(&origin)
             .map(|e| e.raw().to_string())
             .or_else(|| proxy.clone()),
-    };
+    }
+    // An empty/whitespace single `proxy` means "no proxy configured" (e.g. a
+    // present-but-empty CRW_CRAWLER__PROXY or a CLI `--proxy ""`, which bypasses
+    // config normalization). Treat it as a direct connection rather than handing
+    // "" to reqwest::Proxy::all, which rejects it with "builder error"
+    // (issue #154). A genuinely malformed non-empty value still fails closed below.
+    .filter(|p| !p.trim().is_empty());
     let mut client_builder = reqwest::Client::builder()
         .user_agent(user_agent)
         .redirect(crw_core::url_safety::safe_redirect_policy());
@@ -534,7 +540,12 @@ pub async fn discover_urls(opts: DiscoverOptions<'_>) -> CrwResult<DiscoverResul
     let discover_proxy: Option<String> = renderer
         .pick_proxy_for_url(&origin)
         .map(|e| e.raw().to_string())
-        .or_else(|| proxy.clone());
+        .or_else(|| proxy.clone())
+        // Empty/whitespace single `proxy` = no proxy configured; never hand "" to
+        // reqwest::Proxy::all (it errors with "builder error" — issue #154). A
+        // malformed non-empty value still fails closed below. Covers the CLI
+        // `--proxy ""` path, which bypasses config-level normalization.
+        .filter(|p| !p.trim().is_empty());
     let mut discover_client_builder = reqwest::Client::builder()
         .user_agent(user_agent)
         .timeout(std::time::Duration::from_secs(15))
