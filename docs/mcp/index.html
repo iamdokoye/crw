@@ -343,7 +343,7 @@ cargo install crw-mcp
 docker run -i ghcr.io/us/crw crw-mcp</code></pre>
 <p>Add to your MCP client:</p>
 <pre data-lang="bash"><code class="language-bash"># Claude Code:
-claude mcp add crw -- npx crw-mcp
+claude mcp add crw -- npx -y crw-mcp
 
 # OpenAI Codex CLI:
 codex mcp add crw -- npx crw-mcp</code></pre>
@@ -351,9 +351,9 @@ codex mcp add crw -- npx crw-mcp</code></pre>
 <p>If you want host-by-host config files instead of one-liners, jump to <a href="/mcp-clients">MCP Client Setup</a>.</p>
 <h3 id="with-cdp-rendering-lightpandachrome">With CDP rendering (LightPanda/Chrome)</h3>
 <p>If you have a CDP-compatible browser, pass it via env vars:</p>
-<pre data-lang="bash"><code class="language-bash">claude mcp add \
+<pre data-lang="bash"><code class="language-bash">claude mcp add crw \
   -e CRW_RENDERER__LIGHTPANDA__WS_URL=ws://127.0.0.1:9222 \
-  crw -- npx crw-mcp</code></pre>
+  -- npx -y crw-mcp</code></pre>
 <p>Without a CDP browser, <code>crw-mcp</code> uses its HTTP-only renderer (no JavaScript rendering).</p>
 <h3 id="embedded-mode-configuration">Embedded mode configuration</h3>
 <p>In embedded mode, <code>crw-mcp</code> loads config the same way as <code>crw-server</code>: <code>config.default.toml</code> → <code>config.local.toml</code> → env var overrides. Env vars use <code>CRW_</code> prefix with <code>__</code> separator:</p>
@@ -363,15 +363,15 @@ CRW_CRAWLER__USER_AGENT=&quot;MyBot/1.0&quot;</code></pre>
 <h2 id="proxy-mode-remote-server">Proxy Mode (Remote Server)</h2>
 <p>Connect to <a href="https://fastcrw.com">fastcrw.com</a> or any remote CRW instance:</p>
 <pre data-lang="bash"><code class="language-bash"># Cloud server
-claude mcp add \
+claude mcp add crw \
   -e CRW_API_URL=https://api.fastcrw.com \
   -e CRW_API_KEY=YOUR_API_KEY \
-  crw -- npx crw-mcp
+  -- npx -y crw-mcp
 
 # Local crw-server on custom port
-claude mcp add \
+claude mcp add crw \
   -e CRW_API_URL=http://localhost:4000 \
-  crw -- npx crw-mcp</code></pre>
+  -- npx -y crw-mcp</code></pre>
 <p>The same <code>CRW_API_URL</code> + <code>CRW_API_KEY</code> env block also works in Codex, Claude Desktop, Cursor, Windsurf, Cline, and Continue. See <a href="/mcp-clients">MCP Client Setup</a> for ready-to-paste config files.</p>
 <h2 id="three-transport-options">Three Transport Options</h2>
 <table>
@@ -384,7 +384,7 @@ claude mcp add \
 </thead>
 <tbody><tr>
 <td><strong>Stdio embedded</strong> (recommended)</td>
-<td><code>claude mcp add crw -- npx crw-mcp</code></td>
+<td><code>claude mcp add crw -- npx -y crw-mcp</code></td>
 <td>Nothing</td>
 </tr>
 <tr>
@@ -529,13 +529,13 @@ crw-browse
 <h2 id="best-first-setups">Best first setups</h2>
 <h3 id="claude-code">Claude Code</h3>
 <pre data-lang="bash"><code class="language-bash"># Local embedded
-claude mcp add crw -- npx crw-mcp
+claude mcp add crw -- npx -y crw-mcp
 
 # fastcrw.com cloud
-claude mcp add \
+claude mcp add crw \
   -e CRW_API_URL=https://api.fastcrw.com \
   -e CRW_API_KEY=YOUR_API_KEY \
-  crw -- npx crw-mcp</code></pre>
+  -- npx -y crw-mcp</code></pre>
 <h3 id="openai-codex-cli">OpenAI Codex CLI</h3>
 <pre data-lang="bash"><code class="language-bash"># Local embedded
 codex mcp add crw -- npx crw-mcp</code></pre>

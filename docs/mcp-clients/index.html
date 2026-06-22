@@ -352,12 +352,12 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 </ul>
 <div class="callout callout-tip"><div class="callout-icon"></div><div class="callout-content">If you only remember one rule, remember this one: local embedded mode is the easiest setup (up to 6 tools, with `crw_search` appearing automatically when SearXNG is configured), and fastcrw.com cloud mode is the easiest way to get all 6 tools including always-on web search.</div></div><h2 id="claude-code">Claude Code</h2>
 <h3 id="local-embedded">Local embedded</h3>
-<pre data-lang="bash"><code class="language-bash">claude mcp add crw -- npx crw-mcp</code></pre>
+<pre data-lang="bash"><code class="language-bash">claude mcp add crw -- npx -y crw-mcp</code></pre>
 <h3 id="fastcrwcom-cloud">fastcrw.com cloud</h3>
-<pre data-lang="bash"><code class="language-bash">claude mcp add \
+<pre data-lang="bash"><code class="language-bash">claude mcp add crw \
   -e CRW_API_URL=https://api.fastcrw.com \
   -e CRW_API_KEY=YOUR_API_KEY \
-  crw -- npx crw-mcp</code></pre>
+  -- npx -y crw-mcp</code></pre>
 <h3 id="local-http-transport">Local HTTP transport</h3>
 <pre data-lang="bash"><code class="language-bash">claude mcp add --transport http crw http://localhost:3000/mcp</code></pre>
 <p>Useful commands:</p>
@@ -673,9 +673,9 @@ CRW_API_KEY = &quot;YOUR_API_KEY&quot;</code></pre>
 <li><code>CRW_...</code> environment overrides</li>
 </ul>
 <p>If you need JavaScript rendering in local MCP mode, pass a renderer URL:</p>
-<pre data-lang="bash"><code class="language-bash">claude mcp add \
+<pre data-lang="bash"><code class="language-bash">claude mcp add crw \
   -e CRW_RENDERER__LIGHTPANDA__WS_URL=ws://127.0.0.1:9222 \
-  crw -- npx crw-mcp</code></pre>
+  -- npx -y crw-mcp</code></pre>
 <p>Without a configured renderer, CRW still works in HTTP-only mode.</p>
 <h2 id="how-to-choose-local-vs-fastcrwcom">How to choose local vs fastcrw.com</h2>
 <p>Use local embedded mode when:</p>

@@ -289,17 +289,17 @@ crw search "renewable energy trends 2024" --json --fields title,url,snippet --li
 <h2 id="step-1-register-the-mcp-server">Step 1 — Register the MCP server</h2>
 <h3 id="option-a-local-embedded-mode-zero-setup-no-api-key">Option A: Local embedded mode (zero setup, no API key)</h3>
 <p>The MCP binary contains a full scraping engine. No server, no account needed.</p>
-<pre data-lang="bash"><code class="language-bash">claude mcp add crw -- npx crw-mcp</code></pre>
+<pre data-lang="bash"><code class="language-bash">claude mcp add crw -- npx -y crw-mcp</code></pre>
 <p>Claude Code writes this into your project <code>.claude/mcp.json</code> automatically. You are done. Start a new Claude Code session and the tools are available.</p>
 <blockquote>
 <p><strong>What you get:</strong> <code>crw_scrape</code>, <code>crw_crawl</code>, <code>crw_check_crawl_status</code>, <code>crw_map</code>, <code>crw_parse_file</code>. <code>crw_search</code> requires a SearXNG backend — use cloud mode to get it instantly.</p>
 </blockquote>
 <h3 id="option-b-cloud-mode-all-6-tools-including-crw_search">Option B: Cloud mode (all 6 tools, including <code>crw_search</code>)</h3>
 <p>Get a free API key at <a href="https://fastcrw.com">fastcrw.com</a> — 500 one-time lifetime credits, no monthly reset.</p>
-<pre data-lang="bash"><code class="language-bash">claude mcp add \
+<pre data-lang="bash"><code class="language-bash">claude mcp add crw \
   -e CRW_API_URL=https://api.fastcrw.com \
   -e CRW_API_KEY=crw_live_xxxxxxxxxxxx \
-  crw -- npx crw-mcp</code></pre>
+  -- npx -y crw-mcp</code></pre>
 <p>This registers the same <code>crw-mcp</code> binary in proxy mode. Tool calls are forwarded to <code>api.fastcrw.com</code>. All 6 tools are advertised, including <code>crw_search</code>.</p>
 <p><strong>Verify it works:</strong></p>
 <pre data-lang="bash"><code class="language-bash">claude mcp list
