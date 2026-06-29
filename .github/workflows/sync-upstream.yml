@@ -1,0 +1,40 @@
+name: Sync fork with upstream
+
+on:
+  schedule:
+    - cron: '0 0 * * *'   # daily at midnight UTC
+  workflow_dispatch:        # manual trigger from Actions tab
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Add upstream and fetch
+        run: |
+          git remote add upstream https://github.com/us/crw.git
+          git fetch upstream main
+
+      - name: Merge upstream into fork
+        id: merge
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git merge upstream/main --no-edit && echo "merged=true" >> $GITHUB_OUTPUT || echo "merged=false" >> $GITHUB_OUTPUT
+
+      - name: Push if clean merge
+        if: steps.merge.outputs.merged == 'true'
+        run: git push origin main
+
+      - name: Open issue if conflict
+        if: steps.merge.outputs.merged == 'false'
+        run: |
+          gh issue create \
+            --title "⚠️ Upstream sync conflict — manual merge needed" \
+            --body "Upstream \`us/crw:main\` has changes that conflict with our custom commits. Resolve manually."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
