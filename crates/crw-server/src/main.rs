@@ -58,6 +58,13 @@ async fn run_server() {
     // cap) from [document] config before any request can trigger a parse.
     crw_crawl::pdf::configure_limits(&config.document);
 
+    // Bound concurrent HTML extraction (html5ever + htmd). Extraction is moved
+    // off the async reactor onto the blocking pool; this semaphore caps its
+    // parallelism so a burst of concurrent scrapes can't oversubscribe the
+    // cores and stall the runtime. The tokio runtime builder is left at its
+    // defaults — this is the real capacity bound.
+    crw_crawl::extract_pool::configure_extract_limit(config.extraction.max_concurrent_extracts);
+
     let addr = format!("{}:{}", config.server.host, config.server.port);
     tracing::info!("Starting CRW on {addr}");
     tracing::info!("Renderer mode: {:?}", config.renderer.mode);
@@ -110,6 +117,26 @@ async fn run_server() {
         tracing::error!(
             "CRW_DISABLE_SERVER_LLM_KEY=1 but [extraction.llm].api_key is also configured. \
              This is forbidden in SaaS-fronted deploys (refusing to boot)."
+        );
+        std::process::exit(1);
+    }
+
+    // Optional boot guard (off by default): when `CRW_REQUIRE_MANAGED_MODEL_PREFIX`
+    // is set, the configured LLM model must live in this project's own `crw-`
+    // namespace. SaaS-fronted deploys enable it to catch a misconfigured model
+    // before any request is served. Self-hosters leave it unset and can use any
+    // model. Skipped when no LLM is configured.
+    let require_managed_prefix = std::env::var("CRW_REQUIRE_MANAGED_MODEL_PREFIX")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    if !managed_model_prefix_ok(
+        require_managed_prefix,
+        config.extraction.llm.as_ref().map(|c| c.model.as_str()),
+    ) {
+        tracing::error!(
+            "[extraction.llm].model must use the `crw-` namespace when \
+             CRW_REQUIRE_MANAGED_MODEL_PREFIX is set (check CRW_EXTRACTION__LLM__MODEL); \
+             refusing to boot."
         );
         std::process::exit(1);
     }
@@ -251,5 +278,46 @@ async fn shutdown_signal() {
     tokio::select! {
         _ = ctrl_c => tracing::info!("Received Ctrl+C, shutting down..."),
         _ = terminate => tracing::info!("Received SIGTERM, shutting down..."),
+    }
+}
+
+/// Decide whether the configured LLM model satisfies the optional managed-prefix
+/// guard. Returns `true` (boot allowed) when the guard is off, when no LLM is
+/// configured, or when the model uses the `crw-` namespace. Returns `false`
+/// (refuse boot) only when the guard is on AND a non-`crw-` model is configured.
+fn managed_model_prefix_ok(require: bool, model: Option<&str>) -> bool {
+    if !require {
+        return true;
+    }
+    match model {
+        None => true,
+        Some(m) => m.starts_with("crw-"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::managed_model_prefix_ok;
+
+    #[test]
+    fn guard_off_allows_any_model() {
+        assert!(managed_model_prefix_ok(false, Some("gpt-4o")));
+        assert!(managed_model_prefix_ok(false, Some("crw-managed")));
+        assert!(managed_model_prefix_ok(false, None));
+    }
+
+    #[test]
+    fn guard_on_allows_crw_prefixed_model() {
+        assert!(managed_model_prefix_ok(true, Some("crw-managed")));
+    }
+
+    #[test]
+    fn guard_on_rejects_non_crw_model() {
+        assert!(!managed_model_prefix_ok(true, Some("gpt-4o")));
+    }
+
+    #[test]
+    fn guard_on_skips_when_no_model_configured() {
+        assert!(managed_model_prefix_ok(true, None));
     }
 }

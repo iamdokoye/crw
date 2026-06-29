@@ -61,6 +61,20 @@ const SPA_BODY_TEXT_MIN_CHARS: u64 = 800;
 /// finish their data fetch before innerText hits the threshold get an early
 /// exit via this signal — recall lift on lazy-fetch pages.
 const NETWORK_IDLE_QUIET_MS: i64 = 500;
+/// latency-qn fast-ready: mandatory content floor (non-whitespace body chars)
+/// below which we NEVER early-exit — prevents snapshotting an empty CSR shell
+/// (the quality red line; CSR SPAs go load+idle with body still empty). Matches
+/// detector::looks_like_thin_html's 200-char bar. NOTE: tried 64 to let short
+/// pages (example.com ~167) early-exit, but under load it let large progressive
+/// pages exit on a network lull at partial content (mtkxjs 180KB→46KB) — the
+/// floor is the partial-content guard, keep it at 200. Short complete pages that
+/// wait the ceiling still SUCCEED (just slower); that's latency, not a red line.
+const SPA_CONTENT_FLOOR_CHARS: i64 = 200;
+/// latency-qn fast-ready: networkAlmostIdle threshold (≤2 in-flight), the
+/// Lighthouse/Puppeteer `networkidle2` signal. networkIdle (0) rarely fires on
+/// chatty pages (analytics/polling keep ≥1) so the old ≤0 idle-exit never
+/// triggered → 8s ceiling burns. ≤2 is the correct "settled" signal.
+const ALMOST_IDLE_MAX_INFLIGHT: i64 = 2;
 /// Max iterations for the auto-scroll lazy-load pass. 12 viewports usually
 /// covers infinite-scroll feeds without making it a crawl.
 const AUTO_SCROLL_MAX_STEPS: u32 = 12;
@@ -419,6 +433,25 @@ pub struct CdpRenderer {
     /// Country code used when a `ScrapeRequest.country` is not supplied.
     /// `None` means "no suffix" → DataImpulse global pool.
     default_country: Option<String>,
+    /// Phase (latency-qn): max Cloudflare/anti-bot challenge-clear retries in the
+    /// post-navigate loop. Default `CHALLENGE_MAX_RETRIES` (3 × 3s = 9s). Measured
+    /// as 28% of render time, mostly on shells that never clear (→ fail anyway);
+    /// neither Firecrawl nor Spider runs such a loop (they route anti-bot to a
+    /// stealth/unblocker tier). Lower it to trim the tail; 0 disables the loop.
+    challenge_max_retries: u32,
+    /// latency-qn: post-navigate SPA-readiness poll budget (default
+    /// `SPA_SELECTOR_MAX_MS` = 8s). Measured as 67% of render time — the ceiling
+    /// hit when the content selector never mounts. Lower to trim the dominant
+    /// wait (the p90 branch validated 3000ms holds recall within noise).
+    spa_selector_max: Duration,
+    /// latency-qn: event-driven earliest-ready exit. When true, the post-navigate
+    /// poll exits as soon as the page is genuinely settled — body innerText ≥
+    /// content-floor AND (networkAlmostIdle≤2 OR substantial text) — instead of
+    /// requiring a specific content selector to mount + networkIdle(0). Keeps the
+    /// mandatory content gate (never snapshots an empty CSR shell). Default off.
+    fast_ready: bool,
+    /// UA for `Network.setUserAgentOverride`; empty = no override (browser default).
+    user_agent: String,
 }
 
 impl CdpRenderer {
@@ -438,7 +471,44 @@ impl CdpRenderer {
             pool: None,
             proxy_auth_base: None,
             default_country: None,
+            challenge_max_retries: CHALLENGE_MAX_RETRIES,
+            spa_selector_max: Duration::from_millis(SPA_SELECTOR_MAX_MS),
+            fast_ready: false,
+            user_agent: String::new(),
         }
+    }
+
+    /// Enable the event-driven earliest-ready exit (latency-qn). Quality-safe:
+    /// keeps a mandatory body-text content floor so it never snapshots an empty
+    /// shell; only changes WHEN a ready page is detected (sooner).
+    pub fn with_fast_ready(mut self, on: bool) -> Self {
+        self.fast_ready = on;
+        self
+    }
+
+    /// Set the User-Agent the CDP renderer presents (via
+    /// `Network.setUserAgentOverride`). Pass the same `effective_ua` the HTTP
+    /// fetcher uses so a JS-rendered page sees a modern UA, not the browser's
+    /// default — and HTTP/CDP UAs match (a mismatch is itself a bot tell).
+    pub fn with_user_agent(mut self, ua: &str) -> Self {
+        self.user_agent = ua.to_string();
+        self
+    }
+
+    /// Override the post-navigate challenge-clear retry count (default 3).
+    /// Set lower (or 0) to trim the anti-bot tail; anti-bot recovery is then the
+    /// stealth/auto-egress tier's job (the Firecrawl/Spider approach).
+    pub fn with_challenge_retries(mut self, retries: u32) -> Self {
+        self.challenge_max_retries = retries;
+        self
+    }
+
+    /// Override the SPA-readiness poll budget (default 8s). The poll still exits
+    /// early on content-ready / network-idle; this is only the ceiling when the
+    /// selector never mounts. Lower to trim the dominant render wait.
+    pub fn with_spa_selector_max(mut self, ms: u64) -> Self {
+        self.spa_selector_max = Duration::from_millis(ms);
+        self
     }
 
     /// Configure DataImpulse base proxy credentials. The `Fetch.authRequired`
@@ -622,6 +692,12 @@ async fn connect_chrome_with_retry(
         .with_label_values(&[outcome])
         .observe(t0.elapsed().as_secs_f64());
     result
+}
+
+/// Strip "Mozilla/5.0 " so lightpanda accepts the UA — its `validateUserAgent`
+/// rejects any "Mozilla" (`error.Reserved`). The "...Chrome/<ver>..." token survives.
+fn lightpanda_safe_ua(ua: &str) -> &str {
+    ua.strip_prefix("Mozilla/5.0 ").unwrap_or(ua)
 }
 
 async fn connect_chrome_with_retry_inner(
@@ -1007,6 +1083,18 @@ impl NetworkActivityTracker {
         let elapsed = now_unix_ms() - self.last_change_ms.load(Ordering::Relaxed);
         elapsed >= quiet_ms
     }
+
+    /// networkAlmostIdle: ≤ `max_inflight` in-flight requests sustained for
+    /// `quiet_ms`. `is_idle` is this with max_inflight=0 (networkIdle). The
+    /// quiet-period guard means a request that JUST started keeps us non-settled,
+    /// so a freshly-navigated SPA isn't declared settled before its XHRs fire.
+    fn is_settled(&self, quiet_ms: i64, max_inflight: i64) -> bool {
+        if self.in_flight.load(Ordering::Relaxed) > max_inflight {
+            return false;
+        }
+        let elapsed = now_unix_ms() - self.last_change_ms.load(Ordering::Relaxed);
+        elapsed >= quiet_ms
+    }
 }
 
 fn now_unix_ms() -> i64 {
@@ -1023,6 +1111,18 @@ async fn run_network_idle_pump(
     tracker: Arc<NetworkActivityTracker>,
     session_id: &str,
 ) {
+    // Count only MAIN-FRAME requests toward in-flight. A chatty ad/analytics
+    // iframe holding ≥3 persistent requests otherwise keeps the global counter
+    // above the networkAlmostIdle threshold forever, burning the full ceiling.
+    // NOTE: a tighter FIRST-PARTY (eTLD+1) filter was tried to also ignore
+    // in-main-frame third-party tracker/widget chatter (columbusjack-class
+    // ceiling burns) but REVERTED — it truncated pages whose content loads from a
+    // third-party CDN/API (bench: +2 failures, content drops every run). Like
+    // DOM-stable/DCL, exiting before ALL the page's requests settle truncates
+    // late-arriving content. `loadingFinished/Failed` carry only requestId, so
+    // track which requestIds belong to the main frame.
+    let mut main_frame: Option<String> = None;
+    let mut main_reqs: std::collections::HashSet<String> = std::collections::HashSet::new();
     loop {
         let ev = match rx.recv().await {
             Ok(ev) => ev,
@@ -1033,8 +1133,30 @@ async fn run_network_idle_pump(
             continue;
         }
         match ev.method.as_str() {
-            "Network.requestWillBeSent" => tracker.record_request_start(),
-            "Network.loadingFinished" | "Network.loadingFailed" => tracker.record_request_end(),
+            "Network.requestWillBeSent" => {
+                let fid = ev.params.get("frameId").and_then(|v| v.as_str());
+                // Adopt the first top-level Document request's frame as the main frame.
+                if main_frame.is_none()
+                    && ev.params.get("type").and_then(|v| v.as_str()) == Some("Document")
+                {
+                    main_frame = fid.map(str::to_string);
+                }
+                if let (Some(rid), Some(mf)) = (
+                    ev.params.get("requestId").and_then(|v| v.as_str()),
+                    main_frame.as_deref(),
+                ) && fid == Some(mf)
+                {
+                    main_reqs.insert(rid.to_string());
+                    tracker.record_request_start();
+                }
+            }
+            "Network.loadingFinished" | "Network.loadingFailed" => {
+                if let Some(rid) = ev.params.get("requestId").and_then(|v| v.as_str())
+                    && main_reqs.remove(rid)
+                {
+                    tracker.record_request_end();
+                }
+            }
             _ => {}
         }
     }
@@ -1094,6 +1216,14 @@ async fn close_target(conn: &CdpConnection, target_id: &str, renderer: &str) {
 /// Consume events from `events` until `Page.loadEventFired` (returns the main
 /// document status) or a fatal event arrives. Uses `main_document_status`
 /// captured from `Network.responseReceived` when available.
+///
+/// NOTE: proceeding on networkAlmostIdle here (instead of loadEventFired) was
+/// tried and REVERTED — under CPU load the network has natural lulls mid-load,
+/// so ≤2-in-flight fired during a large page's progressive load and returned
+/// early, truncating it (mtkxjs 180KB→46KB, astrazeneca 4.3KB→212B). almost-idle
+/// is only a safe POST-load readiness signal (where the load event already
+/// guaranteed the main content), not a "page fully loaded" signal. Keep the wait
+/// on the real `load` event.
 async fn wait_for_page_ready(
     mut events: broadcast::Receiver<CdpEvent>,
     session_id: &str,
@@ -1135,6 +1265,13 @@ async fn wait_for_page_ready(
                     "Page.loadEventFired" => {
                         return Ok(main_document_status.unwrap_or(200));
                     }
+                    // NOTE: proceeding at Page.domContentEventFired (DCL) instead of
+                    // the full `load` was tried (fast_ready) and REVERTED — it
+                    // truncated large progressive pages (mtkxjs 180KB→107KB, the
+                    // content kept arriving via post-DCL subresources) and gave no
+                    // p90 gain (doomed pages fire load late/never anyway). The
+                    // `load`-wait is what lets the page fully render before the
+                    // readiness poll; keep it. fast_ready only affects the poll.
                     "Inspector.targetCrashed" => {
                         return Err(CrwError::RendererError(
                             "Target crashed during render".into(),
@@ -1339,7 +1476,7 @@ impl CdpRenderer {
             tracing::warn!(error = %e, "pool: release returned error (slot recycled as Dead)");
         }
 
-        let (html, status_code, truncated, final_href, captured_responses, _tid) = res?;
+        let (html, status_code, truncated, final_href, captured_responses, screenshot, _tid) = res?;
 
         if html.is_empty() {
             return Err(CrwError::RendererError(
@@ -1377,6 +1514,7 @@ impl CdpRenderer {
             truncated,
             deadline_exceeded: deadline.remaining().is_zero(),
             captured_responses,
+            screenshot,
         })
     }
 
@@ -1488,7 +1626,15 @@ impl CdpRenderer {
 
         conn.close().await;
 
-        let (html, status_code, truncated, final_href, captured_responses, _tid_ignored) = result?;
+        let (
+            html,
+            status_code,
+            truncated,
+            final_href,
+            captured_responses,
+            screenshot,
+            _tid_ignored,
+        ) = result?;
 
         if html.is_empty() {
             return Err(CrwError::RendererError(
@@ -1528,6 +1674,7 @@ impl CdpRenderer {
             truncated,
             deadline_exceeded: deadline.remaining().is_zero(),
             captured_responses,
+            screenshot,
         })
     }
 
@@ -1746,16 +1893,32 @@ impl CdpRenderer {
         session_id: &str,
         timeout: Duration,
         net: &NetworkActivityTracker,
+        spa_max: Duration,
+        fast_ready: bool,
     ) -> bool {
-        let deadline = Instant::now() + Duration::from_millis(SPA_SELECTOR_MAX_MS);
-        let expr = format!(
-            r#"(() => {{
-                if (!document.querySelector({sel:?})) return -1;
-                const t = (document.body && document.body.innerText) || "";
-                return t.trim().length;
-            }})()"#,
-            sel = SPA_CONTENT_SELECTORS
-        );
+        // NOTE: readiness v2 (quality-gated content-ready probe, `eval_content_ready`)
+        // was tried here and REVERTED — it hit the SAME fundamental tradeoff as
+        // every prior lever: the content-quality threshold either caps link-heavy
+        // pages (MIN=250 → columbusjack no speedup) or truncates progressive pages
+        // (MIN=120 → abcnews 14605→281, both runs). A generic signal can't tell
+        // "complete at 243 chars" (columbusjack) from "281 now → 14605 soon"
+        // (abcnews). No p90 gain + truncation → kept v1 fast_ready below.
+        let deadline = Instant::now() + spa_max;
+        // fast-ready uses body innerText (selector-independent) so content pages
+        // that don't use the main/article/#root containers still detect content;
+        // the legacy path gates on the specific selectors (returns -1 if absent).
+        let expr = if fast_ready {
+            r#"(() => { const t = (document.body && document.body.innerText) || ""; return t.trim().length; })()"#.to_string()
+        } else {
+            format!(
+                r#"(() => {{
+                    if (!document.querySelector({sel:?})) return -1;
+                    const t = (document.body && document.body.innerText) || "";
+                    return t.trim().length;
+                }})()"#,
+                sel = SPA_CONTENT_SELECTORS
+            )
+        };
         while Instant::now() < deadline {
             match conn
                 .send_recv(
@@ -1772,16 +1935,42 @@ impl CdpRenderer {
                         .and_then(|r| r.get("value"))
                         .and_then(|v| v.as_i64())
                         .unwrap_or(-1);
-                    let selector_mounted = len >= 0;
-                    if is_spa_text_ready(len) {
-                        return true;
-                    }
-                    if selector_mounted && net.is_idle(NETWORK_IDLE_QUIET_MS) {
-                        tracing::debug!(
-                            text_len = len,
-                            "SPA poll exiting on network-idle (selector mounted, text below threshold)"
-                        );
-                        return true;
+                    if fast_ready {
+                        // Substantial body text → ready immediately.
+                        if len >= SPA_BODY_TEXT_MIN_CHARS as i64 {
+                            return true;
+                        }
+                        // Content present (≥ floor) AND network settled
+                        // (networkAlmostIdle ≤2, the signal that actually fires on
+                        // chatty pages). The content floor is the mandatory gate
+                        // that prevents snapshotting an empty CSR shell.
+                        if len >= SPA_CONTENT_FLOOR_CHARS
+                            && net.is_settled(NETWORK_IDLE_QUIET_MS, ALMOST_IDLE_MAX_INFLIGHT)
+                        {
+                            tracing::debug!(
+                                text_len = len,
+                                "fast-ready: content present + networkAlmostIdle, snapshotting"
+                            );
+                            return true;
+                        }
+                        // NOTE: a DOM-stable (text-length unchanged for N ms)
+                        // early-exit was tried here and REVERTED — it truncated
+                        // pages whose text was momentarily stable then grew (bench:
+                        // success 90%→85%, +4 new failures across runs). Late-burst
+                        // content arrives after a stable gap; only the real `load`
+                        // event / networkAlmostIdle are safe. Keep the ceiling.
+                    } else {
+                        let selector_mounted = len >= 0;
+                        if is_spa_text_ready(len) {
+                            return true;
+                        }
+                        if selector_mounted && net.is_idle(NETWORK_IDLE_QUIET_MS) {
+                            tracing::debug!(
+                                text_len = len,
+                                "SPA poll exiting on network-idle (selector mounted, text below threshold)"
+                            );
+                            return true;
+                        }
                     }
                 }
                 Err(e) => {
@@ -1840,6 +2029,7 @@ impl CdpRenderer {
         bool,
         Option<String>,
         Vec<CapturedNetworkResponse>,
+        Option<String>,
         String,
     )> {
         // 1. Create a blank target so navigation events can be observed reliably.
@@ -1915,6 +2105,29 @@ impl CdpRenderer {
             self.page_timeout,
         )
         .await?;
+
+        // Present a modern UA on the CDP path too (the HTTP fetcher already does,
+        // but renderers otherwise send the browser's own — often stale — UA, which
+        // trips "your browser is outdated" gates). Session-scoped (so pooled
+        // contexts don't leak it) and best-effort: a tier that rejects the method
+        // must NOT abort an otherwise-fine render — hence `.ok()`, not `?`.
+        // lightpanda rejects "Mozilla" UAs (→ `lightpanda_safe_ua`); it routes
+        // Network.* → Emulation.* internally, so the method name is fine. Skip if empty.
+        if !self.user_agent.is_empty() {
+            let ua = if self.name == "lightpanda" {
+                lightpanda_safe_ua(&self.user_agent)
+            } else {
+                &self.user_agent
+            };
+            conn.send_recv(
+                "Network.setUserAgentOverride",
+                serde_json::json!({ "userAgent": ua }),
+                Some(&session_id),
+                self.page_timeout,
+            )
+            .await
+            .ok();
+        }
 
         // Subscribe to events BEFORE navigating so we don't miss loadEventFired.
         let events_rx = conn.subscribe();
@@ -2010,6 +2223,14 @@ impl CdpRenderer {
             crw_core::metrics::metrics()
                 .chrome_navigate_seconds
                 .observe(nav_t0.elapsed().as_secs_f64());
+            // latency-qn: log nav→load (the load-event wait) so the per-URL tail
+            // breakdown shows load-wait vs post-navigate render (debug target).
+            tracing::debug!(
+                target: "render_phases",
+                url,
+                nav_to_load_ms = nav_t0.elapsed().as_millis() as u64,
+                "nav timing"
+            );
             // Post-navigate phase runs inside a budget race. On budget hit
             // we attempt a partial-DOM snapshot and return `truncated = true`;
             // `single.rs` decides success on md length.
@@ -2041,7 +2262,19 @@ impl CdpRenderer {
                     (html, true)
                 }
             };
-            Ok::<_, CrwError>((html, status_code, truncated))
+            // Screenshot capture runs AFTER the page-load budget race resolves,
+            // with its own timeout. A full-page capture of a heavy page must not
+            // be cancelled by the nav budget (which closes the WS mid-capture and
+            // drops the screenshot). The session is still live here — the
+            // partial-snapshot branch above uses it too.
+            let screenshot = match crate::current_screenshot_req() {
+                Some(req) => {
+                    self.capture_screenshot(conn, &session_id, req.full_page)
+                        .await
+                }
+                None => None,
+            };
+            Ok::<_, CrwError>((html, status_code, truncated, screenshot))
         };
 
         // Always-on XHR/fetch capture. Cheap when no JSON XHRs fire (events
@@ -2150,7 +2383,7 @@ impl CdpRenderer {
         // it via the recorded target_id; legacy fetch_with_ws closes after
         // fetch_inner returns via its Cell-captured id).
 
-        let (html, status_code, truncated) = outcome?;
+        let (html, status_code, truncated, screenshot) = outcome?;
 
         if html.is_empty() && truncated {
             return Err(CrwError::Timeout(nav_budget.as_millis() as u64));
@@ -2170,6 +2403,7 @@ impl CdpRenderer {
             truncated,
             final_href,
             captured_drained,
+            screenshot,
             target_id,
         ))
     }
@@ -2185,6 +2419,12 @@ impl CdpRenderer {
         wait_for_ms: Option<u64>,
         net: &NetworkActivityTracker,
     ) -> CrwResult<String> {
+        // Phase-timing measurement (latency-qn): which post-navigate phase eats
+        // the render time? Emitted on the `render_phases` debug target (off in
+        // prod RUST_LOG=info; enable with RUST_LOG=render_phases=debug for bench).
+        let _pt0 = Instant::now();
+        let mut t_stability_ms: u64 = 0;
+        let mut t_challenge_ms: u64 = 0;
         // 2.5. Best-effort consent / CMP dismissal. Cookie banners can both
         // hide content behind an overlay and inflate `body.innerText` past
         // the SPA-readiness threshold prematurely (the banner copy alone
@@ -2199,11 +2439,22 @@ impl CdpRenderer {
         // the poll exits in ~200ms on static pages where `main`/`article`/etc.
         // are already mounted, and waits up to SPA_SELECTOR_MAX_MS for SPAs
         // that hydrate after `loadEventFired`.
+        let _sel_t = Instant::now();
         if let Some(wait) = wait_for_ms {
             tokio::time::sleep(Duration::from_millis(wait)).await;
-        } else if !Self::wait_for_spa_selector(conn, session_id, self.page_timeout, net).await {
+        } else if !Self::wait_for_spa_selector(
+            conn,
+            session_id,
+            self.page_timeout,
+            net,
+            self.spa_selector_max,
+            self.fast_ready,
+        )
+        .await
+        {
             tracing::debug!(url, "SPA selector poll exhausted budget");
         }
+        let t_selector_ms = _sel_t.elapsed().as_millis() as u64;
 
         // 4. Get rendered HTML.
         let mut html = Self::eval_html(conn, session_id, self.page_timeout).await?;
@@ -2214,10 +2465,12 @@ impl CdpRenderer {
                 url,
                 "Loading placeholder detected, polling for content stability"
             );
+            let _stab_t = Instant::now();
             match Self::poll_until_content_stable(conn, session_id, self.page_timeout).await {
                 Ok(stable) => html = stable,
                 Err(e) => tracing::warn!("Content stability polling failed: {e}"),
             }
+            t_stability_ms = _stab_t.elapsed().as_millis() as u64;
         }
 
         // 4c. Auto-mode lazy-load pass: scroll viewport-by-viewport so
@@ -2284,9 +2537,13 @@ impl CdpRenderer {
         }
 
         // 5. Challenge retry loop for Cloudflare/anti-bot interstitials.
-        if is_challenge_page(&html) {
+        // Bounded by `self.challenge_max_retries` (config); 0 disables it so
+        // anti-bot recovery falls to the stealth/auto-egress tier instead of
+        // burning the deadline here (the Firecrawl/Spider approach).
+        if self.challenge_max_retries > 0 && is_challenge_page(&html) {
+            let _chal_t = Instant::now();
             tracing::info!(url, "Challenge page detected, waiting for auto-resolve");
-            for attempt in 1..=CHALLENGE_MAX_RETRIES {
+            for attempt in 1..=self.challenge_max_retries {
                 tokio::time::sleep(Duration::from_millis(CHALLENGE_POLL_INTERVAL_MS)).await;
                 html = Self::eval_html(conn, session_id, self.page_timeout).await?;
                 if !is_challenge_page(&html) {
@@ -2295,9 +2552,62 @@ impl CdpRenderer {
                 }
                 tracing::debug!(url, attempt, "Challenge still active, retrying");
             }
+            t_challenge_ms = _chal_t.elapsed().as_millis() as u64;
         }
 
+        // latency-qn render-phase breakdown (debug target; off in prod).
+        let total_ms = _pt0.elapsed().as_millis() as u64;
+        tracing::debug!(
+            target: "render_phases",
+            url,
+            total_ms,
+            selector_ms = t_selector_ms,
+            stability_ms = t_stability_ms,
+            challenge_ms = t_challenge_ms,
+            other_ms = total_ms.saturating_sub(t_selector_ms + t_stability_ms + t_challenge_ms),
+            html_len = html.len(),
+            "render phases"
+        );
+
         Ok(html)
+    }
+
+    /// Capture a PNG via CDP `Page.captureScreenshot` with its OWN timeout,
+    /// independent of the page-load `nav_budget`. This MUST run outside the
+    /// nav-budget race: a full-page capture of a heavy/tall page can take
+    /// several seconds, and if it competes with (and is cancelled by) the
+    /// budget the in-flight WS request dies ("WS closed") and the screenshot is
+    /// silently dropped. Best-effort: returns `None` (and logs) on failure so
+    /// the scrape still returns its content. Raw base64 is kept undecoded;
+    /// `single.rs` wraps the `data:` URL prefix.
+    async fn capture_screenshot(
+        &self,
+        conn: &CdpConnection,
+        session_id: &str,
+        full_page: bool,
+    ) -> Option<String> {
+        match conn
+            .send_recv(
+                "Page.captureScreenshot",
+                serde_json::json!({
+                    "format": "png",
+                    "captureBeyondViewport": full_page,
+                    "fromSurface": true,
+                }),
+                Some(session_id),
+                self.page_timeout,
+            )
+            .await
+        {
+            Ok(resp) => resp
+                .get("data")
+                .and_then(|v| v.as_str())
+                .map(str::to_string),
+            Err(e) => {
+                tracing::warn!("Page.captureScreenshot failed: {e}");
+                None
+            }
+        }
     }
 }
 
@@ -2326,7 +2636,7 @@ fn is_spa_text_ready(text_len: i64) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_auth_response, is_content_stable};
+    use super::{CdpRenderer, build_auth_response, is_content_stable, lightpanda_safe_ua};
 
     #[test]
     fn auth_response_provides_credentials_when_creds_set() {
@@ -2490,5 +2800,30 @@ mod tests {
         assert!(!is_capturable_mime("text/css"));
         assert!(!is_capturable_mime("application/javascript"));
         assert!(!is_capturable_mime(""));
+    }
+
+    #[test]
+    fn user_agent_default_empty_and_builder_sets_it() {
+        // Default = empty → fetch_inner skips the override (browser default).
+        let r = CdpRenderer::new("chrome", "ws://127.0.0.1:9222", 1000, 1);
+        assert_eq!(r.user_agent, "", "default UA must be empty (no override)");
+        // Builder threads the effective UA through so CDP matches the HTTP path.
+        let ua = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 \
+                  (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36";
+        let r = r.with_user_agent(ua);
+        assert_eq!(r.user_agent, ua);
+    }
+
+    #[test]
+    fn lightpanda_safe_ua_strips_mozilla_keeps_chrome() {
+        let full = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 \
+                    (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36";
+        let safe = lightpanda_safe_ua(full);
+        // lightpanda's validateUserAgent rejects ANY "Mozilla" → must be gone.
+        assert!(!safe.to_ascii_lowercase().contains("mozilla"));
+        // ...but the Chrome version token that UA gates check must survive.
+        assert!(safe.contains("Chrome/150"));
+        // A UA without the prefix is returned unchanged (no double-strip).
+        assert_eq!(lightpanda_safe_ua("Chrome/150.0.0.0"), "Chrome/150.0.0.0");
     }
 }

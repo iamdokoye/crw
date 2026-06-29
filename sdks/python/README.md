@@ -2,11 +2,13 @@
 
 Python SDK for [CRW](https://github.com/us/crw) — the open-source web scraper built for AI agents.
 
+New CRW integrations should use the native `/v1` methods exposed by this SDK. If you are migrating Firecrawl v2 SDK code, use the engine's `/v2` compatibility layer and validate the documented differences.
+
 ## Install
 
 ```bash
 # One-line install (auto-detects OS & arch):
-curl -fsSL https://raw.githubusercontent.com/us/crw/main/install.sh | sh
+curl -fsSL https://fastcrw.com/install | sh
 
 # npm (zero install):
 npx crw-mcp

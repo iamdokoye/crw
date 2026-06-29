@@ -59,21 +59,34 @@ pub async fn scrape_url(
     // credential country; `REQUEST_PROXY` carries the resolved proxy (BYOP >
     // config) so BOTH the HTTP and JS/CDP paths egress through the same entry.
     let resolved_proxy = resolve_request_proxy(req, renderer)?;
+    // `REQUEST_SCREENSHOT` carries the (out-of-band) screenshot params into the
+    // renderer stack so the CDP path can capture without trait-signature churn
+    // (mirrors REQUEST_PROXY). `Some` only when `formats` asked for it.
+    let screenshot_req =
+        req.formats
+            .contains(&OutputFormat::Screenshot)
+            .then_some(crw_renderer::ScreenshotReq {
+                full_page: req.screenshot_full_page,
+            });
     crw_renderer::REQUEST_COUNTRY
         .scope(req.country.clone(), async move {
             crw_renderer::REQUEST_PROXY
                 .scope(resolved_proxy, async move {
-                    scrape_url_inner(
-                        req,
-                        renderer,
-                        llm_config,
-                        extraction_cfg,
-                        user_agent,
-                        default_stealth,
-                        render_js_default,
-                        deadline,
-                    )
-                    .await
+                    crw_renderer::REQUEST_SCREENSHOT
+                        .scope(screenshot_req, async move {
+                            scrape_url_inner(
+                                req,
+                                renderer,
+                                llm_config,
+                                extraction_cfg,
+                                user_agent,
+                                default_stealth,
+                                render_js_default,
+                                deadline,
+                            )
+                            .await
+                        })
+                        .await
                 })
                 .await
         })
@@ -116,6 +129,18 @@ async fn scrape_url_inner(
     // render_js_default=true and a per-request proxy still reaches the JS renderer.
     let effective_render_js = resolve_render_js(effective_render_js_request, render_js_default);
 
+    // A screenshot is captured via CDP and cannot be produced on the HTTP-only
+    // path. An explicit `renderJs:false` + `screenshot` is contradictory — reject
+    // it rather than silently return a null screenshot. For the default/auto case
+    // the renderer forces the CDP path (see FallbackRenderer::fetch), and the
+    // temp HTTP fetcher below is skipped so the screenshot is never dropped.
+    let wants_screenshot = req.formats.contains(&OutputFormat::Screenshot);
+    if wants_screenshot && req.render_js == Some(false) {
+        return Err(crw_core::error::CrwError::InvalidRequest(
+            "screenshot format requires JS rendering; remove renderJs:false (or omit it)".into(),
+        ));
+    }
+
     // Validate pinned renderer is available — fail fast with a 400 instead of
     // letting the request reach the dispatcher with a hard-pin to a missing pool.
     // Skip validation when renderJs:false is honored (HTTP-only ignores the pin).
@@ -149,7 +174,7 @@ async fn scrape_url_inner(
             user_agent.to_string()
         };
 
-        if effective_render_js == Some(false) {
+        if effective_render_js == Some(false) && !wants_screenshot {
             // HTTP-only temp fetcher with per-request stealth. Honor REQUEST_PROXY
             // so a stealth-override request still egresses through the resolved
             // proxy — fail-closed, a set proxy is never bypassed.
@@ -212,35 +237,39 @@ async fn scrape_url_inner(
     } else {
         None
     };
-    fn build_extract_opts<'a>(
-        fr: &'a FetchResult,
-        req: &'a ScrapeRequest,
-        extraction_cfg: &'a ExtractionConfig,
+    // Build the OWNED extraction input so the CPU-bound `extract()` can run off
+    // the async reactor via `extract_pool::extract_offloaded` (spawn_blocking
+    // needs `'static`, so the borrowed `ExtractOptions` can't cross the
+    // boundary). `domain_selectors` is wrapped in an `Arc` to avoid deep-copying
+    // the host→selector map on every request.
+    fn build_owned_extract_input(
+        fr: &FetchResult,
+        req: &ScrapeRequest,
+        extraction_cfg: &ExtractionConfig,
         debug: bool,
         sink: Option<Arc<Mutex<crw_extract::DebugCollector>>>,
-    ) -> crw_extract::ExtractOptions<'a> {
-        crw_extract::ExtractOptions {
-            raw_html: &fr.html,
-            source_url: &fr.url,
+    ) -> crw_extract::OwnedExtractInput {
+        crw_extract::OwnedExtractInput {
+            raw_html: fr.html.clone(),
+            source_url: fr.url.clone(),
             status_code: fr.status_code,
             rendered_with: fr.rendered_with.clone(),
             elapsed_ms: fr.elapsed_ms,
             render_decision: fr.render_decision.clone(),
             credit_cost: fr.credit_cost,
             warnings: fr.warnings.clone(),
-            formats: &req.formats,
+            formats: req.formats.clone(),
             only_main_content: req.only_main_content,
-            include_tags: &req.include_tags,
-            exclude_tags: &req.exclude_tags,
-            css_selector: req.css_selector.as_deref(),
-            xpath: req.xpath.as_deref(),
-            chunk_strategy: req.chunk_strategy.as_ref(),
-            query: req.query.as_deref(),
-            filter_mode: req.filter_mode.as_ref(),
+            include_tags: req.include_tags.clone(),
+            exclude_tags: req.exclude_tags.clone(),
+            css_selector: req.css_selector.clone(),
+            xpath: req.xpath.clone(),
+            chunk_strategy: req.chunk_strategy.clone(),
+            query: req.query.clone(),
+            filter_mode: req.filter_mode.clone(),
             top_k: req.top_k,
-            domain_selectors: Some(&extraction_cfg.domain_selectors),
-            captured_responses: &fr.captured_responses,
-            llm_fallback: None,
+            domain_selectors: Some(Arc::new(extraction_cfg.domain_selectors.clone())),
+            captured_responses: fr.captured_responses.clone(),
             debug,
             debug_sink: sink,
         }
@@ -271,13 +300,14 @@ async fn scrape_url_inner(
         };
         crate::pdf::convert_pdf_bytes(bytes, req, source).await?
     } else {
-        let mut data = crw_extract::extract(build_extract_opts(
+        let mut data = crate::extract_pool::extract_offloaded(build_owned_extract_input(
             &fetch_result,
             req,
             extraction_cfg,
             debug_enabled,
             debug_sink.clone(),
-        ))?;
+        ))
+        .await?;
         // LLM-assisted re-extraction when DOM result is low-quality and the
         // operator opted in via [extraction.llm_fallback]. Failure paths inside
         // the helper preserve the original markdown.
@@ -397,20 +427,23 @@ async fn scrape_url_inner(
                 )
                 .await
             {
-                Ok(js_fetch) => {
+                Ok(mut js_fetch) => {
                     // Accept JS result even if status >= 400, as long as it produced
                     // real content. Anti-bot/UA-detection sites frequently return a
                     // 4xx code while still serving the actual page body — the status
                     // is a soft signal, not a content gate.
                     let js_status = js_fetch.status_code;
                     let js_warning = derive_target_warning(&js_fetch);
-                    if let Ok(js_data) = crw_extract::extract(build_extract_opts(
-                        &js_fetch,
-                        req,
-                        extraction_cfg,
-                        debug_enabled,
-                        debug_sink.clone(),
-                    )) {
+                    if let Ok(js_data) =
+                        crate::extract_pool::extract_offloaded(build_owned_extract_input(
+                            &js_fetch,
+                            req,
+                            extraction_cfg,
+                            debug_enabled,
+                            debug_sink.clone(),
+                        ))
+                        .await
+                    {
                         let js_md_len = js_data
                             .markdown
                             .as_deref()
@@ -428,6 +461,10 @@ async fn scrape_url_inner(
                             js_md_len >= retry_threshold && (http_was_thin || quality_improved);
                         if accept {
                             data = js_data;
+                            // The escalation re-rendered via CDP, so a screenshot (if
+                            // requested) lives on `js_fetch`, not the original low-tier
+                            // `fetch_result`. Carry it over so it isn't dropped.
+                            fetch_result.screenshot = js_fetch.screenshot.take();
                             // Replace the original "Target returned 4xx" with the JS
                             // fetch's warning (which is None for a clean 2xx render),
                             // so a successful escalation doesn't leak the original
@@ -579,6 +616,14 @@ async fn scrape_url_inner(
     // Surface the fetched content type so change-tracking (here and on the
     // crawl path) can hash binary/non-text content rather than diff it.
     data.content_type = fetch_result.content_type.clone();
+
+    // Wrap the raw base64 screenshot in a `data:image/png;base64,` URL exactly
+    // once, here, so both v1 and v2 responses are identical (D8). FetchResult
+    // keeps the raw b64.
+    data.screenshot = fetch_result
+        .screenshot
+        .as_ref()
+        .map(|b| format!("data:image/png;base64,{b}"));
 
     // ── Change tracking (monitor) ──────────────────────────────────────────
     // Activated by the `"changeTracking"` format string; options ride on the
@@ -896,7 +941,25 @@ mod tests {
             truncated: false,
             deadline_exceeded: false,
             captured_responses: Vec::new(),
+            screenshot: None,
         }
+    }
+
+    /// The raw base64 in `FetchResult.screenshot` is wrapped into a
+    /// `data:image/png;base64,` URL exactly once when building `ScrapeData`.
+    #[test]
+    fn screenshot_wrapped_as_data_url() {
+        let mut fetch = sample_fetch(200, "<html><body>hi</body></html>");
+        fetch.screenshot = Some("AAAQ".to_string());
+        let wrapped = fetch
+            .screenshot
+            .as_ref()
+            .map(|b| format!("data:image/png;base64,{b}"));
+        assert_eq!(
+            wrapped.as_deref(),
+            Some("data:image/png;base64,AAAQ"),
+            "raw b64 must be prefixed with the data URL scheme exactly once"
+        );
     }
 
     #[test]

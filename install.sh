@@ -1,12 +1,14 @@
 #!/bin/sh
 # CRW installer — downloads the latest release binary for your platform.
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/us/crw/main/install.sh | sh
-#   wget -qO- https://raw.githubusercontent.com/us/crw/main/install.sh | sh
+#   curl -fsSL https://fastcrw.com/install | sh
+#   wget -qO- https://fastcrw.com/install | sh
 #
 # Options (environment variables):
 #   CRW_VERSION=v0.3.0    Install a specific version instead of latest
 #   CRW_INSTALL_DIR=~/.local/bin   Custom install directory
+#   CRW_BINARY=crw-mcp    Install crw-mcp (MCP server) or crw-server instead of
+#                         the default crw CLI
 #   GITHUB_TOKEN=ghp_...  Avoid GitHub API rate limits
 
 set -eu
@@ -15,7 +17,7 @@ main() {
 
 REPO="us/crw"
 INSTALL_DIR="${CRW_INSTALL_DIR:-/usr/local/bin}"
-BINARY="${CRW_BINARY:-crw-mcp}"
+BINARY="${CRW_BINARY:-crw}"
 
 # --- helpers ----------------------------------------------------------------
 
@@ -74,12 +76,8 @@ detect_platform() {
     *)             err "Unsupported architecture: $ARCH. Try: cargo install $BINARY" ;;
   esac
 
-  # musl libc detection — pre-built binaries require glibc
-  if [ "$PLATFORM" = "linux" ]; then
-    if command -v ldd >/dev/null 2>&1 && ldd --version 2>&1 | grep -qi musl; then
-      err "musl libc detected (Alpine Linux?). Pre-built binaries require glibc. Try: cargo install $BINARY"
-    fi
-  fi
+  # Linux binaries are static musl builds, so they run on ANY libc (glibc and
+  # musl/Alpine alike) — no libc gate needed.
 
   if [ "$PLATFORM" = "win32" ]; then
     ASSET="${BINARY}-${PLATFORM}-${ARCH_LABEL}.zip"
@@ -183,8 +181,6 @@ install() {
 
   success "CRW ${VERSION} installed to ${INSTALL_DIR}/${BINARY}"
   echo ""
-  echo "  Run:  ${BINARY} --help"
-  echo ""
 
   # Check if install dir is in PATH
   case ":$PATH:" in
@@ -193,6 +189,31 @@ install() {
        echo "    export PATH=\"${INSTALL_DIR}:\$PATH\""
        echo "" ;;
   esac
+
+  # First-run onboarding (crw CLI only). `crw setup` is interactive — cloud
+  # (sign up, free credits) vs local (self-host). `curl | sh` feeds THIS script
+  # over stdin, so we bind setup to /dev/tty and only auto-launch in a real
+  # interactive terminal ([ -t 1 ] + readable /dev/tty). Non-interactive runs
+  # (CI, logged pipe) just print the next step. Opt out with CRW_NO_SETUP=1.
+  if [ "$BINARY" = "crw" ]; then
+    if [ "${CRW_NO_SETUP:-}" != "1" ] && [ -t 1 ] && [ -e /dev/tty ]; then
+      echo ""
+      info "One step left — let's get you scraping."
+      info "Cloud gives you 500 free credits in ~30s (no card, no Docker), or self-host local:"
+      echo ""
+      "${INSTALL_DIR}/${BINARY}" setup </dev/tty \
+        || info "Setup skipped — run 'crw setup' whenever you're ready."
+    else
+      echo ""
+      echo "  Next:  crw setup        # cloud (500 free credits) or local self-host"
+      echo "  Help:  crw --help"
+      echo ""
+    fi
+  else
+    echo ""
+    echo "  Run:  ${BINARY} --help"
+    echo ""
+  fi
 }
 
 # --- run --------------------------------------------------------------------

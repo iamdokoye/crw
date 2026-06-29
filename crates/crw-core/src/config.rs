@@ -204,6 +204,19 @@ pub struct SearchConfig {
     /// `None` (the default) disables the endpoint with a clear error.
     #[serde(default)]
     pub searxng_url: Option<String>,
+    /// OpenAlex API key for the `/v1/search/research/*` endpoints (CC0 data,
+    /// commercial use OK). `None` falls back to the keyless polite pool.
+    #[serde(default)]
+    pub openalex_api_key: Option<String>,
+    /// Contact email for OpenAlex's "polite pool" (`mailto=`), recommended for
+    /// higher rate limits. `None` omits it.
+    #[serde(default)]
+    pub openalex_mailto: Option<String>,
+    /// Semantic Scholar API key (`x-api-key`) for the research endpoints'
+    /// full-text snippet + citation-graph boosters. `None` uses the shared
+    /// (1 RPS) unauthenticated tier.
+    #[serde(default)]
+    pub s2_api_key: Option<String>,
     /// End-to-end timeout for the SearXNG call in milliseconds.
     #[serde(default = "default_search_timeout_ms")]
     pub timeout_ms: u64,
@@ -245,6 +258,14 @@ pub struct SearchConfig {
     /// SearXNG fetch each. Clamped to `MAX_QUERY_EXPAND_VARIANTS` in the route.
     #[serde(default = "default_query_expand_variants")]
     pub query_expand_variants: usize,
+    /// Phase C1 (latency-qn): on the answer path with query_expand + scrapeOptions,
+    /// scrape the original-query results CONCURRENTLY with the expansion (LLM
+    /// rewrite + variant SearXNG fetches), then union and reuse the scrapes.
+    /// Final source set is identical to the serial path (rerank over the same
+    /// union) → quality-neutral; only the scheduling overlaps the ~5-10s
+    /// expansion overhead. Default off.
+    #[serde(default)]
+    pub pipeline_overlap: bool,
     /// Adaptive multi-round retrieval (the "evidence-scout" loop). When the
     /// round-1 answer ABSTAINS (sources lacked the fact), an LLM scout reads the
     /// round-1 evidence and emits targeted follow-up queries (acronym-expanded,
@@ -355,6 +376,9 @@ impl Default for SearchConfig {
         Self {
             enabled: true,
             searxng_url: None,
+            openalex_api_key: None,
+            openalex_mailto: None,
+            s2_api_key: None,
             timeout_ms: default_search_timeout_ms(),
             default_limit: default_search_limit(),
             max_limit: default_search_max_limit(),
@@ -363,6 +387,7 @@ impl Default for SearchConfig {
             rerank_enabled: true,
             query_expand: false,
             query_expand_variants: default_query_expand_variants(),
+            pipeline_overlap: false,
             multi_round: false,
             passage_select: false,
             page2_fallback: false,
@@ -536,6 +561,54 @@ pub struct RendererConfig {
     pub chrome_timeout_ms: Option<u64>,
     #[serde(default = "default_pool_size")]
     pub pool_size: usize,
+    /// latency-qn: override the chrome post-navigate challenge-clear retry count
+    /// (default 3 → 3×3s=9s). Measured at 28% of render time, mostly on shells
+    /// that never clear (fail anyway); Firecrawl/Spider run no such loop. Lower
+    /// to trim the anti-bot tail (e.g. 1); 0 disables it. `None` keeps the 3
+    /// default. A/B-gated: must hold scrape-success/recall on the bench.
+    #[serde(default)]
+    pub chrome_challenge_max_retries: Option<u32>,
+    /// latency-qn: override the chrome SPA-readiness poll budget (default 8000ms,
+    /// `SPA_SELECTOR_MAX_MS`). Measured at 67% of render time. The poll still
+    /// exits early on content-ready/network-idle; this caps the wait when the
+    /// selector never mounts. A/B-gated on the bench. `None` keeps 8000.
+    #[serde(default)]
+    pub chrome_spa_selector_max_ms: Option<u64>,
+    /// latency-qn: event-driven earliest-ready render exit. When true, the
+    /// post-navigate poll exits as soon as the page is genuinely settled (body
+    /// innerText ≥ content-floor AND networkAlmostIdle≤2, OR substantial text)
+    /// instead of requiring a specific content selector + networkIdle(0) up to
+    /// the 8s ceiling. Keeps a mandatory content floor (never snapshots an empty
+    /// shell). Default off; A/B-gated on the bench (quality_gate must hold).
+    #[serde(default)]
+    pub chrome_fast_ready: bool,
+    /// latency-qn: conditional hedge. In auto mode, race lightpanda + chrome
+    /// CONCURRENTLY (chrome's clock starts immediately instead of after lightpanda
+    /// fails) and take the best by tier priority. Cuts the serial prefix (~3.4s
+    /// mean / 5.7s p90) on chrome-bound pages. Bounded by a headroom semaphore
+    /// (falls back to serial when the pool is busy) so it can't deadlock the
+    /// context pool. best-result-wins ⇒ success/recall ≡ serial. Default off.
+    #[serde(default)]
+    pub chrome_hedge: bool,
+    /// Phase 2 (latency-qn): gated auto-egress escalation. When true, the
+    /// chrome_proxy (residential/stealth) tier is REMOVED from the normal
+    /// HTTP→LP→Chrome ladder and instead fired ONCE, only when the ladder's
+    /// result is a hard block (403/429/503/401/520-530 or a CF/bot-wall/vendor
+    /// interstitial) AND the remaining deadline can absorb a full chrome_proxy
+    /// attempt AND its breaker is closed. The retry is best-result-wins vs the
+    /// ladder's result (never replaces usable content with empty). Bench proved
+    /// a naive always-on chrome_proxy ladder is net-negative (success −2pp, p90
+    /// +69%); this gate is what makes residential recovery net-positive. Off by
+    /// default; requires a configured `[renderer.chrome_proxy]` tier to do anything.
+    #[serde(default)]
+    pub auto_egress_escalation: bool,
+    /// Phase 0 (latency-qn): when true, the renderer emits a structured
+    /// `target: "latency_breakdown"` tracing event per fetch with total wall
+    /// time and the tier that produced the accepted result. Off by default;
+    /// turned on only for bench/diagnostic runs so we can see where the p90
+    /// budget actually goes (HTTP fast-path vs JS render) before optimizing.
+    #[serde(default)]
+    pub latency_breakdown: bool,
     /// If set, applies to every request that doesn't specify `renderJs` explicitly.
     /// `Some(true)` = force JS rendering; `Some(false)` = skip JS; `None` = auto-detect.
     ///
@@ -792,6 +865,12 @@ impl Default for RendererConfig {
             lightpanda_timeout_ms: None,
             chrome_timeout_ms: None,
             pool_size: default_pool_size(),
+            chrome_challenge_max_retries: None,
+            chrome_spa_selector_max_ms: None,
+            chrome_fast_ready: false,
+            chrome_hedge: false,
+            auto_egress_escalation: false,
+            latency_breakdown: false,
             render_js_default: None,
             lightpanda: None,
             playwright: None,
@@ -1055,11 +1134,11 @@ fn default_jitter() -> f64 {
 
 /// Built-in realistic user-agent pool used when stealth is enabled.
 pub const BUILTIN_UA_POOL: &[&str] = &[
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_2) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Safari/605.1.15",
 ];
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1077,8 +1156,10 @@ pub struct CrawlerConfig {
     #[serde(default = "default_max_pages")]
     pub default_max_pages: u32,
     /// Proxy URL for crawler requests. Supports HTTP, HTTPS, and SOCKS5
-    /// (e.g. "http://proxy:8080" or "socks5://user:pass@proxy:1080").
-    #[serde(default)]
+    /// (e.g. "http://proxy:8080" or "socks5://user:pass@proxy:1080"). An empty
+    /// or whitespace-only value (e.g. a present-but-empty `CRW_CRAWLER__PROXY`)
+    /// is normalized to `None` — see [`deserialize_opt_nonempty_string`].
+    #[serde(default, deserialize_with = "deserialize_opt_nonempty_string")]
     pub proxy: Option<String>,
     /// Pool of proxy URLs to rotate among (HTTP, HTTPS, SOCKS5). When non-empty
     /// this takes precedence over the single `proxy` field. Empty (default) =
@@ -1146,7 +1227,7 @@ fn default_ua() -> String {
     // (opencorporates, killeenisd, wsj) returning 403/404. Kept in sync with the
     // Sec-Ch-Ua client hint in `crw-renderer/src/http_only.rs`.
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 \
-     (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+     (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
         .into()
 }
 fn default_depth() -> u32 {
@@ -1182,6 +1263,13 @@ pub struct ExtractionConfig {
     /// returns SPA husks of 90–500B that pass HTML-shape checks).
     #[serde(default = "default_lightpanda_retry_threshold")]
     pub lightpanda_retry_threshold_bytes: usize,
+    /// Process-wide cap on concurrent HTML → markdown extractions (html5ever +
+    /// htmd). Extraction is CPU-bound and runs on the blocking pool; this bound
+    /// keeps a burst of concurrent scrapes from oversubscribing the cores and
+    /// starving the async reactor. Defaults to ~2/3 of available cores (≈8 on a
+    /// 12-vCPU host), floored at 2.
+    #[serde(default = "default_max_concurrent_extracts")]
+    pub max_concurrent_extracts: usize,
 }
 
 fn default_http_retry_threshold() -> usize {
@@ -1190,6 +1278,13 @@ fn default_http_retry_threshold() -> usize {
 
 fn default_lightpanda_retry_threshold() -> usize {
     2000
+}
+
+fn default_max_concurrent_extracts() -> usize {
+    let cpus = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+    (cpus * 2 / 3).max(2)
 }
 
 impl Default for ExtractionConfig {
@@ -1202,6 +1297,7 @@ impl Default for ExtractionConfig {
             llm_fallback: LlmFallbackConfig::default(),
             http_retry_threshold_bytes: default_http_retry_threshold(),
             lightpanda_retry_threshold_bytes: default_lightpanda_retry_threshold(),
+            max_concurrent_extracts: default_max_concurrent_extracts(),
         }
     }
 }
@@ -1276,6 +1372,11 @@ pub struct LlmConfig {
     /// proven not to raise abstention.
     #[serde(default)]
     pub temperature: Option<f32>,
+    /// Optional reasoning-effort hint forwarded to OpenAI-compatible providers
+    /// that support it. `None` (default) and the empty string send no key,
+    /// preserving each provider's default behavior.
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
 }
 
 impl Default for LlmConfig {
@@ -1291,6 +1392,7 @@ impl Default for LlmConfig {
             max_html_bytes: default_llm_max_html_bytes(),
             require_byok_header: None,
             temperature: None,
+            reasoning_effort: None,
         }
     }
 }
@@ -1347,6 +1449,32 @@ where
             }
         }
     }
+}
+
+/// Deserializer for an optional string that normalizes an empty or
+/// whitespace-only value to `None`.
+///
+/// Env-based config (the `config` crate with `try_parsing`) surfaces a
+/// present-but-empty variable such as `CRW_CRAWLER__PROXY=""` as `Some("")`
+/// rather than `None`. Left as `Some("")`, that empty string flows into
+/// `reqwest::Proxy::all("")`, which rejects it with "builder error" and breaks
+/// the map/crawl discovery path (issue #154). This mirrors how
+/// [`deserialize_string_vec`] already drops empty entries for `proxy_list`.
+///
+/// Applied via `#[serde(default, deserialize_with = ...)]`, so a *missing* key
+/// is handled by `Default` (the helper never runs) and only a present value —
+/// from env or a TOML `proxy = ""` — reaches this function.
+fn deserialize_opt_nonempty_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    let trimmed = s.trim();
+    Ok(if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    })
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -2022,6 +2150,54 @@ mod tests {
             "ws://test:9999/",
             "env var should override renderer.lightpanda.ws_url"
         );
+    }
+
+    #[test]
+    fn crawler_proxy_empty_env_normalizes_to_none() {
+        let _g = ENV_LOCK.lock().unwrap();
+        clear_renderer_env();
+        // Isolate from any developer ~/.config/crw/config.toml and stray CRW_CONFIG.
+        let tmp = std::env::temp_dir().join(format!("crw-proxy-test-{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        unsafe {
+            std::env::set_var("CRW_USER_CONFIG_DIR", &tmp);
+            std::env::remove_var("CRW_CONFIG");
+        }
+
+        let load = || {
+            // CRW_CONFIG and the user config dir are pinned for the whole test.
+            AppConfig::load().unwrap().crawler.proxy
+        };
+
+        // (1) absent -> None (serde default).
+        unsafe { std::env::remove_var("CRW_CRAWLER__PROXY") };
+        assert_eq!(load(), None, "absent proxy env should be None");
+
+        // (2) present-but-empty -> None (the issue #154 case).
+        unsafe { std::env::set_var("CRW_CRAWLER__PROXY", "") };
+        assert_eq!(load(), None, "empty proxy env should normalize to None");
+
+        // (3) whitespace-only -> None.
+        unsafe { std::env::set_var("CRW_CRAWLER__PROXY", "   ") };
+        assert_eq!(
+            load(),
+            None,
+            "whitespace proxy env should normalize to None"
+        );
+
+        // (4) a real value -> Some (trimmed).
+        unsafe { std::env::set_var("CRW_CRAWLER__PROXY", "  http://proxy:8080  ") };
+        assert_eq!(
+            load(),
+            Some("http://proxy:8080".to_string()),
+            "valid proxy env should be preserved and trimmed"
+        );
+
+        unsafe {
+            std::env::remove_var("CRW_CRAWLER__PROXY");
+            std::env::remove_var("CRW_USER_CONFIG_DIR");
+        }
+        std::fs::remove_dir_all(&tmp).ok();
     }
 
     #[test]

@@ -3,7 +3,7 @@
 ## Cloud (no installation needed)
 
 Sign up at [fastcrw.com](https://fastcrw.com) and start using the API immediately.
-Same Firecrawl-compatible endpoints, zero infrastructure.
+Native `/v1` endpoints for new CRW integrations, with `/v2` compatibility available for Firecrawl migrations.
 
 ```bash
 curl -X POST https://api.fastcrw.com/v1/scrape \
@@ -17,20 +17,20 @@ curl -X POST https://api.fastcrw.com/v1/scrape \
 The install script auto-detects your OS and architecture, downloads the latest binary, and installs it:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/us/crw/main/install.sh | sh
+curl -fsSL https://fastcrw.com/install | sh
 ```
 
 Or with `wget`:
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/us/crw/main/install.sh | sh
+wget -qO- https://fastcrw.com/install | sh
 ```
 
 **Options:**
 
 ```bash
 # Install to a custom directory:
-curl -fsSL https://raw.githubusercontent.com/us/crw/main/install.sh | CRW_INSTALL_DIR=~/.local/bin sh
+curl -fsSL https://fastcrw.com/install | CRW_INSTALL_DIR=~/.local/bin sh
 ```
 
 Supported platforms: macOS (Intel & Apple Silicon), Linux (x64 & ARM64), Windows (via MSYS2/Git Bash).

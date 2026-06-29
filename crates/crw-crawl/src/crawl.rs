@@ -176,7 +176,13 @@ async fn run_crawl_inner(opts: CrawlOptions<'_>) {
             .pick_proxy_for_url(&origin)
             .map(|e| e.raw().to_string())
             .or_else(|| proxy.clone()),
-    };
+    }
+    // An empty/whitespace single `proxy` means "no proxy configured" (e.g. a
+    // present-but-empty CRW_CRAWLER__PROXY or a CLI `--proxy ""`, which bypasses
+    // config normalization). Treat it as a direct connection rather than handing
+    // "" to reqwest::Proxy::all, which rejects it with "builder error"
+    // (issue #154). A genuinely malformed non-empty value still fails closed below.
+    .filter(|p| !p.trim().is_empty());
     let mut client_builder = reqwest::Client::builder()
         .user_agent(user_agent)
         .redirect(crw_core::url_safety::safe_redirect_policy());
@@ -318,19 +324,23 @@ async fn run_crawl_inner(opts: CrawlOptions<'_>) {
                 }
             }
         } else {
-            match crw_extract::extract(crw_extract::ExtractOptions {
-                raw_html: &fetch_result.html,
-                source_url: &fetch_result.url,
+            // Off-reactor, parallelism-bounded extraction (see
+            // `crate::extract_pool`). The owned input lets the CPU-bound
+            // `extract()` run on the blocking pool without starving the crawl's
+            // async fan-out.
+            match crate::extract_pool::extract_offloaded(crw_extract::OwnedExtractInput {
+                raw_html: fetch_result.html.clone(),
+                source_url: fetch_result.url.clone(),
                 status_code: fetch_result.status_code,
                 rendered_with: fetch_result.rendered_with.clone(),
                 elapsed_ms: fetch_result.elapsed_ms,
                 render_decision: fetch_result.render_decision.clone(),
                 credit_cost: fetch_result.credit_cost,
                 warnings: fetch_result.warnings.clone(),
-                formats: &req.formats,
+                formats: req.formats.clone(),
                 only_main_content: req.only_main_content,
-                include_tags: &[],
-                exclude_tags: &[],
+                include_tags: Vec::new(),
+                exclude_tags: Vec::new(),
                 css_selector: None,
                 xpath: None,
                 chunk_strategy: None,
@@ -338,11 +348,12 @@ async fn run_crawl_inner(opts: CrawlOptions<'_>) {
                 filter_mode: None,
                 top_k: None,
                 domain_selectors: None,
-                captured_responses: &fetch_result.captured_responses,
-                llm_fallback: None,
+                captured_responses: fetch_result.captured_responses.clone(),
                 debug: false,
                 debug_sink: None,
-            }) {
+            })
+            .await
+            {
                 Ok(data) => data,
                 Err(err) => {
                     tracing::warn!(url, error = %err, "Crawl: extraction failed");
@@ -534,7 +545,12 @@ pub async fn discover_urls(opts: DiscoverOptions<'_>) -> CrwResult<DiscoverResul
     let discover_proxy: Option<String> = renderer
         .pick_proxy_for_url(&origin)
         .map(|e| e.raw().to_string())
-        .or_else(|| proxy.clone());
+        .or_else(|| proxy.clone())
+        // Empty/whitespace single `proxy` = no proxy configured; never hand "" to
+        // reqwest::Proxy::all (it errors with "builder error" — issue #154). A
+        // malformed non-empty value still fails closed below. Covers the CLI
+        // `--proxy ""` path, which bypasses config-level normalization.
+        .filter(|p| !p.trim().is_empty());
     let mut discover_client_builder = reqwest::Client::builder()
         .user_agent(user_agent)
         .timeout(std::time::Duration::from_secs(15))
@@ -684,14 +700,12 @@ pub async fn discover_urls(opts: DiscoverOptions<'_>) -> CrwResult<DiscoverResul
         // proxy (sticky-per-host), not direct. Resolved once into REQUEST_PROXY.
         let resolved_proxy = renderer.pick_proxy_for_url(&url);
         let empty_headers: HashMap<String, String> = HashMap::new();
-        let fetch_fut = renderer.fetch(
-            &url,
-            &empty_headers,
-            Some(false),
-            None,
-            None,
-            discover_deadline,
-        );
+        // render_js = None (auto), not Some(false): SPAs (Angular/React/Vue)
+        // serve an empty app shell over plain HTTP, so HTTP-only discovery finds
+        // zero navigational links and /map returns only the seed URL (issue #166).
+        // Auto mode lets the renderer escalate thin/SPA shells to a JS render
+        // (it stays HTTP-only for static sites), matching /scrape and /crawl.
+        let fetch_fut = renderer.fetch(&url, &empty_headers, None, None, None, discover_deadline);
         let fetch = crw_renderer::REQUEST_PROXY
             .scope(resolved_proxy, fetch_fut)
             .await;

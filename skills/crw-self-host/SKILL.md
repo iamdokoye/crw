@@ -50,7 +50,7 @@ cargo build --profile release-small --no-default-features -p crw-mcp
 
 ```bash
 brew install us/crw/crw
-curl -fsSL https://raw.githubusercontent.com/us/crw/main/install.sh | CRW_BINARY=crw sh
+curl -fsSL https://fastcrw.com/install | CRW_BINARY=crw sh
 cargo install crw-cli
 
 # APT (Debian/Ubuntu):
@@ -67,7 +67,7 @@ microservice.
 
 ```bash
 brew install us/crw/crw-server
-curl -fsSL https://raw.githubusercontent.com/us/crw/main/install.sh | CRW_BINARY=crw-server sh
+curl -fsSL https://fastcrw.com/install | CRW_BINARY=crw-server sh
 docker run -p 3000:3000 ghcr.io/us/crw
 ```
 
@@ -274,7 +274,7 @@ sandbox = false            # set true in Docker (untrusted uploads)
 MCP process. No separate server needed. ~6 MB RAM. Zero setup.
 ```bash
 npx crw-mcp                            # embedded
-claude mcp add crw -- npx crw-mcp     # Claude Code, embedded
+claude mcp add crw -- npx -y crw-mcp  # Claude Code, embedded
 ```
 
 **Proxy mode** (`CRW_API_URL` set): MCP forwards all calls to the REST endpoint.
@@ -284,8 +284,9 @@ point at `api.fastcrw.com`.
 CRW_API_URL=https://api.fastcrw.com CRW_API_KEY=crw_live_... npx crw-mcp
 
 # Claude Code:
-claude mcp add -e CRW_API_URL=https://api.fastcrw.com -e CRW_API_KEY=crw_live_... \
-  crw -- npx crw-mcp
+claude mcp add crw \
+  -e CRW_API_URL=https://api.fastcrw.com -e CRW_API_KEY=crw_live_... \
+  -- npx -y crw-mcp
 ```
 
 ## Verify the setup

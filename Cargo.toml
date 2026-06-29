@@ -16,7 +16,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.16.0"
+version = "0.19.0"
 edition = "2024"
 license = "AGPL-3.0"
 repository = "https://github.com/us/crw"
@@ -34,7 +34,11 @@ tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace", "timeout", "set-header"] }
 
 # HTTP client
-reqwest = { version = "0.13", default-features = false, features = ["json", "cookies", "rustls", "gzip", "brotli", "deflate", "socks", "stream", "multipart"] }
+# Phase B (latency-qn): `hickory-dns` makes hickory the default resolver, which
+# caches DNS answers across requests on a reused Client — cuts repeated-host
+# resolution latency in crawls/scrape fan-outs (NOT response caching; the
+# "no cache" rule doesn't apply to DNS). Quality-neutral: identical bytes.
+reqwest = { version = "0.13", default-features = false, features = ["json", "cookies", "rustls", "gzip", "brotli", "deflate", "socks", "stream", "multipart", "hickory-dns"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -133,16 +137,16 @@ insta = { version = "1", features = ["json"] }
 # and layer their own `features` / `optional` on top. `path` is resolved
 # relative to THIS (root) manifest. Only crates that are depended upon by
 # another crate appear here; leaf binaries (crw-mcp, crw-cli) just consume.
-crw-mcp-proto = { path = "crates/crw-mcp-proto", version = "0.16.0" }
-crw-core = { path = "crates/crw-core", version = "0.16.0" }
-crw-extract = { path = "crates/crw-extract", version = "0.16.0" }
-crw-renderer = { path = "crates/crw-renderer", version = "0.16.0" }
-crw-search = { path = "crates/crw-search", version = "0.16.0" }
-crw-diff = { path = "crates/crw-diff", version = "0.16.0" }
-crw-crawl = { path = "crates/crw-crawl", version = "0.16.0" }
-crw-monitor = { path = "crates/crw-monitor", version = "0.16.0" }
-crw-server = { path = "crates/crw-server", version = "0.16.0" }
-crw-browse = { path = "crates/crw-browse", version = "0.16.0" }
+crw-mcp-proto = { path = "crates/crw-mcp-proto", version = "0.19.0" }
+crw-core = { path = "crates/crw-core", version = "0.19.0" }
+crw-extract = { path = "crates/crw-extract", version = "0.19.0" }
+crw-renderer = { path = "crates/crw-renderer", version = "0.19.0" }
+crw-search = { path = "crates/crw-search", version = "0.19.0" }
+crw-diff = { path = "crates/crw-diff", version = "0.19.0" }
+crw-crawl = { path = "crates/crw-crawl", version = "0.19.0" }
+crw-monitor = { path = "crates/crw-monitor", version = "0.19.0" }
+crw-server = { path = "crates/crw-server", version = "0.19.0" }
+crw-browse = { path = "crates/crw-browse", version = "0.19.0" }
 
 [profile.release]
 lto = true

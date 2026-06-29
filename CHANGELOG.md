@@ -2,6 +2,90 @@
 
 All notable changes to CRW are documented here.
 
+## [0.19.0](https://github.com/us/crw/compare/v0.18.3...v0.19.0) (2026-06-28)
+
+
+### Features
+
+* **renderer:** proxy-retry on origin rate-limit (429) ([da7ecda](https://github.com/us/crw/commit/da7ecdaff97b6d9aa995f4353afeadae91b328ef))
+* **renderer:** relaxed-TLS fallback for cert-broken origins ([13d39f6](https://github.com/us/crw/commit/13d39f692d42cc64f00389bf55943dd51a6a49ad))
+
+
+### Performance
+
+* **engine:** offload HTML extraction off the async reactor ([1683153](https://github.com/us/crw/commit/16831532dff80047fd9f9039aafc43b284e8dbca))
+
+## [0.18.3](https://github.com/us/crw/compare/v0.18.2...v0.18.3) (2026-06-23)
+
+
+### Bug Fixes
+
+* **renderer:** strip "Mozilla" UA prefix for lightpanda (it rejects it) ([fda6139](https://github.com/us/crw/commit/fda6139a74c3c57aa38665d93e5123090bc71a32))
+
+## [0.18.2](https://github.com/us/crw/compare/v0.18.1...v0.18.2) (2026-06-23)
+
+
+### Bug Fixes
+
+* **renderer:** send a modern UA on the CDP path (setUserAgentOverride) ([ffcf564](https://github.com/us/crw/commit/ffcf5640384d49bf5ebe2c72e8ba91001bf2e931))
+
+## [0.18.1](https://github.com/us/crw/compare/v0.18.0...v0.18.1) (2026-06-23)
+
+
+### Bug Fixes
+
+* **npm:** ship bin/install.js + bin/agents.js in the crw-mcp package ([437dbc7](https://github.com/us/crw/commit/437dbc760630e58819cfcb860d84dfb3ba5061b5))
+
+## [0.18.0](https://github.com/us/crw/compare/v0.17.0...v0.18.0) (2026-06-23)
+
+
+### Features
+
+* **extract:** optional reasoning_effort config field ([e677190](https://github.com/us/crw/commit/e677190a6c54d0987e09ac9dcc5580f5df28371a))
+* **install:** auto-launch `crw setup` after install + conversion-tuned copy ([5cc35f9](https://github.com/us/crw/commit/5cc35f915c54827481fbfc136d712928a84e66b0))
+* **mcp:** add `install` command that wires skill + MCP for all agents ([4b41621](https://github.com/us/crw/commit/4b416214fb09930a22338521b089fa82683836df))
+
+
+### Bug Fixes
+
+* **ci:** rebase-retry docs-sync push + sync 0.17.0 changelog ([597aa90](https://github.com/us/crw/commit/597aa90b56ad5188691e844e29f5a849a54c092e))
+* **install:** default to the crw CLI + drop the musl/glibc gate ([9958273](https://github.com/us/crw/commit/9958273bae8a5d954991b6a863dfee6ed7ef669a))
+* **install:** drop the GB figure from local, surface 500 credits everywhere ([f997aa0](https://github.com/us/crw/commit/f997aa0e75007db2a4ee9fe4a4cc191bf00da0d0))
+* **mcp:** clarify crawl/parse jsonSchema arg for MCP clients ([91be697](https://github.com/us/crw/commit/91be6977f88c259bdc2c846be92a183308d62ebe))
+* **mcp:** static musl linux binaries + correct `claude mcp add` docs ([75333d6](https://github.com/us/crw/commit/75333d678e4112a1d03ca8d1c416fd989345cce0))
+* **server:** make crw- model-prefix boot guard opt-in ([5cb867c](https://github.com/us/crw/commit/5cb867c17aeac45e03d30cd11897a7fc9a5b9e5f))
+* **stealth:** bump UA + Sec-Ch-Ua from Chrome 131 to 150 ([695863c](https://github.com/us/crw/commit/695863cb09279e3bdee06928cbfb8b120a74e61b))
+
+## [0.17.0](https://github.com/us/crw/compare/v0.16.0...v0.17.0) (2026-06-21)
+
+
+### Features
+
+* **renderer:** add opt-in Camoufox stealth renderer tier ([744beda](https://github.com/us/crw/commit/744beda540fad3e17b6d9c1d2127cad30ab83767))
+* **renderer:** conditional hedge + event-driven readiness for p90 ([9065007](https://github.com/us/crw/commit/90650079d8f34e65cf67f22aad5bf96f62c580ef))
+* **scrape:** add screenshot output format via CDP capture ([61e03e7](https://github.com/us/crw/commit/61e03e71b8dda137dffa730bcb864660009b270d)), closes [#161](https://github.com/us/crw/issues/161)
+* **sdk:** add Research API methods to TS + Python SDKs ([3a2f710](https://github.com/us/crw/commit/3a2f71062b00acd0c67092fc5da7bb4caa1cf527))
+* **search:** add Firecrawl-compatible research API engine layer ([ba1a87c](https://github.com/us/crw/commit/ba1a87c568da7f152f33cef63b188180ec210a29))
+* **search:** overlap query-expansion scrape with original (C1) ([4f6147e](https://github.com/us/crw/commit/4f6147e8ef7ab3146387bad4cf0902e587d1660c))
+* **skills:** add crw agent skill set ([0ddbe01](https://github.com/us/crw/commit/0ddbe010fdfe484f2c58db773569d85989441372))
+* **skills:** publish crw-research agent skill + docs install command ([4638715](https://github.com/us/crw/commit/4638715bed7d34db0c3a08ec49be6b4a80f39791))
+
+
+### Bug Fixes
+
+* **docs:** render :::tabs and :::callouts in prerendered pages ([f3a495a](https://github.com/us/crw/commit/f3a495ac745598eddc83926466dede60fd7d4fa0))
+* **map:** render SPA shells during URL discovery ([0ec4bf9](https://github.com/us/crw/commit/0ec4bf9b7c405e98def0b6f7ab3f73bf6320c275)), closes [#166](https://github.com/us/crw/issues/166)
+* **mcp,sdk:** drop phantom search country param, export CrwApiError ([58b8e5c](https://github.com/us/crw/commit/58b8e5cd67347c3f4f7c8ebd341236873ba201b9))
+* **pdf:** bound sandbox child address space to prevent false pdf_too_large ([06acb83](https://github.com/us/crw/commit/06acb8331490713967cf95bd40005c5af839373b))
+* **proxy:** normalize empty CRW_CRAWLER__PROXY to None ([#154](https://github.com/us/crw/issues/154)) ([b3d0fe9](https://github.com/us/crw/commit/b3d0fe996a2d0e2b8f3231c55f6ed86f0b14552b))
+* **scrape:** capture screenshot outside the nav-budget race ([4021b50](https://github.com/us/crw/commit/4021b5084db3b24b1f4c143f7729aa268006a039))
+* **search:** resolve arXiv inspect via Semantic Scholar ([70126c6](https://github.com/us/crw/commit/70126c6e5e3c07fb7ad05400424adbdfdf129563))
+
+
+### Performance
+
+* **search:** research concurrency 4-&gt;8, cache cap 20k-&gt;3k ([e3a6ac3](https://github.com/us/crw/commit/e3a6ac3bef2a901a9f87b1cb710d594154ebe00f))
+
 ## [0.16.0](https://github.com/us/crw/compare/v0.15.2...v0.16.0) (2026-06-14)
 
 

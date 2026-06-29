@@ -36,7 +36,7 @@ CRW 是为 AI 代理打造的开源网页抓取工具。内置 MCP 服务器（s
 
 ```bash
 # 一键安装（自动检测操作系统和架构）：
-curl -fsSL https://raw.githubusercontent.com/us/crw/main/install.sh | sh
+curl -fsSL https://fastcrw.com/install | sh
 
 # npm（零安装）：
 npx crw-mcp
@@ -147,7 +147,7 @@ CRW 提供 Firecrawl 的 API，但资源占用极低。无运行时依赖，无 
 **MCP（AI 代理 — 推荐）：**
 
 ```bash
-claude mcp add crw -- npx crw-mcp
+claude mcp add crw -- npx -y crw-mcp
 ```
 
 > 完成。Claude Code 现在拥有 `crw_scrape`、`crw_crawl`、`crw_check_crawl_status`、`crw_map`、`crw_parse_file` 工具（`crw_search` 在配置 SearXNG 后端后自动出现）。Cursor、Windsurf、Cline 等 MCP 客户端请参见 [MCP 服务器](#mcp-服务器)。
@@ -284,7 +284,7 @@ CRW 可作为 Claude Code 和 Claude Desktop 的 MCP 工具服务器，支持两
 
 ```bash
 # 一键安装（自动检测操作系统和架构）：
-curl -fsSL https://raw.githubusercontent.com/us/crw/main/install.sh | sh
+curl -fsSL https://fastcrw.com/install | sh
 
 # npm（零安装）：
 npx crw-mcp
@@ -302,7 +302,7 @@ docker run -i ghcr.io/us/crw crw-mcp
 **Claude Code：**
 
 ```bash
-claude mcp add crw -- npx crw-mcp
+claude mcp add crw -- npx -y crw-mcp
 ```
 
 **其他 MCP 客户端配置：**
